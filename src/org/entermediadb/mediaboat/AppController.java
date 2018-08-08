@@ -28,5 +28,11 @@ public class AppController
 	//has connection
 	//has UI
 	//has API
+	public void logoff()
+	{
+		model.disconnect();
+		System.exit(0);
+		
+	}
 	
 }

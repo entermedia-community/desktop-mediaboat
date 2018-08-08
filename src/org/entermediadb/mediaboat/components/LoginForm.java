@@ -1,4 +1,4 @@
-package org.entermediadb.mediaboat;
+package org.entermediadb.mediaboat.components;
 
 import java.awt.Color;
 import java.awt.Font;
@@ -11,10 +11,11 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JTextField;
+import javax.swing.SwingUtilities;
 
-import org.entermediadb.mediaboat.components.SmoothLabel;
+import org.entermediadb.mediaboat.AppController;
 
-public class LoginForm extends JFrame implements ActionListener
+public class LoginForm extends JFrame 
 {
 	JTextField tfusername, tfserver;
 	JButton btn1;
@@ -31,7 +32,7 @@ public class LoginForm extends JFrame implements ActionListener
 		fieldAppController = inAppController;
 	}
 
-	LoginForm()
+	public LoginForm()
 	{
 		setDefaultCloseOperation(EXIT_ON_CLOSE);
 
@@ -57,7 +58,14 @@ public class LoginForm extends JFrame implements ActionListener
 		tfserver = new JTextField("Server");
 		tfserver.setText(getAppController().getConfig().get("server"));
 		btn1 = new JButton("Login");
-		btn1.addActionListener(this);
+		btn1.addActionListener(new ActionListener()
+			{
+				@Override
+				public void actionPerformed(ActionEvent inE)
+				{
+					login();
+				}
+			});
 		l1.setBounds(10, 10, 400, 30);
 		tfserver.setBounds(200, 150, 300, 30);
 		l2.setBounds(80, 70, 200, 30);
@@ -82,23 +90,30 @@ public class LoginForm extends JFrame implements ActionListener
 
 	}
 
-	public void actionPerformed(ActionEvent ae)
+	public void login()
 	{
-		String uname = tfusername.getText();
-		String pass = tfkey.getText();
-		String server  = tfserver.getText();
-		if (getAppController().connect(server,uname,pass))
+		SwingUtilities.invokeLater(new Runnable()
 		{
-			showConnectionPanel();
-//			Welcome wel = new Welcome();
-//			wel.setVisible(true);
-//			JLabel label = new JLabel("Welcome:" + uname);
-//			wel.getContentPane().add(label);
-		}
-		else
-		{
-			JOptionPane.showMessageDialog(this, "Incorrect login or password", "Error", JOptionPane.ERROR_MESSAGE);
-		}
+			public void run()
+			{
+				String uname = tfusername.getText();
+				String pass = tfkey.getText();
+				String server  = tfserver.getText();
+				if (getAppController().connect(server,uname,pass))
+				{
+					showConnectionPanel();
+//						Welcome wel = new Welcome();
+//						wel.setVisible(true);
+//						JLabel label = new JLabel("Welcome:" + uname);
+//						wel.getContentPane().add(label);
+				}
+				else
+				{
+					JOptionPane.showMessageDialog(LoginForm.this, "Incorrect login or password", "Error", JOptionPane.ERROR_MESSAGE);
+				}
+				
+			}
+		});
 	}
 
 	private void showConnectionPanel()
@@ -111,7 +126,16 @@ public class LoginForm extends JFrame implements ActionListener
 		l1.setBounds(100, 10, 400, 30);
 		
 		btn1 = new JButton("Disconnect");
-		btn1.addActionListener(this);
+		btn1.addActionListener(	new ActionListener()
+		{
+			@Override
+			public void actionPerformed(ActionEvent inE)
+			{
+				logoff();
+			}
+
+			
+		});
 		btn1.setBounds(150, 160, 100, 30);
 		JPanel panel = new JPanel();
 		panel.setLayout(null);
@@ -120,6 +144,12 @@ public class LoginForm extends JFrame implements ActionListener
 		setContentPane(panel);
 		revalidate(); 
 		repaint();
+	}
+	protected void logoff()
+	{
+		// TODO Auto-generated method stub
+		getAppController().logoff();
+		
 	}
 
 }

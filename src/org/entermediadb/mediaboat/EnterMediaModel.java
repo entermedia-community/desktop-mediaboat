@@ -1,7 +1,10 @@
 package org.entermediadb.mediaboat;
 
+import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.util.Collection;
+import java.util.Map;
 
 public class EnterMediaModel
 {
@@ -39,7 +42,9 @@ public class EnterMediaModel
 					//strip off /s
 					server = server.substring(0, i);
 				}
-				URI path = new URI( "ws://" + server + "/entermedia/services/websocket/org/entermediadb/websocket/mediaboat/MediaBoatConnection" );
+				String url =  "ws://" + server + "/entermedia/services/websocket/org/entermediadb/websocket/mediaboat/MediaBoatConnection";
+				url = url +  "?userid=" + getUserId();
+				URI path = new URI(url);
 				 // more about drafts here: http://github.com/TooTallNate/Java-WebSocket/wiki/Drafts
 				connection = new WsConnection(path);
 			}
@@ -53,11 +58,21 @@ public class EnterMediaModel
 	//This class will be notified when they should move files around?
 
 
+	private String getUserId()
+	{
+		return getConfig().get("username");
+	}
+
+
 	public boolean connect(String server, String inUname, String inKey)
 	{
 		
-		String path = System.getenv("HOME");
-		getConfig().put("home", path);
+		String path = getConfig().get("home");
+		if( path == null)
+		{
+			path = System.getenv("HOME");
+			getConfig().put("home", path);
+		}
 		getConfig().put("username", inUname);
 		getConfig().put("server", server);
 		getConfig().put("key", inKey);
@@ -86,12 +101,32 @@ public class EnterMediaModel
 		mes.put("home",path);
 		mes.put("username",inUname);
 		mes.put("key",inKey);
+		mes.put("desktopid", System.getProperty("os.name") +  " " + getComputerName());
+		mes.put("homefolder",path);
 		getConnection().send(mes);
 		return true;
 		
 	}
 
-
+	protected String getComputerName()
+	{
+	    Map<String, String> env = System.getenv();
+	    if (env.containsKey("COMPUTERNAME"))
+	        return env.get("COMPUTERNAME");
+	    else if (env.containsKey("HOSTNAME"))
+	        return env.get("HOSTNAME");
+	    else
+	    {
+	        try
+			{
+				return InetAddress.getLocalHost().getHostName();
+			}
+			catch (UnknownHostException e)
+			{
+				return "Unknown";
+			}
+	    }
+	}
 
 	private void log(String inString)
 	{
@@ -112,6 +147,12 @@ public class EnterMediaModel
 	{
 		//Send a message saying status 100%
 		
+	}
+
+
+	public void disconnect()
+	{
+		getConnection().close();
 	}
 	
 	//We should also upload files from the EnterMedia directory

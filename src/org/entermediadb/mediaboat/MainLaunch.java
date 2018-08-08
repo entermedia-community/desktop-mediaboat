@@ -4,7 +4,8 @@ import java.awt.Dimension;
 import java.awt.Toolkit;
 
 import javax.swing.JFrame;
-import javax.swing.JLabel;
+
+import org.entermediadb.mediaboat.components.LoginForm;
 
 public class MainLaunch
 {

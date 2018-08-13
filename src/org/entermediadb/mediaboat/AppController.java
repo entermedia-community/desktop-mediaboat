@@ -6,23 +6,33 @@ import org.json.simple.JSONObject;
 
 public class AppController
 {
-	EnterMediaModel model = new EnterMediaModel();
+	EnterMediaModel model;//
+	
+	public EnterMediaModel getModel()
+	{
+		 if (model == null)
+		{
+			model = new EnterMediaModel();
+			
+		}
+		return model;
+	}
 	
 	public Configuration getConfig()
 	{
-		return model.getConfig();
+		return getModel().getConfig();
 	}
 	public boolean connect(String server, String inUname, String inPass)
 	{
-		return model.connect(server,inUname,inPass);
+		return getModel().connect(server,inUname,inPass);
 		//Send client info
 		
 	}
 	public void download(JSONObject inMap)
 	{
-		String path =  (String)inMap.get("abspath");
-		Collection sourcepaths = (Collection)inMap.get("sourcepaths");
-		model.download(path,sourcepaths);
+		Collection datapaths = (Collection)inMap.get("assetpaths");
+		
+		getModel().download(datapaths);
 		
 	}
 	//has connection
@@ -30,7 +40,7 @@ public class AppController
 	//has API
 	public void logoff()
 	{
-		model.disconnect();
+		getModel().disconnect();
 		System.exit(0);
 		
 	}

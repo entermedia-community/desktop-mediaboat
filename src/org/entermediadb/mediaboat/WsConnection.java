@@ -2,32 +2,34 @@ package org.entermediadb.mediaboat;
 
 import java.io.StringReader;
 import java.net.URI;
+import java.util.Collection;
 
 import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.drafts.Draft;
 import org.java_websocket.handshake.ServerHandshake;
 import org.json.simple.JSONObject;
-import org.json.simple.parser.*;
+import org.json.simple.parser.JSONParser;
 
 
 public class WsConnection extends WebSocketClient
 {
     protected ThreadLocal perThreadCache = new ThreadLocal();
 
-    AppController fieldAppController;
+    EnterMediaModel	 fieldModel;
 
-	public AppController getAppController()
+	public EnterMediaModel getModel()
 	{
-		return fieldAppController;
+		return fieldModel;
 	}
 
-	public void setAppController(AppController inAppController)
+	public void setEnterMediaModel(EnterMediaModel inModel)
 	{
-		fieldAppController = inAppController;
+		fieldModel = inModel;
 	}
-
-	public WsConnection(URI inServerUri)
+	
+	public WsConnection(URI inServerUri,Draft inDraft)
 	{
-		super(inServerUri);
+		super(inServerUri,inDraft);
 		// TODO Auto-generated constructor stub
 	}
 
@@ -74,9 +76,15 @@ public class WsConnection extends WebSocketClient
 		{
 			JSONObject map = (JSONObject)getJSONParser().parse(new StringReader(inMessage));
 			String command = (String)map.get("command");
-			if( "downloadto".equals( command))
+			if( "authenticated".equals( command))
 			{
-				getAppController().download(map);
+				String value = (String)map.get("entermedia.key");
+				getModel().getConfig().put("entermedia.key", value);
+			}
+			else if( "downloadto".equals( command))
+			{
+				Collection assetpaths = (Collection)map.get("assetpaths");
+				getModel().download(assetpaths);
 			}
 		} catch (Exception ex)
 		{

@@ -1,33 +1,59 @@
 package org.entermediadb.mediaboat;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
+
+import org.apache.http.HttpResponse;
+import org.entermediadb.utils.HttpSharedConnection;
+import org.entermediadb.utils.OutputFiller;
+import org.java_websocket.drafts.Draft_6455;
 
 public class EnterMediaModel
 {
 	WsConnection connection;
+	HttpSharedConnection httpconnection;
+	OutputFiller fieldFiller;
+	
+	public OutputFiller getFiller()
+	{
+		if (fieldFiller == null)
+		{
+			fieldFiller = new OutputFiller();
+		}
+		return fieldFiller;
+	}
+
+
+	public void setFiller(OutputFiller inFiller)
+	{
+		fieldFiller = inFiller;
+	}
+
+
+	public HttpSharedConnection getHttpConnection()
+	{
+		if (httpconnection == null)
+		{
+			httpconnection = new HttpSharedConnection();
+		}
+
+		return httpconnection;
+	}
+
+
 	Configuration config = new Configuration();
 	public Configuration getConfig()
 	{
 		return config;
 	}
-	protected String fieldEnterMediaKey;
-	
-	
-	public String getEnterMediaKey()
-	{
-		return fieldEnterMediaKey;
-	}
-
-
-	public void setEnterMediaKey(String inEnterMediaKey)
-	{
-		fieldEnterMediaKey = inEnterMediaKey;
-	}
-
 
 	public WsConnection getConnection()
 	{
@@ -37,16 +63,19 @@ public class EnterMediaModel
 			{
 				String server = getConfig().get("server");
 				int i;
-				if( (i  = server.indexOf("/",4)) > -1)
+				if( (i  = server.indexOf("/",8)) > -1)
 				{
 					//strip off /s
 					server = server.substring(0, i);
 				}
+				server = server.substring(server.lastIndexOf("/") + 1);
+				
 				String url =  "ws://" + server + "/entermedia/services/websocket/org/entermediadb/websocket/mediaboat/MediaBoatConnection";
 				url = url +  "?userid=" + getUserId();
 				URI path = new URI(url);
 				 // more about drafts here: http://github.com/TooTallNate/Java-WebSocket/wiki/Drafts
-				connection = new WsConnection(path);
+				connection = new WsConnection(path,new Draft_6455());
+				connection.setEnterMediaModel(this);
 			}
 			catch(Exception ex)
 			{
@@ -75,7 +104,8 @@ public class EnterMediaModel
 		}
 		getConfig().put("username", inUname);
 		getConfig().put("server", server);
-		getConfig().put("key", inKey);
+		//check  for key
+		getConfig().put("entermedia.key", inKey);
 		getConfig().save();
 		//Check disk space etc?
 		connection = null;
@@ -100,7 +130,8 @@ public class EnterMediaModel
 		Message mes = new Message("login");
 		mes.put("home",path);
 		mes.put("username",inUname);
-		mes.put("key",inKey);
+		mes.put("server",server);
+		mes.put("entermedia.key",inKey);
 		mes.put("desktopid", System.getProperty("os.name") +  " " + getComputerName());
 		mes.put("homefolder",path);
 		getConnection().send(mes);
@@ -133,13 +164,47 @@ public class EnterMediaModel
 		System.out.println(inString);
 	}
 
-
-	public void download(String inPath, Collection inSourcepaths)
+	public void download(Collection inSourcepaths)
 	{
 		//The path is a collection path
+		Map params = new HashMap();
+		params.put("entermedia.key", getEnterMediaKey());
+		for (Iterator iterator = inSourcepaths.iterator(); iterator.hasNext();)
+		{
+			Map downloadreq = (Map) iterator.next();
+			String url = (String)downloadreq.get("url");
+			HttpResponse res = getHttpConnection().sharedPost(url, params);
+			InputStream input = null;
+			FileOutputStream output = null;
+			try
+			{
+				input = res.getEntity().getContent();
+				String savepath = (String)downloadreq.get("savepath");
+				File tosave = new File(savepath);
+				tosave.getParentFile().mkdirs();
+				output = new FileOutputStream(tosave);
+				getFiller().fill(input, output);
+				
+				String savetime = (String)downloadreq.get("assetmodificationdate");
+				tosave.setLastModified(Long.parseLong(savetime));
+			}
+			catch( Throwable ex)
+			{
+				//TODO Show errors
+				getFiller().close(input);
+				getFiller().close(output);
+			}
+			
+		}
 		
 		//Loop over each thing and download it
 		sendStatusComplete();
+	}
+
+
+	private String getEnterMediaKey()
+	{
+		return getConfig().get("entermedia.key");
 	}
 
 

@@ -86,6 +86,17 @@ public class WsConnection extends WebSocketClient
 				Collection assetpaths = (Collection)map.get("assetpaths");
 				getModel().download(assetpaths);
 			}
+			
+			else if( "sendfilelist".equals( command))
+			{
+				String fileroot = (String)map.get("rootfolder");
+				getModel().sendFileList(fileroot);
+				
+			}
+			
+			
+			
+			
 		} catch (Exception ex)
 		{
 			throw new RuntimeException(ex);

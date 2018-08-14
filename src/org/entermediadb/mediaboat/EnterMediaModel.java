@@ -2,10 +2,17 @@ package org.entermediadb.mediaboat;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -15,6 +22,8 @@ import org.apache.http.HttpResponse;
 import org.entermediadb.utils.HttpSharedConnection;
 import org.entermediadb.utils.OutputFiller;
 import org.java_websocket.drafts.Draft_6455;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
 
 public class EnterMediaModel
 {
@@ -219,10 +228,56 @@ public class EnterMediaModel
 	{
 		getConnection().close();
 	}
-	
-	//We should also upload files from the EnterMedia directory
-	
-	//Shuld be alerted when files are locally modified?
+
+
+	public void sendFileList(String fileroot) {
+		Path path = Paths.get(fileroot);
+		final JSONObject filelist = new JSONObject();
+		final JSONArray files = new JSONArray();
+		filelist.put("filelist", files);
+		try {
+			Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
+			    @Override
+			    public FileVisitResult visitFile(
+			            Path file,
+			            BasicFileAttributes attrs) throws IOException {
+			    	JSONObject fileinfo = new JSONObject();
+			    	fileinfo.put("filename",file.getFileName().toFile().getName());
+			    	fileinfo.put("fullpath",file.getFileName().toFile().getAbsolutePath());
+			    	fileinfo.put("size",file.getFileName().toFile().length());
+			    	fileinfo.put("modificationdate",file.getFileName().toFile().lastModified());
+			    	
+			    	files.add(fileinfo);
+			        return FileVisitResult.CONTINUE;
+			    }
+
+			    @Override
+			    public FileVisitResult postVisitDirectory(
+			            Path dir,
+			            IOException exc) throws IOException {
+
+			        //should we add empty folders?
+			    	
+			    	
+			        return FileVisitResult.CONTINUE;
+			    }
+			});
+		} catch (IOException e) {
+			//TODO: log?
+		}
+		
+		
+		
+		Message mes = new Message("handledesktopsync");
+		mes.put("home",fileroot);
+		mes.put("entermedia.key",getEnterMediaKey());
+		mes.put("desktopid", System.getProperty("os.name") +  " " + getComputerName());
+		mes.put("homefolder",fileroot);
+		mes.put("filelist", files);
+		getConnection().send(mes);
+		
+		
+	}
 	
 	
 }

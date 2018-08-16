@@ -18,12 +18,25 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
+import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
+import org.apache.http.ParseException;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
+import org.entermediadb.utils.HttpMimeBuilder;
 import org.entermediadb.utils.HttpSharedConnection;
 import org.entermediadb.utils.OutputFiller;
 import org.java_websocket.drafts.Draft_6455;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
+
+
+
+import sun.misc.IOUtils;
 
 public class EnterMediaModel
 {
@@ -230,7 +243,11 @@ public class EnterMediaModel
 	}
 
 
-	public void sendFileList(String fileroot) {
+	public void sendFileList(Map inMap) {
+		String fileroot = (String)inMap.get("rootfolder");
+		String collectionid = (String) inMap.get("collectionid");
+		String catalogid = (String) inMap.get("catalogid");
+		
 		Path path = Paths.get(fileroot);
 		final JSONObject filelist = new JSONObject();
 		final JSONArray files = new JSONArray();
@@ -243,7 +260,7 @@ public class EnterMediaModel
 			            BasicFileAttributes attrs) throws IOException {
 			    	JSONObject fileinfo = new JSONObject();
 			    	fileinfo.put("filename",file.getFileName().toFile().getName());
-			    	fileinfo.put("fullpath",file.getFileName().toFile().getAbsolutePath());
+			    	fileinfo.put("fullpath",file.toFile().getAbsolutePath());
 			    	fileinfo.put("size",file.getFileName().toFile().length());
 			    	fileinfo.put("modificationdate",file.getFileName().toFile().lastModified());
 			    	
@@ -274,7 +291,59 @@ public class EnterMediaModel
 		mes.put("desktopid", System.getProperty("os.name") +  " " + getComputerName());
 		mes.put("homefolder",fileroot);
 		mes.put("filelist", files);
+		mes.put("collectionid", collectionid);
+		mes.put("catalogid", collectionid);
+		mes.put("revision", inMap.get("revision"));
 		getConnection().send(mes);
+		
+		
+	}
+
+
+	public void uploadFile(JSONObject inMap)
+	{				
+				try
+				{
+					String url = (String) inMap.get("uploadurl");				
+					String filepath = (String) inMap.get("filepath");					
+					String serverpath = (String) inMap.get("serverpath");
+
+					
+					
+					
+//					url  = "http://localhost:8080/openedit/views/filemanager/upload/uploadfile-finish.html?entermedia.key=" + getEnterMediaKey();
+//					filepath = "/home/ian/testfile.tiff";
+//					serverpath = "/test/new/folder/";
+					
+					File file = new File(filepath);
+					HttpMimeBuilder builder = new HttpMimeBuilder();			
+					
+					
+					//TODO: Use HttpRequestBuilder.addPart()
+					HttpPost method = new HttpPost(url);
+					//POST https://www.googleapis.com/upload/storage/v1/b/myBucket/o?uploadType=multipart
+					builder.addPart("metadata", inMap.toJSONString(),"application/json"); //What should this be called?
+					builder.addPart("file.0", file);
+					builder.addPart("path", serverpath);
+					
+					method.setEntity(builder.build());
+
+					HttpResponse resp = getHttpConnection().getSharedClient().execute(method);
+
+					if (resp.getStatusLine().getStatusCode() != 200) {
+						String returned = EntityUtils.toString(resp.getEntity());
+
+					}
+				}
+				catch (Exception e)
+				{
+					// TODO Auto-generated catch block
+					throw new RuntimeException(e);
+				}
+				
+
+				
+		
 		
 		
 	}

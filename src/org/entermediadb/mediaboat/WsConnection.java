@@ -89,10 +89,20 @@ public class WsConnection extends WebSocketClient
 			
 			else if( "sendfilelist".equals( command))
 			{
-				String fileroot = (String)map.get("rootfolder");
-				getModel().sendFileList(fileroot);
+				
+
+				getModel().sendFileList(map);
 				
 			}
+			
+			else if( "uploadtoserver".equals( command))
+			{
+				
+
+				getModel().uploadFile(map);
+				
+			}
+			
 			
 			
 			

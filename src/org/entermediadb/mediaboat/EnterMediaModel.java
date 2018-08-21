@@ -2,30 +2,20 @@ package org.entermediadb.mediaboat;
 
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
-import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
-import org.apache.http.ParseException;
-import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 import org.entermediadb.utils.HttpMimeBuilder;
 import org.entermediadb.utils.HttpSharedConnection;
@@ -33,10 +23,6 @@ import org.entermediadb.utils.OutputFiller;
 import org.java_websocket.drafts.Draft_6455;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
-
-
-
-import sun.misc.IOUtils;
 
 public class EnterMediaModel
 {
@@ -249,39 +235,50 @@ public class EnterMediaModel
 		String catalogid = (String) inMap.get("catalogid");
 		
 		Path path = Paths.get(fileroot);
-		final JSONObject filelist = new JSONObject();
-		final JSONArray files = new JSONArray();
-		filelist.put("filelist", files);
-		try {
-			Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
-			    @Override
-			    public FileVisitResult visitFile(
-			            Path file,
-			            BasicFileAttributes attrs) throws IOException {
-			    	JSONObject fileinfo = new JSONObject();
-			    	fileinfo.put("filename",file.getFileName().toFile().getName());
-			    	fileinfo.put("fullpath",file.toFile().getAbsolutePath());
-			    	fileinfo.put("size",file.getFileName().toFile().length());
-			    	fileinfo.put("modificationdate",file.getFileName().toFile().lastModified());
-			    	
-			    	files.add(fileinfo);
-			        return FileVisitResult.CONTINUE;
-			    }
-
-			    @Override
-			    public FileVisitResult postVisitDirectory(
-			            Path dir,
-			            IOException exc) throws IOException {
-
-			        //should we add empty folders?
-			    	
-			    	
-			        return FileVisitResult.CONTINUE;
-			    }
-			});
-		} catch (IOException e) {
-			//TODO: log?
-		}
+		final JSONObject root = new JSONObject();
+		root.put("foldername", path.getFileName().toFile().getName());
+		
+		addChildren(root, path.getFileName().toFile());
+		
+		
+		
+		
+		
+//		filelist.put("filelist", files);
+//		try {
+//			Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
+//			    @Override
+//			    public FileVisitResult visitFile(
+//			            Path file,
+//			            BasicFileAttributes attrs) throws IOException {
+//			    	
+//			    	
+//			    	JSONObject fileinfo = new JSONObject();
+//			    	fileinfo.put("filename",file.getFileName().toFile().getName());
+//			    	fileinfo.put("fullpath",file.toFile().getAbsolutePath());
+//			    	fileinfo.put("size",file.getFileName().toFile().length());
+//			    	fileinfo.put("modificationdate",file.getFileName().toFile().lastModified());
+//			    	files.add(fileinfo);
+//			        return FileVisitResult.CONTINUE;
+//			    }
+//
+//			    @Override
+//			    public FileVisitResult postVisitDirectory(
+//			            Path dir,
+//			            IOException exc) throws IOException {
+//
+//			        //should we add empty folders?
+//			    	
+//			    	
+//			        return FileVisitResult.CONTINUE;
+//			    }
+//			});
+//		} catch (IOException e) {
+//			//TODO: log?
+//		}
+//		
+		
+		
 		
 		
 		
@@ -290,11 +287,53 @@ public class EnterMediaModel
 		mes.put("entermedia.key",getEnterMediaKey());
 		mes.put("desktopid", System.getProperty("os.name") +  " " + getComputerName());
 		mes.put("homefolder",fileroot);
-		mes.put("filelist", files);
+		mes.put("root", root);
 		mes.put("collectionid", collectionid);
 		mes.put("catalogid", collectionid);
 		mes.put("revision", inMap.get("revision"));
 		getConnection().send(mes);
+		
+		
+	}
+
+
+	protected void addChildren(JSONObject root, File file) {
+		ArrayList filelist = new ArrayList();
+		ArrayList childfolders = new ArrayList();
+		
+		
+		root.put("filelist", filelist);
+		root.put("childfolders", childfolders);
+		
+		
+		File[] files = file.listFiles();
+		
+		for (int i = 0; i < files.length; i++) {
+			File child = files[i];
+			if(child.isDirectory()) {
+				
+				JSONObject folderinfo = new JSONObject();
+				folderinfo.put("foldername",child.getName());				
+				childfolders.add(folderinfo);
+				addChildren(folderinfo, child);
+				
+				
+			} else {
+				JSONObject fileinfo = new JSONObject();
+		    	fileinfo.put("filename",child.getName());
+		    	fileinfo.put("fullpath",child.getAbsolutePath());
+		    	fileinfo.put("size",child.length());
+		    	fileinfo.put("modificationdate",child.lastModified());
+		    	filelist.add(fileinfo);
+				
+				
+			}
+			
+		}
+		
+		
+		
+		
 		
 		
 	}

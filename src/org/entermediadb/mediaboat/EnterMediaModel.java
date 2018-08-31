@@ -3,6 +3,8 @@ package org.entermediadb.mediaboat;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
@@ -23,13 +25,27 @@ import org.entermediadb.utils.OutputFiller;
 import org.java_websocket.drafts.Draft_6455;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+
+import com.oracle.webservices.internal.api.message.ReadOnlyPropertyException;
 
 public class EnterMediaModel
 {
 	WsConnection connection;
 	HttpSharedConnection httpconnection;
 	OutputFiller fieldFiller;
+	LogListener fieldLogListener;
 	
+	public LogListener getLogListener()
+	{
+		return fieldLogListener;
+	}
+
+	public void setLogListener(LogListener inLogListener)
+	{
+		fieldLogListener = inLogListener;
+	}
+
 	public OutputFiller getFiller()
 	{
 		if (fieldFiller == null)
@@ -39,12 +55,10 @@ public class EnterMediaModel
 		return fieldFiller;
 	}
 
-
 	public void setFiller(OutputFiller inFiller)
 	{
 		fieldFiller = inFiller;
 	}
-
 
 	public HttpSharedConnection getHttpConnection()
 	{
@@ -56,8 +70,8 @@ public class EnterMediaModel
 		return httpconnection;
 	}
 
-
 	Configuration config = new Configuration();
+
 	public Configuration getConfig()
 	{
 		return config;
@@ -65,47 +79,29 @@ public class EnterMediaModel
 
 	public WsConnection getConnection()
 	{
-		if (connection == null)
-		{
-			try
-			{
-				String server = getConfig().get("server");
-				int i;
-				if( (i  = server.indexOf("/",8)) > -1)
-				{
-					//strip off /s
-					server = server.substring(0, i);
-				}
-				server = server.substring(server.lastIndexOf("/") + 1);
-				
-				String url =  "ws://" + server + "/entermedia/services/websocket/org/entermediadb/websocket/mediaboat/MediaBoatConnection";
-				url = url +  "?userid=" + getUserId();
-				URI path = new URI(url);
-				 // more about drafts here: http://github.com/TooTallNate/Java-WebSocket/wiki/Drafts
-				connection = new WsConnection(path,new Draft_6455());
-				connection.setEnterMediaModel(this);
-			}
-			catch(Exception ex)
-			{
-				throw new RuntimeException(ex);
-			}
-		}
 		return connection;
+	}
+	public void setConnection(WsConnection inConnection)
+	{
+		connection = inConnection;
 	}
 	//This class will be notified when they should move files around?
 
+	protected String getServer()
+	{
+		return getConfig().get("server");
+	}
 
-	private String getUserId()
+	protected String getUserId()
 	{
 		return getConfig().get("username");
 	}
-
-
+	
 	public boolean connect(String server, String inUname, String inKey)
 	{
-		
+
 		String path = getConfig().get("home");
-		if( path == null)
+		if (path == null)
 		{
 			path = System.getenv("HOME");
 			getConfig().put("home", path);
@@ -116,12 +112,11 @@ public class EnterMediaModel
 		getConfig().put("entermedia.key", inKey);
 		getConfig().save();
 		//Check disk space etc?
-		connection = null;
 		try
 		{
 			log("Connecting to " + getConnection().getURI());
 			boolean ok = getConnection().connectBlocking();
-			if( !ok )
+			if (!ok)
 			{
 				log("Could not connect to " + getConnection().getURI());
 				return false;
@@ -136,27 +131,27 @@ public class EnterMediaModel
 			return false;
 		}
 		Message mes = new Message("login");
-		mes.put("home",path);
-		mes.put("username",inUname);
-		mes.put("server",server);
-		mes.put("entermedia.key",inKey);
-		mes.put("desktopid", System.getProperty("os.name") +  " " + getComputerName());
-		mes.put("homefolder",path);
+		mes.put("home", path);
+		mes.put("username", inUname);
+		mes.put("server", server);
+		mes.put("entermedia.key", inKey);
+		mes.put("desktopid", System.getProperty("os.name") + " " + getComputerName());
+		mes.put("homefolder", path);
 		getConnection().send(mes);
 		return true;
-		
+
 	}
 
 	protected String getComputerName()
 	{
-	    Map<String, String> env = System.getenv();
-	    if (env.containsKey("COMPUTERNAME"))
-	        return env.get("COMPUTERNAME");
-	    else if (env.containsKey("HOSTNAME"))
-	        return env.get("HOSTNAME");
-	    else
-	    {
-	        try
+		Map<String, String> env = System.getenv();
+		if (env.containsKey("COMPUTERNAME"))
+			return env.get("COMPUTERNAME");
+		else if (env.containsKey("HOSTNAME"))
+			return env.get("HOSTNAME");
+		else
+		{
+			try
 			{
 				return InetAddress.getLocalHost().getHostName();
 			}
@@ -164,7 +159,7 @@ public class EnterMediaModel
 			{
 				return "Unknown";
 			}
-	    }
+		}
 	}
 
 	private void log(String inString)
@@ -172,220 +167,276 @@ public class EnterMediaModel
 		System.out.println(inString);
 	}
 
-	public void download(Collection inSourcepaths)
+	public void download(String path, Collection inSourcepaths)
 	{
 		//The path is a collection path
+		File folder = new File(path);
+		folder.mkdirs();
 		Map params = new HashMap();
 		params.put("entermedia.key", getEnterMediaKey());
+		int count = 0;
 		for (Iterator iterator = inSourcepaths.iterator(); iterator.hasNext();)
 		{
 			Map downloadreq = (Map) iterator.next();
-			String url = (String)downloadreq.get("url");
-			HttpResponse res = getHttpConnection().sharedPost(url, params);
-			InputStream input = null;
-			FileOutputStream output = null;
-			try
-			{
-				input = res.getEntity().getContent();
-				String savepath = (String)downloadreq.get("savepath");
-				File tosave = new File(savepath);
-				tosave.getParentFile().mkdirs();
-				output = new FileOutputStream(tosave);
-				getFiller().fill(input, output);
-				
-				String savetime = (String)downloadreq.get("assetmodificationdate");
-				tosave.setLastModified(Long.parseLong(savetime));
-			}
-			catch( Throwable ex)
-			{
-				//TODO Show errors
-				getFiller().close(input);
-				getFiller().close(output);
-			}
-			
-		}
-		
-		//Loop over each thing and download it
-		sendStatusComplete();
-	}
+			String savepath = (String) downloadreq.get("savepath");
+			File tosave = new File(savepath);
+			String size = (String) downloadreq.get("filesize");
 
+			if( tosave.exists() && tosave.length() == Long.parseLong(size))
+			{
+				continue;
+			}	
+			String url = (String) downloadreq.get("url"); //Full URL to content. Might be in other servers
+			HttpResponse resp = getHttpConnection().sharedPost(url, params);
+			if (resp.getStatusLine().getStatusCode() == 200)
+			{
+				InputStream input = null;
+				FileOutputStream output = null;
+				try
+				{
+					input = resp.getEntity().getContent();
+					tosave.getParentFile().mkdirs();
+					output = new FileOutputStream(tosave);
+					getFiller().fill(input, output);
+
+					String savetime = (String) downloadreq.get("assetmodificationdate");
+					tosave.setLastModified(Long.parseLong(savetime));
+					count++;
+				}
+				catch (Throwable ex)
+				{
+					//TODO Show errors
+					getFiller().close(input);
+					getFiller().close(output);
+				}
+			}
+			else
+			{
+				getLogListener().info(resp.getStatusLine().getStatusCode() + " Could not download " + url + " " + resp.getStatusLine().getReasonPhrase());
+			}
+
+		}
+		getLogListener().info("Downloaded " + folder + " " + count + " files ");
+	}
 
 	private String getEnterMediaKey()
 	{
 		return getConfig().get("entermedia.key");
 	}
 
-
-	public void sendStatusComplete()
-	{
-		//Send a message saying status 100%
-		
-	}
-
-
 	public void disconnect()
 	{
 		getConnection().close();
 	}
 
+	public void checkinFiles(Map inMap)
+	{
+		JSONObject params = new JSONObject(inMap);
 
-	public void sendFileList(Map inMap) {
-		String fileroot = (String)inMap.get("rootfolder");
-		String collectionid = (String) inMap.get("collectionid");
-		String catalogid = (String) inMap.get("catalogid");
-		
-		Path path = Paths.get(fileroot);
-		final JSONObject root = new JSONObject();
-		root.put("foldername", path.getFileName().toFile().getName());
-		
-		addChildren(root, path.getFileName().toFile());
-		
-		
-		
-		
-		
-//		filelist.put("filelist", files);
-//		try {
-//			Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
-//			    @Override
-//			    public FileVisitResult visitFile(
-//			            Path file,
-//			            BasicFileAttributes attrs) throws IOException {
-//			    	
-//			    	
-//			    	JSONObject fileinfo = new JSONObject();
-//			    	fileinfo.put("filename",file.getFileName().toFile().getName());
-//			    	fileinfo.put("fullpath",file.toFile().getAbsolutePath());
-//			    	fileinfo.put("size",file.getFileName().toFile().length());
-//			    	fileinfo.put("modificationdate",file.getFileName().toFile().lastModified());
-//			    	files.add(fileinfo);
-//			        return FileVisitResult.CONTINUE;
-//			    }
-//
-//			    @Override
-//			    public FileVisitResult postVisitDirectory(
-//			            Path dir,
-//			            IOException exc) throws IOException {
-//
-//			        //should we add empty folders?
-//			    	
-//			    	
-//			        return FileVisitResult.CONTINUE;
-//			    }
-//			});
-//		} catch (IOException e) {
-//			//TODO: log?
-//		}
-//		
-		
-		
-		
-		
-		
-		Message mes = new Message("handledesktopsync");
-		mes.put("home",fileroot);
-		mes.put("entermedia.key",getEnterMediaKey());
-		mes.put("desktopid", System.getProperty("os.name") +  " " + getComputerName());
-		mes.put("homefolder",fileroot);
-		mes.put("root", root);
-		mes.put("collectionid", collectionid);
-		mes.put("catalogid", collectionid);
-		mes.put("revision", inMap.get("revision"));
-		getConnection().send(mes);
-		
-		
+		String fileroot = (String) inMap.get("rootfolder");
+//		String collectionid = (String) inMap.get("collectionid");
+//		String catalogid = (String) inMap.get("catalogid");
+//		String catalogid = (String) inMap.get("catalogid");
+
+//		params.put("home", fileroot);
+		params.put("entermedia.key", getEnterMediaKey());
+		params.put("desktopid", System.getProperty("os.name") + " " + getComputerName());
+//		params.put("homefolder", fileroot);
+//		params.put("collectionid", collectionid);
+//		params.put("catalogid", catalogid);
+//		params.put("revision", inMap.get("revision"));
+
+		File collectionfolder = new File(fileroot);
+
+		sendFolder(params, fileroot,"",collectionfolder);
+
+
 	}
 
-
-	protected void addChildren(JSONObject root, File file) {
+	protected void sendFolder(JSONObject inParams, String absrootfolder, String subfolder, File file)
+	{
 		ArrayList filelist = new ArrayList();
 		ArrayList childfolders = new ArrayList();
-		
-		
+		ArrayList folderstoprocess = new ArrayList();
+
+		JSONObject root = new JSONObject();
+		root.put("foldername", file.getName());
+		root.put("parentpath", absrootfolder);
+		root.put("subfolder", subfolder);
+
 		root.put("filelist", filelist);
 		root.put("childfolders", childfolders);
-		
-		
+
 		File[] files = file.listFiles();
-		
-		for (int i = 0; i < files.length; i++) {
+
+		for (int i = 0; i < files.length; i++)
+		{
 			File child = files[i];
-			if(child.isDirectory()) {
-				
+			if (child.isDirectory())
+			{
+
 				JSONObject folderinfo = new JSONObject();
-				folderinfo.put("foldername",child.getName());				
+				folderinfo.put("foldername", child.getName());
 				childfolders.add(folderinfo);
-				addChildren(folderinfo, child);
-				
-				
-			} else {
-				JSONObject fileinfo = new JSONObject();
-		    	fileinfo.put("filename",child.getName());
-		    	fileinfo.put("fullpath",child.getAbsolutePath());
-		    	fileinfo.put("size",child.length());
-		    	fileinfo.put("modificationdate",child.lastModified());
-		    	filelist.add(fileinfo);
-				
-				
+				folderstoprocess.add(child);
 			}
-			
+			else
+			{
+				JSONObject fileinfo = new JSONObject();
+				fileinfo.put("filename", child.getName());
+				fileinfo.put("fullpath", child.getAbsolutePath());
+				fileinfo.put("filesize", child.length());
+				fileinfo.put("modificationdate", child.lastModified());
+				filelist.add(fileinfo);
+			}
 		}
+		pushFolder(inParams, root);
+		for (Iterator iterator = folderstoprocess.iterator(); iterator.hasNext();)
+		{
+			File folder = (File) iterator.next();
+			String childpath = subfolder + "/" + folder.getName();
+			sendFolder(inParams, absrootfolder, childpath, folder);
+		}
+
+	}
+
+	protected void pushFolder(JSONObject inParams, JSONObject inRoot)
+	{
+		//TODO: Call some post command and POST a folder full of content
+
+		//POST https://www.googleapis.com/upload/storage/v1/b/myBucket/o?uploadType=multipart
+		//builder.addParts(inParams);
+		String mediadbid = (String)inParams.get("mediadbid");
+		String subfolder = (String)inRoot.get("subfolder");
+		inParams.put("folderdetails", inRoot);
+		String url = getServer() + "/" + mediadbid + "/services/module/asset/sync/syncfolder.json";
+		try
+		{
+			debug(subfolder + " sent " + inParams.toJSONString());
+			HttpResponse resp = getHttpConnection().sharedPost(url,inParams);
+	
+			if (resp.getStatusLine().getStatusCode() == 200)
+			{
+				JSONParser parser = new JSONParser();
+				String returned = EntityUtils.toString(resp.getEntity());
+				debug(subfolder + " returned: " + returned);
+				JSONObject parsed = (JSONObject)parser.parse(returned);
+//				Reader reader = new InputStreamReader(resp.getEntity().getContent(),"UTF-8");
+//				JSONObject parsed = (JSONObject)parser.parse(reader);
+//				getFiller().close(reader);
+				uploadFilesIntoCollection(subfolder,parsed);
+			}
+			else
+			{
+				getLogListener().info(resp.getStatusLine().getStatusCode() + " Could not upload " + url + " " + resp.getStatusLine().getReasonPhrase());
+			}
+		}
+		catch( Exception ex)
+		{
+			throw new RuntimeException(ex);
+		}
+
+	}
+	private void debug(String inString)
+	{
+		System.out.println(inString);
+	}
+
+	protected void uploadFilesIntoCollection(String subfolder, JSONObject assetsRequested)
+	{
+		String catalogid = (String)assetsRequested.get("catalogid");
+		String mediadbid = (String)assetsRequested.get("mediadbid");
+		String collectionid = (String)assetsRequested.get("collectionid");
+		Collection files = (Collection)assetsRequested.get("toupload");
 		
+		if( files == null)
+		{
+			getLogListener().info("No changes to upload in " + subfolder);
+		}
+		else
+		{
+			getLogListener().info("uploading " + files.size() + " files in "+ subfolder);
+			for (Iterator iterator = files.iterator(); iterator.hasNext();)
+			{
+				JSONObject fileinfo = (JSONObject) iterator.next();
+				String url = getServer() + "/" + mediadbid + "/services/module/asset/sync/uploadfile.json";
+				String abs = (String)fileinfo.get("fullpath");
+				File tosend = new File(abs);
+				JSONObject tosendparams = new JSONObject(fileinfo);
+				tosendparams.put("file.0", tosend);
+				tosendparams.put("catalogid",catalogid);
+				tosendparams.put("mediadbid",mediadbid);
+				tosendparams.put("collectionid",collectionid);
+				tosendparams.put("subfolder",subfolder);
+//				String assetid = inReq.getRequestParameter("assetid");
+//				String catalogid = inReq.getRequestParameter("catalogid");
+//				String assetmodificationdate = inReq.getRequestParameter("assetmodificationdate");
+				
+				//String savepath = (String)fileinfo.get("subfolder");
+				//inParams.put("subfolder", savepath);
+				HttpResponse resp = getHttpConnection().sharedMimePost(url,tosendparams);
 		
-		
-		
-		
-		
+				if (resp.getStatusLine().getStatusCode() != 200)
+				{
+					//error
+					//reportError();
+					throw new RuntimeException("Could not upload: " + abs + " Error: " + resp.getStatusLine().getReasonPhrase() );
+				}
+			}	
+		}
+	}
+
+	public void loginComplete(String inEnterMediaKey)
+	{
+		getHttpConnection().addSharedHeader("entermedia.key", inEnterMediaKey);
 	}
 
 
+	/*
 	public void uploadFile(JSONObject inMap)
-	{				
-				try
-				{
-					String url = (String) inMap.get("uploadurl");				
-					String filepath = (String) inMap.get("filepath");					
-					String serverpath = (String) inMap.get("serverpath");
+	{
+		try
+		{
+			//String url = (String) inMap.get("uploadurl");
+			String filepath = (String) inMap.get("filepath");
+			String serverpath = (String) inMap.get("serverpath");
 
-					
-					
-					
-//					url  = "http://localhost:8080/openedit/views/filemanager/upload/uploadfile-finish.html?entermedia.key=" + getEnterMediaKey();
-//					filepath = "/home/ian/testfile.tiff";
-//					serverpath = "/test/new/folder/";
-					
-					File file = new File(filepath);
-					HttpMimeBuilder builder = new HttpMimeBuilder();			
-					
-					
-					//TODO: Use HttpRequestBuilder.addPart()
-					HttpPost method = new HttpPost(url);
-					//POST https://www.googleapis.com/upload/storage/v1/b/myBucket/o?uploadType=multipart
-					builder.addPart("metadata", inMap.toJSONString(),"application/json"); //What should this be called?
-					builder.addPart("file.0", file);
-					builder.addPart("path", serverpath);
-					
-					method.setEntity(builder.build());
+			//					url  = "http://localhost:8080/openedit/views/filemanager/upload/uploadfile-finish.html?entermedia.key=" + getEnterMediaKey();
+			//					filepath = "/home/ian/testfile.tiff";
+			//					serverpath = "/test/new/folder/";
+			String mediadbid = (String)inMap.get("mediadbid");
 
-					HttpResponse resp = getHttpConnection().getSharedClient().execute(method);
+			String url = getServer() + "/" + mediadbid + "/services/module/asset/sync/syncfolder.json";
 
-					if (resp.getStatusLine().getStatusCode() != 200) {
-						String returned = EntityUtils.toString(resp.getEntity());
+			File file = new File(filepath);
+			HttpMimeBuilder builder = new HttpMimeBuilder();
 
-					}
-				}
-				catch (Exception e)
-				{
-					// TODO Auto-generated catch block
-					throw new RuntimeException(e);
-				}
-				
+			//TODO: Use HttpRequestBuilder.addPart()
+			HttpPost method = new HttpPost(url);
+			//POST https://www.googleapis.com/upload/storage/v1/b/myBucket/o?uploadType=multipart
+			builder.addPart("metadata", inMap.toJSONString(), "application/json"); //What should this be called?
+			builder.addPart("file.0", file);
+			builder.addPart("path", serverpath);
 
-				
-		
-		
-		
+			method.setEntity(builder.build());
+
+			HttpResponse resp = getHttpConnection().getSharedClient().execute(method);
+
+			if (resp.getStatusLine().getStatusCode() != 200)
+			{
+				String returned = EntityUtils.toString(resp.getEntity());
+
+			}
+		}
+		catch (Exception e)
+		{
+			// TODO Auto-generated catch block
+			throw new RuntimeException(e);
+		}
+
 	}
+	*/
+	
 	
 	
 }

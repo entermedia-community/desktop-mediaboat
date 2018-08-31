@@ -15,16 +15,16 @@ public class WsConnection extends WebSocketClient
 {
     protected ThreadLocal perThreadCache = new ThreadLocal();
 
-    EnterMediaModel	 fieldModel;
-
-	public EnterMediaModel getModel()
+    AppController	 fieldController;
+    protected boolean disconnected = false;
+	public AppController getAppController()
 	{
-		return fieldModel;
+		return fieldController;
 	}
 
-	public void setEnterMediaModel(EnterMediaModel inModel)
+	public void setAppController(AppController inModel)
 	{
-		fieldModel = inModel;
+		fieldController = inModel;
 	}
 	
 	public WsConnection(URI inServerUri,Draft inDraft)
@@ -62,6 +62,7 @@ public class WsConnection extends WebSocketClient
 	public void onClose(int inCode, String inReason, boolean inRemote)
 	{
 		//Show the UI
+		getAppController().reconnect();
 	}
 
 	@Override
@@ -74,43 +75,44 @@ public class WsConnection extends WebSocketClient
 	{
 		try
 		{
+			if( disconnected )
+			{
+				getAppController().info("disconnected");
+				return;
+			}
 			JSONObject map = (JSONObject)getJSONParser().parse(new StringReader(inMessage));
 			String command = (String)map.get("command");
+			getAppController().info(command);
 			if( "authenticated".equals( command))
 			{
 				String value = (String)map.get("entermedia.key");
-				getModel().getConfig().put("entermedia.key", value);
+				getAppController().loginComplete(value);
+				//getAppController().getConfig().put("entermedia.key", value);
 			}
 			else if( "downloadto".equals( command))
 			{
-				Collection assetpaths = (Collection)map.get("assetpaths");
-				getModel().download(assetpaths);
+				getAppController().download(map);
 			}
 			
-			else if( "sendfilelist".equals( command))
+			else if( "checkincollection".equals( command))
 			{
-				
 
-				getModel().sendFileList(map);
-				
-			}
-			
-			else if( "uploadtoserver".equals( command))
-			{
-				
-
-				getModel().uploadFile(map);
+				getAppController().checkinFiles(map);
 				
 			}
 			
 			
-			
-			
-			
-		} catch (Exception ex)
+		} catch (Throwable ex)
 		{
-			throw new RuntimeException(ex);
+	 		//throw new RuntimeException(ex);
+			getAppController().reportError("Message problem", ex);
 		}
+	}
+
+	public void disconnect()
+	{
+		// TODO Auto-generated method stub
+		disconnected = true;		
 	}
 
 }

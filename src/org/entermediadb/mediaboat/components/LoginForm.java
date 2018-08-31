@@ -10,17 +10,33 @@ import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
+import javax.swing.JScrollPane;
 import javax.swing.JTextField;
+import javax.swing.JTextPane;
 import javax.swing.SwingUtilities;
+import javax.swing.border.LineBorder;
 
 import org.entermediadb.mediaboat.AppController;
+import org.entermediadb.mediaboat.LogListener;
 
 public class LoginForm extends JFrame 
 {
+	LogListener fieldLogListener;
+	public LogListener getLogListener()
+	{
+		return fieldLogListener;
+	}
+
+	public void setLogListener(LogListener inLogListener)
+	{
+		fieldLogListener = inLogListener;
+	}
+
 	JTextField tfusername, tfserver;
 	JButton btn1;
 	JPasswordField tfkey;
 	AppController fieldAppController;
+	JTextPane errorlog = new JTextPane();
 	
 	public AppController getAppController()
 	{
@@ -41,10 +57,10 @@ public class LoginForm extends JFrame
 
 	public void initContentPanel()
 	{
-		
+		errorlog.setContentType("text/html");
 		SmoothLabel l1, l2, l3, l4;
 		l1 = new SmoothLabel("EnterMedia Login");
-		l1.setForeground(Color.blue);
+		l1.setForeground(Color.green);
 		
 		l1.setFont(new Font("Serif", Font.BOLD, 18));
 
@@ -99,9 +115,9 @@ public class LoginForm extends JFrame
 				String uname = tfusername.getText();
 				String pass = tfkey.getText();
 				String server  = tfserver.getText();
+				showConnectionPanel();
 				if (getAppController().connect(server,uname,pass))
 				{
-					showConnectionPanel();
 //						Welcome wel = new Welcome();
 //						wel.setVisible(true);
 //						JLabel label = new JLabel("Welcome:" + uname);
@@ -119,11 +135,17 @@ public class LoginForm extends JFrame
 	private void showConnectionPanel()
 	{
 		// TODO Auto-generated method stub
-		SmoothLabel l1, l2, l3;
-		l1 = new SmoothLabel("Connected");
-		l1.setForeground(Color.green);
-		l1.setFont(new Font("Serif", Font.BOLD, 20));
-		l1.setBounds(100, 10, 400, 30);
+		JPanel panel = new JPanel();
+		panel.setLayout(null);
+		
+		errorlog.setFont(new Font("Serif", Font.BOLD, 11));
+		errorlog.setText("Connected\n");
+		errorlog.setEditable(false);
+		errorlog.setBackground(Color.LIGHT_GRAY);
+		final JScrollPane scrolll = new JScrollPane(errorlog);
+		scrolll.setBorder(new LineBorder(new Color(128, 128, 128)));
+		scrolll.setBounds(0, 0, 600, 240);
+		panel.add(scrolll);
 		
 		btn1 = new JButton("Disconnect");
 		btn1.addActionListener(	new ActionListener()
@@ -133,13 +155,9 @@ public class LoginForm extends JFrame
 			{
 				logoff();
 			}
-
-			
 		});
-		btn1.setBounds(150, 160, 100, 30);
-		JPanel panel = new JPanel();
-		panel.setLayout(null);
-		panel.add(l1);
+		
+		btn1.setBounds(380, 240, 200, 30);
 		panel.add(btn1);
 		setContentPane(panel);
 		revalidate(); 
@@ -150,6 +168,28 @@ public class LoginForm extends JFrame
 		// TODO Auto-generated method stub
 		getAppController().logoff();
 		
+	}
+
+	public void reportError(String inString, Throwable inEx)
+	{
+		// TODO Auto-generated method stub
+		inEx.printStackTrace();
+		String text = errorlog.getText();
+		if( text.length() > 2000)
+		{
+			text = text.substring(0,2000);
+		}
+		errorlog.setText("Error: " + inString + " " + inEx.getMessage() + "\n" + text);
+	}
+
+	public void info(String inString)
+	{
+		String text = errorlog.getText();
+		if( text.length() > 2000)
+		{
+			text = text.substring(0,2000);
+		}
+		errorlog.setText("\nInfo: " + inString + "\n" + text);
 	}
 
 }

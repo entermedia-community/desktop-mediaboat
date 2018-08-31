@@ -30,6 +30,7 @@ public class HttpMimeBuilder
 	Charset UTF8 = Charset.forName("UTF-8");
 	ContentType contentType = ContentType.create("text/plain", UTF8);
 	ContentType octectType = ContentType.create("application/octect-stream", UTF8);
+	ContentType jsonType = ContentType.create("application/json", UTF8);
 
 	public void addPart(String inKey, String inValue, String inType)
 	{
@@ -87,6 +88,25 @@ public class HttpMimeBuilder
 		{
 			throw new RuntimeException(ex);
 		}
+	}
+
+
+	public void addParts(Map inParams)
+	{
+		for (Iterator iterator = inParams.keySet().iterator(); iterator.hasNext();)
+		{
+			String key = (String) iterator.next();
+			Object value = inParams.get(key);
+			if( value instanceof String)
+			{
+				addPart(key,(String)value);
+			}
+			else if ( value instanceof File)
+			{
+				addPart(key,(File)value);
+			}
+		}
+		
 	}
 	
 

@@ -24,13 +24,16 @@ public class MainLaunch
 	        LoginForm frame = new LoginForm();
 	        
 	        AppController controller = new AppController();
+	        controller.setLoginForm(frame);
 	        frame.setAppController(controller);
+	        frame.setLogListener(controller);
 	        frame.initContentPanel();
 	        frame.setSize(600, 300);
 	        Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
 	        int centerX = screenSize.width/2 - frame.getWidth();
 	        int centerY = screenSize.height/2 - frame.getHeight();
 	        frame.setLocation(centerX, centerY);
+	        
 	    }
 
 	    public static void main(String[] args) {

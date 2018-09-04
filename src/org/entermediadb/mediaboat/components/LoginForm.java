@@ -65,7 +65,7 @@ public class LoginForm extends JFrame
 		l1.setFont(new Font("Serif", Font.BOLD, 18));
 
 		l2 = new SmoothLabel("Username");
-		l3 = new SmoothLabel("Key");
+		l3 = new SmoothLabel("Password");
 		l4 = new SmoothLabel("Server");
 		tfusername = new JTextField();
 		tfusername.setText( getAppController().getConfig().get("username") );

@@ -21,7 +21,7 @@ public class Configuration
 	}
 	public void save()
 	{
-		File input = new File(System.getenv("HOME") +   "/entermedia/mediaboat.properties");
+		File input = new File(System.getenv("HOME") +   "/.mediaboat.properties");
 		FileWriter writer  = null;
 		try
 		{
@@ -48,7 +48,7 @@ public class Configuration
 		if (properties == null)
 		{
 			properties = new Properties();
-			File input = new File(System.getenv("HOME") +   "/entermedia/mediaboat.properties");
+			File input = new File(System.getenv("HOME") +   "/.mediaboat.properties");
 			if( !input.exists())
 			{
 				input.getParentFile().mkdirs();

@@ -11,6 +11,8 @@ import java.io.Writer;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.http.HttpResponse;
+import org.apache.http.util.EntityUtils;
 
 /**
  * Creation date: (9/11/2001 4:43:00 PM)
@@ -114,8 +116,22 @@ public class OutputFiller
 	}
 
 	/**
+	 * @param inResp 
 	 * @param inIn
 	 */
+	public void consume(HttpResponse inResp)
+	{
+		try
+		{
+			EntityUtils.consume(inResp.getEntity());
+		}
+		catch (IOException e)
+		{
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
 	public void close(InputStream inIn)
 	{
 		if ( inIn != null)

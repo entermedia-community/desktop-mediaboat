@@ -2,14 +2,11 @@ package org.entermediadb.mediaboat;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
 import java.net.InetAddress;
 import java.net.URI;
 import java.net.UnknownHostException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -17,17 +14,14 @@ import java.util.Iterator;
 import java.util.Map;
 
 import org.apache.http.HttpResponse;
-import org.apache.http.client.methods.HttpPost;
 import org.apache.http.util.EntityUtils;
-import org.entermediadb.utils.HttpMimeBuilder;
 import org.entermediadb.utils.HttpSharedConnection;
 import org.entermediadb.utils.OutputFiller;
-import org.java_websocket.drafts.Draft_6455;
-import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
-import com.oracle.webservices.internal.api.message.ReadOnlyPropertyException;
+import com.neovisionaries.ws.client.WebSocket;
+import com.neovisionaries.ws.client.WebSocketFactory;
 
 public class EnterMediaModel
 {
@@ -35,7 +29,6 @@ public class EnterMediaModel
 	HttpSharedConnection httpconnection;
 	OutputFiller fieldFiller;
 	LogListener fieldLogListener;
-	
 	public LogListener getLogListener()
 	{
 		return fieldLogListener;
@@ -97,9 +90,8 @@ public class EnterMediaModel
 		return getConfig().get("username");
 	}
 	
-	public boolean connect(String server, String inUname, String inKey)
+	public boolean login(URI uri, String server, String inUname, String inKey)
 	{
-
 		String path = getConfig().get("home");
 		if (path == null)
 		{
@@ -109,27 +101,29 @@ public class EnterMediaModel
 		getConfig().put("username", inUname);
 		getConfig().put("server", server);
 		//check  for key
-		getConfig().put("entermedia.key", inKey);
+		getConfig().put("key", inKey);
 		getConfig().save();
 		//Check disk space etc?
-		try
-		{
-			log("Connecting to " + getConnection().getURI());
-			boolean ok = getConnection().connectBlocking();
-			if (!ok)
-			{
-				log("Could not connect to " + getConnection().getURI());
-				return false;
-			}
-			log("Connected to " + getConnection().getURI());
-		}
-		catch (InterruptedException e)
-		{
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-			log("Error connecting to " + getConnection().getURI());
-			return false;
-		}
+//		try
+//		{
+//			
+//			log("Connecting to " + uri);
+//			
+//			boolean ok = getConnection().connect();
+//			if (!ok)
+//			{
+//				log("Could not connect to " + getConnection().getURI());
+//				return false;
+//			}
+//			log("Connected to " + getConnection().getURI());
+//		}
+//		catch (InterruptedException e)
+//		{
+//			// TODO Auto-generated catch block
+//			e.printStackTrace();
+//			log("Error connecting to " + getConnection().getURI());
+//			return false;
+//		}
 		Message mes = new Message("login");
 		mes.put("home", path);
 		mes.put("username", inUname);
@@ -187,7 +181,7 @@ public class EnterMediaModel
 				continue;
 			}	
 			String url = (String) downloadreq.get("url"); //Full URL to content. Might be in other servers
-			HttpResponse resp = getHttpConnection().sharedPost(url, params);
+			HttpResponse resp = getHttpConnection().sharedTextPost(url, params);
 			if (resp.getStatusLine().getStatusCode() == 200)
 			{
 				InputStream input = null;
@@ -202,13 +196,19 @@ public class EnterMediaModel
 					String savetime = (String) downloadreq.get("assetmodificationdate");
 					tosave.setLastModified(Long.parseLong(savetime));
 					count++;
+					
 				}
 				catch (Throwable ex)
 				{
-					//TODO Show errors
+					getLogListener().reportError("Problem downloading", ex);
+				}
+				finally
+				{
+					getFiller().consume(resp);
 					getFiller().close(input);
 					getFiller().close(output);
 				}
+
 			}
 			else
 			{
@@ -221,12 +221,12 @@ public class EnterMediaModel
 
 	private String getEnterMediaKey()
 	{
-		return getConfig().get("entermedia.key");
+		return getConfig().get("key");
 	}
 
 	public void disconnect()
 	{
-		getConnection().close();
+		getConnection().disconnect();
 	}
 
 	public void checkinFiles(Map inMap)
@@ -312,8 +312,9 @@ public class EnterMediaModel
 		String url = getServer() + "/" + mediadbid + "/services/module/asset/sync/syncfolder.json";
 		try
 		{
-			debug(subfolder + " sent " + inParams.toJSONString());
-			HttpResponse resp = getHttpConnection().sharedPost(url,inParams);
+			debug("pushFolder on" + subfolder + " sent " + inParams.toJSONString());
+			
+			HttpResponse resp = getHttpConnection().sharedJsonPost(url,inParams);
 	
 			if (resp.getStatusLine().getStatusCode() == 200)
 			{
@@ -324,10 +325,12 @@ public class EnterMediaModel
 //				Reader reader = new InputStreamReader(resp.getEntity().getContent(),"UTF-8");
 //				JSONObject parsed = (JSONObject)parser.parse(reader);
 //				getFiller().close(reader);
+				EntityUtils.consume(resp.getEntity());
 				uploadFilesIntoCollection(subfolder,parsed);
 			}
 			else
 			{
+				debug("pushFolder Error on " + subfolder  + " code:" + resp.getStatusLine().getStatusCode() );
 				getLogListener().info(resp.getStatusLine().getStatusCode() + " Could not upload " + url + " " + resp.getStatusLine().getReasonPhrase());
 			}
 		}
@@ -375,12 +378,13 @@ public class EnterMediaModel
 				//String savepath = (String)fileinfo.get("subfolder");
 				//inParams.put("subfolder", savepath);
 				HttpResponse resp = getHttpConnection().sharedMimePost(url,tosendparams);
-		
+				getFiller().consume(resp);
+
 				if (resp.getStatusLine().getStatusCode() != 200)
 				{
 					//error
 					//reportError();
-					throw new RuntimeException("Could not upload: " + abs + " Error: " + resp.getStatusLine().getReasonPhrase() );
+					throw new RuntimeException(resp.getStatusLine().getStatusCode() + " Could not upload: " + abs + " Error: " + resp.getStatusLine().getReasonPhrase() );
 				}
 			}	
 		}
@@ -388,6 +392,8 @@ public class EnterMediaModel
 
 	public void loginComplete(String inEnterMediaKey)
 	{
+		getConfig().put("key", inEnterMediaKey);
+		getConfig().save();
 		getHttpConnection().addSharedHeader("entermedia.key", inEnterMediaKey);
 	}
 

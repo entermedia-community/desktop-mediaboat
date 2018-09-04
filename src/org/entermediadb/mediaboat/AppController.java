@@ -1,17 +1,38 @@
 package org.entermediadb.mediaboat;
 
+import java.awt.Dimension;
+import java.awt.Toolkit;
 import java.net.URI;
 import java.util.Collection;
 
+import javax.swing.JFrame;
+import javax.swing.JOptionPane;
+
 import org.entermediadb.mediaboat.components.LoginForm;
-import org.java_websocket.drafts.Draft_6455;
+import org.entermediadb.utils.ExecutorManager;
 import org.json.simple.JSONObject;
 
 public class AppController implements LogListener
 {
 	EnterMediaModel model;//
 	LoginForm fieldLoginForm;
+	ExecutorManager fieldExecutorManager;
 	
+	public ExecutorManager getExecutorManager()
+	{
+		if (fieldExecutorManager == null)
+		{
+			fieldExecutorManager = new ExecutorManager();
+		}
+
+		return fieldExecutorManager;
+	}
+
+	public void setExecutorManager(ExecutorManager inExecutorManager)
+	{
+		fieldExecutorManager = inExecutorManager;
+	}
+
 	public LoginForm getLoginForm()
 	{
 		return fieldLoginForm;
@@ -32,6 +53,8 @@ public class AppController implements LogListener
 		return model;
 	}
 	
+	
+	
 	public Configuration getConfig()
 	{
 		return getModel().getConfig();
@@ -40,12 +63,12 @@ public class AppController implements LogListener
 	{
 		try
 		{
-			if( getModel().getConnection() != null && getModel().getConnection().isClosing() )
-			{
-				//return false;
-				getModel().getConnection().disconnect();
-				getModel().setConnection(null);
-			}
+//			if( getModel().getConnection() != null && getModel().getConnection().isClosing() )
+//			{
+//				//return false;
+//				getModel().getConnection().disconnect();
+//				getModel().setConnection(null);
+//			}
 			int i;
 			if ((i = server.indexOf("/", 8)) > -1)
 			{
@@ -56,12 +79,14 @@ public class AppController implements LogListener
 
 			String url = "ws://" + prefix + "/entermedia/services/websocket/org/entermediadb/websocket/mediaboat/MediaBoatConnection";
 			url = url + "?userid=" + getModel().getUserId();
-			URI path = new URI(url);
-			// more about drafts here: http://github.com/TooTallNate/Java-WebSocket/wiki/Drafts
-			WsConnection connection = new WsConnection(path, new Draft_6455());
+			URI uri = new URI(url);
+			
+			WsConnection connection = new WsConnection(uri);
 			connection.setAppController(this);
+			connection.connect();
 			getModel().setConnection(connection);
-			return getModel().connect(server,inUname,inPass);
+			// more about drafts here: http://github.com/TooTallNate/Java-WebSocket/wiki/Drafts
+			return getModel().login(uri, server,inUname,inPass);
 		}
 		catch( Exception ex)
 		{
@@ -96,10 +121,16 @@ public class AppController implements LogListener
 	}
 	
 
-	public void checkinFiles(JSONObject inMap)
+	public void checkinFiles(final JSONObject inMap)
 	{
-		// TODO Auto-generated method stub
-		getModel().checkinFiles(inMap);
+		//Invoke later
+		getExecutorManager().execute(new Runnable()
+				{
+					public void run()
+					{
+						getModel().checkinFiles(inMap);						
+					}
+				});
 	}
 
 	public void loginComplete(String inValue)
@@ -113,7 +144,10 @@ public class AppController implements LogListener
 	{
 		// 
 		info("Reconnecting");
-		
+		if( getModel().getConnection() != null)
+		{
+			getModel().getConnection().disconnect();
+		}
 		String user = getConfig().get("username");
 		String server = getConfig().get("server");
 		//check  for key
@@ -123,5 +157,47 @@ public class AppController implements LogListener
 			return true;
 		}
 		return false;
+	}
+
+	public void loginFailed(String inValue)
+	{
+		JOptionPane.showMessageDialog(getLoginForm(), inValue, "Error", JOptionPane.ERROR_MESSAGE);
+		createAndShowGUI();
+	}
+
+	public void disconnect(JSONObject inMap)
+	{
+		//Close connection
+		createAndShowGUI();
+	}
+	
+	  protected void createAndShowGUI() {
+	        //Make sure we have nice window decorations.
+	        JFrame.setDefaultLookAndFeelDecorated(false);
+
+	        //Create and set up the window.
+	        
+	        if( getLoginForm() != null)
+	        {
+	        	getLoginForm().hide();
+	        }
+	        //Display the window.
+	        LoginForm frame = new LoginForm();
+	        
+	        setLoginForm(frame);
+	        frame.setAppController(this);
+	        frame.setLogListener(this);
+	        frame.initContentPanel();
+	        frame.setSize(600, 300);
+	        Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
+	        int centerX = screenSize.width/2 - frame.getWidth();
+	        int centerY = screenSize.height/2 - frame.getHeight();
+	        frame.setLocation(centerX, centerY);
+	        
+	    }
+
+	public void init()
+	{
+		createAndShowGUI();
 	}
 }

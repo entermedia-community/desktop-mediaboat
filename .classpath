@@ -9,6 +9,6 @@
 	<classpathentry kind="lib" path="lib/httpcore-4.4.4.jar"/>
 	<classpathentry kind="lib" path="lib/httpmime-4.5.2.jar"/>
 	<classpathentry kind="lib" path="lib/json-simple-1.1.1.jar"/>
-	<classpathentry combineaccessrules="false" kind="src" path="/nv-websocket-client"/>
+	<classpathentry kind="lib" path="lib/nv-websocket-client.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

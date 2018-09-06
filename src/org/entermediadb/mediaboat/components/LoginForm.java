@@ -126,6 +126,7 @@ public class LoginForm extends JFrame
 				else
 				{
 					JOptionPane.showMessageDialog(LoginForm.this, "Incorrect login or password", "Error", JOptionPane.ERROR_MESSAGE);
+					showConnectionPanel();
 				}
 				
 			}

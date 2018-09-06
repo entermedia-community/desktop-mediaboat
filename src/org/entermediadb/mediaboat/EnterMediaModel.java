@@ -2,7 +2,6 @@ package org.entermediadb.mediaboat;
 
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.URI;
@@ -19,9 +18,6 @@ import org.entermediadb.utils.HttpSharedConnection;
 import org.entermediadb.utils.OutputFiller;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
-
-import com.neovisionaries.ws.client.WebSocket;
-import com.neovisionaries.ws.client.WebSocketFactory;
 
 public class EnterMediaModel
 {
@@ -90,6 +86,12 @@ public class EnterMediaModel
 		return getConfig().get("username");
 	}
 	
+	public String getWorkFolder()
+	{
+		String path = getConfig().get("home");
+		return path + "/EnterMedia";
+	}
+	
 	public boolean login(URI uri, String server, String inUname, String inKey)
 	{
 		String path = getConfig().get("home");
@@ -131,6 +133,20 @@ public class EnterMediaModel
 		mes.put("entermedia.key", inKey);
 		mes.put("desktopid", System.getProperty("os.name") + " " + getComputerName());
 		mes.put("homefolder", path);
+		
+		Collection checkedout = new ArrayList();
+		//load up
+		File home = new File(getWorkFolder());
+		File[] found = home.listFiles();
+		for (int i = 0; i < found.length; i++)
+		{
+			File item = found[i];
+			if( item.isDirectory() )
+			{
+				checkedout.add(item.getName());
+			}
+		}
+		mes.put("existingcollections", checkedout);
 		getConnection().send(mes);
 		return true;
 
@@ -161,11 +177,29 @@ public class EnterMediaModel
 		System.out.println(inString);
 	}
 
-	public void download(String path, Collection inSourcepaths)
+	public void busy(boolean inBusy)
+	{
+		Message mes = new Message("busychanged");
+		mes.put("isbusy",inBusy);
+		getConnection().send(mes);
+	}
+
+	public void download(String foldername, Collection<String> inSubFolders, Collection inSourcepaths)
 	{
 		//The path is a collection path
+		String path = getWorkFolder() + "/" +  foldername;
 		File folder = new File(path);
 		folder.mkdirs();
+		File[] files = folder.listFiles();
+		Map existingfiles = new HashMap();
+		
+		//TODO: If we are deleting make sure they confirm
+		for (int i = 0; i < files.length; i++)
+		{
+			//Files and folders
+			File file = files[i];
+			existingfiles.put(file.getName(),file);
+		}
 		Map params = new HashMap();
 		params.put("entermedia.key", getEnterMediaKey());
 		int count = 0;
@@ -173,7 +207,8 @@ public class EnterMediaModel
 		{
 			Map downloadreq = (Map) iterator.next();
 			String savepath = (String) downloadreq.get("savepath");
-			File tosave = new File(savepath);
+			File tosave = new File(getWorkFolder() + "/" + savepath);
+			existingfiles.remove(tosave.getName());
 			String size = (String) downloadreq.get("filesize");
 
 			if( tosave.exists() && tosave.length() == Long.parseLong(size))
@@ -214,11 +249,55 @@ public class EnterMediaModel
 			{
 				getLogListener().info(resp.getStatusLine().getStatusCode() + " Could not download " + url + " " + resp.getStatusLine().getReasonPhrase());
 			}
-
 		}
+		boolean confirmed = false;
+		for (Iterator iterator = existingfiles.keySet().iterator(); iterator.hasNext();)
+		{
+			if( !confirmed )
+			{
+				//confirm confirmed = true;
+				//break;
+			}
+			String name = (String ) iterator.next();
+			File file = (File)existingfiles.get(name);
+			if( file.isDirectory() )
+			{
+				if( !inSubFolders.contains( file.getName() ) )
+				{
+					deleteAll(file);
+				}
+				//be careful
+				//check inSubFolders
+			}
+			else
+			{
+				file.delete();
+			}
+			
+		}
+		
 		getLogListener().info("Downloaded " + folder + " " + count + " files ");
+		Message mess = new Message("folderedited");
+		mess.put("foldername", foldername);
+		getConnection().send(mess);
 	}
 
+	public void deleteAll( File file )
+	{
+		if (file.isDirectory())
+		{
+			// If it's a dir, then delete everything in it.
+			File[] fileList = file.listFiles();
+
+			if (fileList != null)
+			{
+				for ( int idx = 0; idx < fileList.length; idx++ )
+					deleteAll( fileList[idx] );
+			}
+		}
+		// Now delete ourselves, whether a file or a dir.
+		file.delete();
+	}
 	private String getEnterMediaKey()
 	{
 		return getConfig().get("key");
@@ -250,7 +329,7 @@ public class EnterMediaModel
 
 		sendFolder(params, fileroot,"",collectionfolder);
 
-
+		
 	}
 
 	protected void sendFolder(JSONObject inParams, String absrootfolder, String subfolder, File file)

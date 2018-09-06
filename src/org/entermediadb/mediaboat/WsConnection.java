@@ -43,7 +43,7 @@ public class WsConnection implements WebSocketListener
 	
 	
 
-	public void connect()
+	public boolean connect()
 	{
 		WebSocketFactory factory = new WebSocketFactory()
 		          ;//  .setConnectionTimeout(TIMEOUT);
@@ -54,11 +54,13 @@ public class WsConnection implements WebSocketListener
 			socket.addListener(this);
 			socket.connect();
 			socket.setPingInterval(30000); //Every 30 seconds
+			return true;
 		}
 		catch(Throwable ex)
 		{
 			getAppController().reportError("Could not connect", ex);
 		}
+		return false;
 
 	}
 	
@@ -76,6 +78,8 @@ public class WsConnection implements WebSocketListener
 
 	public void send(Message inMes)
 	{
+		getAppController().info("sent " + inMes.getCommand() );
+
 		JSONObject object = new JSONObject(inMes);
 		object.put("connectionid", String.valueOf(hashCode()));
 		String text = object.toJSONString();
@@ -100,7 +104,7 @@ public class WsConnection implements WebSocketListener
 			}
 			JSONObject map = (JSONObject)getJSONParser().parse(new StringReader(inMessage));
 			String command = (String)map.get("command");
-			getAppController().info(command + " received " + hashCode());
+			getAppController().info("received " + command );
 			if( "authenticated".equals( command))
 			{
 				String value = (String)map.get("entermedia.key");

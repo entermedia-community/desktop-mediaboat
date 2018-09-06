@@ -4,6 +4,8 @@ import java.awt.Dimension;
 import java.awt.Toolkit;
 import java.net.URI;
 import java.util.Collection;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
@@ -17,6 +19,7 @@ public class AppController implements LogListener
 	EnterMediaModel model;//
 	LoginForm fieldLoginForm;
 	ExecutorManager fieldExecutorManager;
+    Timer timer = null;
 	
 	public ExecutorManager getExecutorManager()
 	{
@@ -83,7 +86,10 @@ public class AppController implements LogListener
 			
 			WsConnection connection = new WsConnection(uri);
 			connection.setAppController(this);
-			connection.connect();
+			if( !connection.connect() )
+			{
+				return false;
+			}
 			getModel().setConnection(connection);
 			// more about drafts here: http://github.com/TooTallNate/Java-WebSocket/wiki/Drafts
 			return getModel().login(uri, server,inUname,inPass);
@@ -106,10 +112,19 @@ public class AppController implements LogListener
 	public void download(JSONObject inMap)
 	{
 		Collection datapaths = (Collection)inMap.get("assetpaths");
-		String subfolder = (String)inMap.get("path");
-		getModel().download(subfolder, datapaths);
-		
+		Collection subfolders = (Collection)inMap.get("subfolders");
+		String foldername = (String)inMap.get("foldername");
+		try
+		{
+			getModel().busy(true);
+			getModel().download(foldername,subfolders, datapaths);
+		}
+		finally
+		{
+			getModel().busy(false);
+		}
 	}
+	
 	//has connection
 	//has UI
 	//has API
@@ -128,7 +143,14 @@ public class AppController implements LogListener
 				{
 					public void run()
 					{
-						getModel().checkinFiles(inMap);						
+						try
+						{
+							getModel().checkinFiles(inMap);
+						}
+						finally
+						{
+							getModel().busy(false);
+						}
 					}
 				});
 	}
@@ -156,9 +178,33 @@ public class AppController implements LogListener
 		{
 			return true;
 		}
+		//Try again in a while?
+		
+		loginLater();
+		
 		return false;
 	}
 
+	public void loginLater() {
+	    // Do your startup work here
+
+		if( timer == null)
+		{
+			timer = new Timer();
+		}
+
+	    TimerTask delayedThreadStartTask = new TimerTask() {
+	        @Override
+	        public void run() 
+	        {
+	        	reconnect();
+	        
+	        }
+	    };
+
+	    timer.schedule(delayedThreadStartTask, 60 * 1000); //1 minute
+	}
+	
 	public void loginFailed(String inValue)
 	{
 		JOptionPane.showMessageDialog(getLoginForm(), inValue, "Error", JOptionPane.ERROR_MESSAGE);

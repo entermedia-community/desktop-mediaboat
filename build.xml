@@ -1,0 +1,39 @@
+<project default="all">
+    <target name="all" depends="clean, jar,copy" />
+
+    <target name="compile">
+        <mkdir dir="build/classes" />
+        <javac includeantruntime="false" debug="on" srcdir="src"
+               destdir="build/classes" target="1.6" source="1.6">
+               
+      <classpath>
+        <fileset dir="lib">
+          <include name="*.jar"/>
+        </fileset>
+      </classpath>
+      <include name="**"/>
+               
+        </javac>
+    </target>
+
+    <target name="jar" depends="compile" >
+        <mkdir dir="dist"/>
+        <jar destfile="dist/MediaBoatClient.jar" manifest="MANIFEST.MF">
+            <fileset dir="build/classes" includes="**/*.class" />
+        </jar>
+    </target>
+
+   <target name="copy">
+	  <copy todir="dist/lib">
+		<fileset dir="lib">
+		  <include name="*.jar"/>
+		</fileset>
+	</copy>   
+   </target>
+   
+     <target name="clean">
+        <delete dir="build" />
+        <delete dir="dist" />
+    </target>
+
+</project>

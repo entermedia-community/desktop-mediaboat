@@ -18,14 +18,17 @@ fi
 if [[ ! -d $JDK_FOLDER/windows ]]; then
 	mkdir -p $JDK_FOLDER/windows/64 $JDK_FOLDER/windows/32
 	
-	curl -X GET https://bitbucket.org/alexkasko/openjdk-unofficial-builds/downloads/openjdk-1.7.0-u80-unofficial-windows-i586-image.zip?reload=true > $JDK_FOLDER/windows/32/openjdk-1.7.0-u80-unofficial-windows-i586-image.zip 
-	curl -X GET https://bitbucket.org/alexkasko/openjdk-unofficial-builds/downloads/openjdk-1.7.0-u80-unofficial-windows-amd64-image.zip?reload=true > $JDK_FOLDER/windows/64/openjdk-1.7.0-u80-unofficial-windows-amd64-image.zip 
+	wget -c -O $JDK_FOLDER/windows/32/openjdk-1.7.0-u80-unofficial-windows-i586-image.zip https://bitbucket.org/alexkasko/openjdk-unofficial-builds/downloads/openjdk-1.7.0-u80-unofficial-windows-i586-image.zip?reload=true 
+	wget -c -O $JDK_FOLDER/windows/64/openjdk-1.7.0-u80-unofficial-windows-amd64-image.zip https://bitbucket.org/alexkasko/openjdk-unofficial-builds/downloads/openjdk-1.7.0-u80-unofficial-windows-amd64-image.zip?reload=true 
 fi
 if [[ ! -d $JDK_FOLDER/mac ]]; then
 	mkdir -p $JDK_FOLDER/mac
-	curl -X GET https://bitbucket.org/alexkasko/openjdk-unofficial-builds/downloads/openjdk-1.7.0-u80-unofficial-macosx-x86_64-image.zip?reload=true > $JDK_FOLDER/mac/openjdk-1.7.0-u80-unofficial-macosx-x86_64-image.zip 
+	wget -c -O $JDK_FOLDER/mac/openjdk-1.7.0-u80-unofficial-macosx-x86_64-image.zip https://bitbucket.org/alexkasko/openjdk-unofficial-builds/downloads/openjdk-1.7.0-u80-unofficial-macosx-x86_64-image.zip?reload=true 
 fi
 
-
-java -jar $BIN_FOLDER/packr.jar $SCIPTS_FOLDER/mediaboat-mac.json
+# Build Installers
 java -jar $BIN_FOLDER/packr.jar $SCIPTS_FOLDER/mediaboat-windows64.json
+java -jar $BIN_FOLDER/packr.jar $SCIPTS_FOLDER/mediaboat-mac.json
+
+rm -f /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-windows.zip && cd /var/jenkins_home/jobs/MediaBoat/workspace/dist/windows64/ && zip -r /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-windows.zip .
+rm -f /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-mac.zip && cd /var/jenkins_home/jobs/MediaBoat/workspace/dist/ && zip -r /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-mac.zip mediaboat.app

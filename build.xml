@@ -28,17 +28,6 @@
     	 <exec executable="/bin/bash">
     	    <arg value="installer/scripts/build-installers.sh"/>
     	  </exec>
-    	
-        <move overwrite="true" todir="${deployDir}/windows" includeEmptyDirs="yes" verbose="true">
-            <fileset dir="../dist/windows" >
-                <include name="**/*" />
-            </fileset>
-        </move>
-        <move overwrite="true" todir="${deployDir}/mac" includeEmptyDirs="yes" verbose="true">
-            <fileset dir="../dist/mac" >
-                <include name="**/*" />
-            </fileset>
-        </move>
     </target>
 
    <target name="copy">

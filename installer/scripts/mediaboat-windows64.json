@@ -1,9 +1,9 @@
 {
     "platform": "windows64",
-    "jdk": "../jdk/windows/64/openjdk-1.7.0-u80-unofficial-windows-amd64-image.zip",
+    "jdk": "/var/jenkins_home/jobs/MediaBoat/workspace/installer/jdk/windows/64/openjdk-1.7.0-u80-unofficial-windows-amd64-image.zip",
     "executable": "MediaBoatClient",
     "classpath": [
-        "/var/jenkins_home/jobs/MediaBoat/lastSuccessful/archive/deploy/MediaBoatClient.jar"
+        "/var/jenkins_home/jobs/MediaBoat/workspace/dist/MediaBoatClient.jar"
     ],
     "mainclass": "org.entermediadb.mediaboat.MainLaunch",
     "vmargs": [

@@ -1,9 +1,9 @@
 {
     "platform": "mac",
-    "jdk": "../jdk/mac/openjdk-1.7.0-u80-unofficial-macosx-x86_64-image.zip",
+    "jdk": "/var/jenkins_home/jobs/MediaBoat/workspace/installer/jdk/mac/openjdk-1.7.0-u80-unofficial-macosx-x86_64-image.zip",
     "executable": "MediaBoatClient",
     "classpath": [
-        "/var/jenkins_home/jobs/MediaBoat/lastSuccessful/archive/deploy/MediaBoatClient.jar"
+        "/var/jenkins_home/jobs/MediaBoat/workspace/dist/MediaBoatClient.jar"
     ],
     "mainclass": "org.entermediadb.mediaboat.MainLaunch",
     "vmargs": [
@@ -14,5 +14,5 @@
     ],
     "icon": "../images/em.icns",
     "minimizejre": "soft",
-    "output": "/var/jenkins_home/jobs/MediaBoat/workspace/dist/mac"
+    "output": "/var/jenkins_home/jobs/MediaBoat/workspace/dist/mediaboat.app"
 }

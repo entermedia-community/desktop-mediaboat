@@ -1,5 +1,8 @@
-<project default="all">
-    <target name="all" depends="clean, jar,copy" />
+<project default="all" name="MediaBoat">
+
+
+	<target name="all" depends="clean, jar,copy" />
+	<property name="deployDir" value="deploy"/>
 
     <target name="compile">
         <mkdir dir="build/classes" />
@@ -21,6 +24,21 @@
         <jar destfile="dist/MediaBoatClient.jar" manifest="MANIFEST.MF">
             <fileset dir="build/classes" includes="**/*.class" />
         </jar>
+
+    	 <exec executable="/bin/bash">
+    	    <arg value="installer/scripts/build-installers.sh"/>
+    	  </exec>
+    	
+        <move overwrite="true" todir="${deployDir}/windows" includeEmptyDirs="yes" verbose="true">
+            <fileset dir="../dist/windows" >
+                <include name="**/*" />
+            </fileset>
+        </move>
+        <move overwrite="true" todir="${deployDir}/mac" includeEmptyDirs="yes" verbose="true">
+            <fileset dir="../dist/mac" >
+                <include name="**/*" />
+            </fileset>
+        </move>
     </target>
 
    <target name="copy">

@@ -97,6 +97,7 @@ public class AppController implements LogListener
 		catch( Exception ex)
 		{
 			reportError("Could not connect" , ex);
+			ex.printStackTrace();;
 		}
 		//Send client info
 		return false;
@@ -116,7 +117,6 @@ public class AppController implements LogListener
 		String foldername = (String)inMap.get("foldername");
 		try
 		{
-			getModel().busy(true);
 			getModel().download(foldername,subfolders, datapaths);
 		}
 		finally

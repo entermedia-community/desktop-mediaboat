@@ -137,6 +137,7 @@ public class EnterMediaModel
 		Collection checkedout = new ArrayList();
 		//load up
 		File home = new File(getWorkFolder());
+		home.mkdirs();
 		File[] found = home.listFiles();
 		for (int i = 0; i < found.length; i++)
 		{

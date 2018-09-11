@@ -98,6 +98,10 @@ public class EnterMediaModel
 		if (path == null)
 		{
 			path = System.getenv("HOME");
+			if( path == null)
+			{
+				path = System.getenv("HOMEPATH");
+			}
 			getConfig().put("home", path);
 		}
 		getConfig().put("username", inUname);

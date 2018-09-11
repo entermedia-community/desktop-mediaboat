@@ -29,6 +29,10 @@ fi
 # Build Installers
 java -jar $BIN_FOLDER/packr.jar $SCIPTS_FOLDER/mediaboat-windows64.json
 java -jar $BIN_FOLDER/packr.jar $SCIPTS_FOLDER/mediaboat-mac.json
+java -jar $BIN_FOLDER/packr.jar $SCIPTS_FOLDER/mediaboat-linux64.json
 
 rm -f /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-windows.zip && cd /var/jenkins_home/jobs/MediaBoat/workspace/dist/windows64/ && zip -r /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-windows.zip .
 rm -f /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-mac.zip && cd /var/jenkins_home/jobs/MediaBoat/workspace/dist/ && zip -r /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-mac.zip mediaboat.app
+
+rm -f /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-linux.zip
+zip -r /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-linux.zip $SCRIPTS_FOLDER/MediaBoat.sh /var/jenkins_home/jobs/MediaBoat/workspace/dist/MediaBoatClient.jar 

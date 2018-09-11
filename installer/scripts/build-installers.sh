@@ -3,7 +3,7 @@
 INSTALLER_FOLDER="/var/jenkins_home/jobs/MediaBoat/workspace/installer"
 JDK_FOLDER="$INSTALLER_FOLDER/jdk"
 BIN_FOLDER="$INSTALLER_FOLDER/bin"
-SCIPTS_FOLDER="$INSTALLER_FOLDER/scripts"
+SCRIPTS_FOLDER="$INSTALLER_FOLDER/scripts"
 
 # GET packr
 if [[ ! -d $BIN_FOLDER ]]; then
@@ -27,12 +27,11 @@ if [[ ! -d $JDK_FOLDER/mac ]]; then
 fi
 
 # Build Installers
-java -jar $BIN_FOLDER/packr.jar $SCIPTS_FOLDER/mediaboat-windows64.json
-java -jar $BIN_FOLDER/packr.jar $SCIPTS_FOLDER/mediaboat-mac.json
-java -jar $BIN_FOLDER/packr.jar $SCIPTS_FOLDER/mediaboat-linux64.json
+java -jar $BIN_FOLDER/packr.jar $SCRIPTS_FOLDER/mediaboat-windows64.json
+java -jar $BIN_FOLDER/packr.jar $SCRIPTS_FOLDER/mediaboat-mac.json
 
 rm -f /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-windows.zip && cd /var/jenkins_home/jobs/MediaBoat/workspace/dist/windows64/ && zip -r /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-windows.zip .
 rm -f /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-mac.zip && cd /var/jenkins_home/jobs/MediaBoat/workspace/dist/ && zip -r /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-mac.zip mediaboat.app
 
-rm -f /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-linux.zip
-zip -r /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-linux.zip $SCRIPTS_FOLDER/MediaBoat.sh /var/jenkins_home/jobs/MediaBoat/workspace/dist/MediaBoatClient.jar 
+rm -f /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-linux.zip && cd /var/jenkins_home/jobs/MediaBoat/workspace/dist/ && cp $SCRIPTS_FOLDER/MediaBoat.sh .
+zip -r /var/jenkins_home/jobs/MediaBoat/workspace/deploy/mediaboat-linux.zip MediaBoat.sh MediaBoatClient.jar 

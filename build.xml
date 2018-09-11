@@ -1,13 +1,15 @@
-<project default="all" name="MediaBoat">
+<project default="all" name="MediaBoat" basedir="." >
 
 
 	<target name="all" depends="clean, jar,copy" />
-	<property name="deployDir" value="deploy"/>
+	<property name="build" location="${basedir}/build"/>
+	<property name="dist" location="${basedir}/dist"/>
+	<property name="installer" location="${basedir}/installer"/>
 
     <target name="compile">
-        <mkdir dir="build/classes" />
+        <mkdir dir="${build}/classes" />
         <javac includeantruntime="false" debug="on" srcdir="src"
-               destdir="build/classes" target="1.6" source="1.6">
+               destdir="${build}/classes" target="1.6" source="1.6">
                
       <classpath>
         <fileset dir="lib">
@@ -20,18 +22,18 @@
     </target>
 
     <target name="jar" depends="compile" >
-        <mkdir dir="dist"/>
-        <jar destfile="dist/MediaBoatClient.jar" manifest="MANIFEST.MF">
-            <fileset dir="build/classes" includes="**/*.class" />
+        <mkdir dir="${dist}"/>
+        <jar destfile="${dist}/MediaBoatClient.jar" manifest="MANIFEST.MF">
+            <fileset dir="${build}/classes" includes="**/*.class" />
         </jar>
-
+    	
     	 <exec executable="/bin/bash">
-    	    <arg value="installer/scripts/build-installers.sh"/>
+    	    <arg value="${installer}/scripts/build-installers.sh"/>
     	  </exec>
     </target>
 
    <target name="copy">
-	  <copy todir="dist/lib">
+	  <copy todir="${dist}/lib">
 		<fileset dir="lib">
 		  <include name="*.jar"/>
 		</fileset>
@@ -39,8 +41,8 @@
    </target>
    
      <target name="clean">
-        <delete dir="build" />
-        <delete dir="dist" />
+        <delete dir="${build}" />
+        <delete dir="${dist}" />
     </target>
 
 </project>

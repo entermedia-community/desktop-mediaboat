@@ -62,10 +62,15 @@ public class EnterMediaModel
 		return httpconnection;
 	}
 
-	Configuration config = new Configuration();
+	Configuration config ;
 
 	public Configuration getConfig()
 	{
+		if (config == null)
+		{
+			config = new Configuration(findHome());
+		}
+
 		return config;
 	}
 
@@ -100,11 +105,7 @@ public class EnterMediaModel
 		String path = getConfig().get("home");
 		if (path == null)
 		{
-			path = System.getenv("HOME");
-			if( path == null)
-			{
-				path = System.getenv("HOMEPATH");
-			}
+			path = findHome();
 			getConfig().put("home", path);
 		}
 		getConfig().put("username", inUname);
@@ -158,6 +159,17 @@ public class EnterMediaModel
 		getConnection().send(mes);
 		return true;
 
+	}
+
+	protected String findHome()
+	{
+		String path;
+		path = System.getenv("HOME");
+		if( path == null)
+		{
+			path = System.getenv("HOMEPATH");
+		}
+		return path;
 	}
 
 	protected String getComputerName()

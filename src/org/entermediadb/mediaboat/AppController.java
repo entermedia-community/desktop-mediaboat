@@ -282,6 +282,6 @@ public class AppController implements LogListener
 
 	protected boolean isDebug()
 	{
-		return getModel().getServer().startsWith("http:");
+		return model == null || getModel().getServer() == null || getModel().getServer().startsWith("http:");
 	}
 }

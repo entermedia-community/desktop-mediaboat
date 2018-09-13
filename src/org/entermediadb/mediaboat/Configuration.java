@@ -7,9 +7,12 @@ import java.util.Properties;
 
 public class Configuration
 {
-	
+	protected String HOME= null;
 	Properties properties= null;
-	
+	public Configuration(String inHome)
+	{
+		HOME = inHome;
+	}
 	public String get(String inKey)
 	{
 		return getProps().getProperty(inKey);

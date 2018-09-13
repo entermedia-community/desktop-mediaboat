@@ -1,6 +1,6 @@
 {
     "platform": "windows64",
-    "jdk": "/var/jenkins_home/jobs/MediaBoat/workspace/installer/jdk/windows7/64/openjdk-1.7.0-u80-unofficial-windows-amd64-image.zip",
+    "jdk": "/var/jenkins_home/jobs/MediaBoat/workspace/installer/jdk/windows7/64/zulu8.31.0.1-jdk8.0.181-win_x64.zip",
     "executable": "MediaBoatClient",
     "classpath": [
         "/var/jenkins_home/jobs/MediaBoat/workspace/dist/MediaBoatClient.jar"

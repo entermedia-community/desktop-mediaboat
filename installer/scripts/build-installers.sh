@@ -22,7 +22,7 @@ if [[ ! -d $JDK_FOLDER/windows7 ]]; then
 	mkdir -p $JDK_FOLDER/windows7/64 $JDK_FOLDER/windows7/32
 
 	wget -c -O $JDK_FOLDER/windows7/32/openjdk-1.7.0-u80-unofficial-windows-i586-image.zip https://bitbucket.org/alexkasko/openjdk-unofficial-builds/downloads/openjdk-1.7.0-u80-unofficial-windows-i586-image.zip?reload=true 
-	wget -c -O $JDK_FOLDER/windows7/64/openjdk-1.7.0-u80-unofficial-windows-amd64-image.zip https://bitbucket.org/alexkasko/openjdk-unofficial-builds/downloads/openjdk-1.7.0-u80-unofficial-windows-amd64-image.zip 
+	wget -c -O $JDK_FOLDER/windows7/64/zulu8.31.0.1-jdk8.0.181-win_x64.zip https://cdn.azul.com/zulu/bin/zulu8.31.0.1-jdk8.0.181-win_x64.zip 
 fi
 
 if [[ ! -d $JDK_FOLDER/windows10 ]]; then

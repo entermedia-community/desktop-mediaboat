@@ -121,9 +121,14 @@ public class WsConnection implements WebSocketListener
 				
 				//getAppController().getConfig().put("entermedia.key", value);
 			}
-			else if( "downloadto".equals( command))
+			else if( "downloadfolders".equals( command))
 			{
-				getAppController().download(map);
+				Map rootFolder = (Map)map.get("rootfolder");
+				String catalogid = (String)map.get("catalogid");
+				String mediadbid = (String)map.get("mediadbid");
+				String collectionid = (String)map.get("collectionid");
+
+				getAppController().downloadFolders(catalogid, mediadbid, collectionid, rootFolder);
 			}
 			else if( "checkincollection".equals( command))
 			{
@@ -134,6 +139,10 @@ public class WsConnection implements WebSocketListener
 			else if( "newclientconnect".equals( command))
 			{
 				getAppController().disconnect(map);
+			}
+			else if( "openremotefolder".equals( command))
+			{
+				getAppController().cmdOpenFolder(map);
 			}
 			
 			

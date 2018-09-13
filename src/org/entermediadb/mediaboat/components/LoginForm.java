@@ -140,7 +140,7 @@ public class LoginForm extends JFrame
 		panel.setLayout(null);
 		
 		errorlog.setFont(new Font("Serif", Font.BOLD, 11));
-		errorlog.setText("Connected\n");
+		errorlog.setText("Loaded\n");
 		errorlog.setEditable(false);
 		errorlog.setBackground(Color.LIGHT_GRAY);
 		final JScrollPane scrolll = new JScrollPane(errorlog);
@@ -176,7 +176,7 @@ public class LoginForm extends JFrame
 		// TODO Auto-generated method stub
 		inEx.printStackTrace();
 		String text = errorlog.getText();
-		if( text.length() > 2000)
+		if( text != null && text.length() > 2000)
 		{
 			text = text.substring(0,2000);
 		}
@@ -186,7 +186,7 @@ public class LoginForm extends JFrame
 	public void info(String inString)
 	{
 		String text = errorlog.getText();
-		if( text.length() > 2000)
+		if( text != null && text.length() > 2000)
 		{
 			text = text.substring(0,2000);
 		}

@@ -2,8 +2,11 @@ package org.entermediadb.mediaboat;
 
 import java.awt.Dimension;
 import java.awt.Toolkit;
+import java.io.File;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -11,31 +14,24 @@ import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 
 import org.entermediadb.mediaboat.components.LoginForm;
+import org.entermediadb.utils.Exec;
 import org.entermediadb.utils.ExecutorManager;
+import org.entermediadb.utils.WhatOs;
 import org.json.simple.JSONObject;
 
 public class AppController implements LogListener
 {
 	EnterMediaModel model;//
 	LoginForm fieldLoginForm;
-	ExecutorManager fieldExecutorManager;
     Timer timer = null;
-	
+	WhatOs OS = new WhatOs();
+	Exec exec = new Exec();
 	public ExecutorManager getExecutorManager()
 	{
-		if (fieldExecutorManager == null)
-		{
-			fieldExecutorManager = new ExecutorManager();
-		}
-
-		return fieldExecutorManager;
+		return exec.getExecutorManager();
 	}
 
-	public void setExecutorManager(ExecutorManager inExecutorManager)
-	{
-		fieldExecutorManager = inExecutorManager;
-	}
-
+	
 	public LoginForm getLoginForm()
 	{
 		return fieldLoginForm;
@@ -97,7 +93,7 @@ public class AppController implements LogListener
 		catch( Exception ex)
 		{
 			reportError("Could not connect" , ex);
-			ex.printStackTrace();;
+			ex.printStackTrace();
 		}
 		//Send client info
 		return false;
@@ -110,19 +106,9 @@ public class AppController implements LogListener
 	{
 		getLoginForm().info(inString);
 	}
-	public void download(JSONObject inMap)
+	public void downloadFolders(String catalogid, String mediadbid, String collectionid, Map inRoot)
 	{
-		Collection datapaths = (Collection)inMap.get("assetpaths");
-		Collection subfolders = (Collection)inMap.get("subfolders");
-		String foldername = (String)inMap.get("foldername");
-		try
-		{
-			getModel().download(foldername,subfolders, datapaths);
-		}
-		finally
-		{
-			getModel().busy(false);
-		}
+		getModel().downloadFolders( catalogid,  mediadbid,  collectionid, inRoot);
 	}
 	
 	//has connection
@@ -245,5 +231,37 @@ public class AppController implements LogListener
 	public void init()
 	{
 		createAndShowGUI();
+	}
+	
+	public void cmdOpenFolder(JSONObject inMap)
+	{
+		String path = (String)inMap.get("fullpath");
+		openFolder(path);
+			
+	}
+
+
+	protected void openFolder(String path)
+	{
+		if( OS.isWindows() )
+		{
+			path = path.replace("/", File.pathSeparator);
+		}
+		File folder = new File(path);
+		folder.mkdirs();
+		Collection args = new ArrayList();
+		args.add(path);
+		if( OS.isMac() )
+		{
+			exec.runExec("open", args);
+		}
+		else if( OS.isUnix() )
+		{
+			exec.runExec("xdg-open", args);
+		}
+		else if( OS.isWindows() )
+		{
+			exec.runExec("start", args);
+		}
 	}
 }

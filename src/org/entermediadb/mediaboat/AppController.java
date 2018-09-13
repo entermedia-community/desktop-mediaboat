@@ -75,8 +75,15 @@ public class AppController implements LogListener
 				server = server.substring(0, i);
 			}
 			String prefix = server.substring(server.lastIndexOf("/") + 1);
-
-			String url = "ws://" + prefix + "/entermedia/services/websocket/org/entermediadb/websocket/mediaboat/MediaBoatConnection";
+			if( server.startsWith("https"))
+			{
+				prefix = "wss://" + prefix;
+			}
+			else
+			{
+				prefix = "ws://" + prefix;
+			}
+			String url = prefix + "/entermedia/services/websocket/org/entermediadb/websocket/mediaboat/MediaBoatConnection";
 			url = url + "?userid=" + getModel().getUserId();
 			debug("Connecting to:" + url);
 			URI uri = new URI(url);

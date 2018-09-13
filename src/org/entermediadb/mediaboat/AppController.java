@@ -119,7 +119,18 @@ public class AppController implements LogListener
 	public void downloadFolders(Map inRoot)
 	{
 		getModel().downloadFolders( inRoot);
+		String rootname = (String)inRoot.get("rootname");
+		String path = getModel().getWorkFolder() + "/" + rootname;
+		openFolder(path);
 	}
+	
+	public void cmdOpenFolder(JSONObject inMap)
+	{
+		String path = (String)inMap.get("fullpath");
+		openFolder(path);
+			
+	}
+
 	
 	//has connection
 	//has UI
@@ -242,13 +253,7 @@ public class AppController implements LogListener
 		createAndShowGUI();
 	}
 	
-	public void cmdOpenFolder(JSONObject inMap)
-	{
-		String path = (String)inMap.get("fullpath");
-		openFolder(path);
-			
-	}
-
+	
 
 	protected void openFolder(String path)
 	{

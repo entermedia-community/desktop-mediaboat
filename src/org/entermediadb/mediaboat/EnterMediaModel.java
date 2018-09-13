@@ -229,8 +229,9 @@ public class EnterMediaModel
 			
 			getLogListener().info(rootname + " download complete");
 			Message mess = new Message("folderedited");
-			mess.put("foldername", folder);
+			mess.put("foldername", rootname);
 			getConnection().send(mess);
+			
 		}
 		finally
 		{

@@ -78,7 +78,7 @@ public class WsConnection implements WebSocketListener
 
 	public void send(Message inMes)
 	{
-		getAppController().info("sent " + inMes.getCommand() );
+		getAppController().debug("sent " + inMes.getCommand() );
 
 		JSONObject object = new JSONObject(inMes);
 		object.put("connectionid", String.valueOf(hashCode()));
@@ -104,7 +104,7 @@ public class WsConnection implements WebSocketListener
 			}
 			JSONObject map = (JSONObject)getJSONParser().parse(new StringReader(inMessage));
 			String command = (String)map.get("command");
-			getAppController().info("received " + command );
+			getAppController().debug("received " + command );
 			if( "authenticated".equals( command))
 			{
 				String value = (String)map.get("entermedia.key");
@@ -123,18 +123,11 @@ public class WsConnection implements WebSocketListener
 			}
 			else if( "downloadfolders".equals( command))
 			{
-				Map rootFolder = (Map)map.get("rootfolder");
-				String catalogid = (String)map.get("catalogid");
-				String mediadbid = (String)map.get("mediadbid");
-				String collectionid = (String)map.get("collectionid");
-
-				getAppController().downloadFolders(catalogid, mediadbid, collectionid, rootFolder);
+				getAppController().downloadFolders(map);
 			}
 			else if( "checkincollection".equals( command))
 			{
-
 				getAppController().checkinFiles(map);
-				
 			}
 			else if( "newclientconnect".equals( command))
 			{

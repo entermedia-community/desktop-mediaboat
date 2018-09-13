@@ -140,7 +140,7 @@ public class LoginForm extends JFrame
 		panel.setLayout(null);
 		
 		errorlog.setFont(new Font("Serif", Font.BOLD, 11));
-		errorlog.setText("Loaded\n");
+		errorlog.setText("Started\n");
 		errorlog.setEditable(false);
 		errorlog.setBackground(Color.LIGHT_GRAY);
 		final JScrollPane scrolll = new JScrollPane(errorlog);
@@ -190,7 +190,7 @@ public class LoginForm extends JFrame
 		{
 			text = text.substring(0,2000);
 		}
-		errorlog.setText("\nInfo: " + inString + "\n" + text);
+		errorlog.setText("\n" + inString + "\n" + text);
 	}
 
 }

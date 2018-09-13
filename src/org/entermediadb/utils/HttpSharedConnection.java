@@ -5,7 +5,9 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collection;
+import java.util.GregorianCalendar;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -22,8 +24,10 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.BasicCookieStore;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.http.impl.cookie.BasicClientCookie;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.message.BasicNameValuePair;
 import org.json.simple.JSONObject;
@@ -37,7 +41,8 @@ public class HttpSharedConnection
 	ContentType jsonType = ContentType.create("application/json", UTF8);
 
 	protected Collection fieldSharedHeaders;
-	
+    protected BasicCookieStore cookieStore = new BasicCookieStore();
+
 	public Collection getSharedHeaders()
 	{
 		if (fieldSharedHeaders == null)
@@ -75,10 +80,20 @@ public class HttpSharedConnection
 		        cm.setDefaultMaxPerRoute(10);
 		        RequestConfig requestConfig = RequestConfig.custom()
 		            .setConnectTimeout(15000)
-		            .setCookieSpec(CookieSpecs.DEFAULT)
+		        	.setCookieSpec(CookieSpecs.DEFAULT)
+		            //.setSocketTimeout(15000)
 		            .build();
+		        
+		        
+//		            BasicClientCookie cookie = new BasicClientCookie("JSESSIONID", "1234");
+//		            cookie.setDomain(".github.com");
+//		            cookie.setPath("/");
+//		            cookieStore.addCookie(cookie);
+		        //    HttpClient client = HttpClientBuilder.create().setDefaultCookieStore(cookieStore).build();
+		        
 		        fieldHttpClient = HttpClients.custom()
 		            .setConnectionManager(cm)
+		            .setDefaultCookieStore(cookieStore)
 		            .setDefaultRequestConfig(requestConfig).build();
 		        return fieldHttpClient;
 			
@@ -168,6 +183,7 @@ public class HttpSharedConnection
 		{
 			HttpPost method = makePost(path);
 			method.setEntity(inBuild);
+			
 			HttpResponse response2 = getSharedClient().execute(method);
 			return response2;
 		}
@@ -228,9 +244,21 @@ public class HttpSharedConnection
 	}
 	public void addSharedHeader(String inType, String inVal)
 	{
-		BasicHeader header = new BasicHeader(inType, inVal);
+		BasicHeader header = new BasicHeader("X-" + inType, inVal);
 		getSharedHeaders().add(header);
 	}
+	
+	public void addSharedCookie(String domain, String inKey,String inVal)
+	{
+		BasicClientCookie cookie = new BasicClientCookie(inKey, inVal);
+		cookie.setPath("/");
+		cookie.setDomain(domain);
+    	Calendar cal = new GregorianCalendar();
+    	cal.add(Calendar.MONTH, 1);
+    	cookie.setExpiryDate(cal.getTime());
+    	cookieStore.addCookie(cookie);
+	}
+	
 	public static String urlEscape(String completeurl)
 	{
 //		gen-delims  = ":"  "/"  "?"  "#"  "["  "]" "@"

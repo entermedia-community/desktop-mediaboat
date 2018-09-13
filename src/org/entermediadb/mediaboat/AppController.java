@@ -78,14 +78,17 @@ public class AppController implements LogListener
 
 			String url = "ws://" + prefix + "/entermedia/services/websocket/org/entermediadb/websocket/mediaboat/MediaBoatConnection";
 			url = url + "?userid=" + getModel().getUserId();
+			debug("Connecting to:" + url);
 			URI uri = new URI(url);
 			
 			WsConnection connection = new WsConnection(uri);
 			connection.setAppController(this);
 			if( !connection.connect() )
 			{
+				debug("Could not connect");
 				return false;
 			}
+			debug("Connected ok");
 			getModel().setConnection(connection);
 			// more about drafts here: http://github.com/TooTallNate/Java-WebSocket/wiki/Drafts
 			return getModel().login(uri, server,inUname,inPass);
@@ -106,9 +109,9 @@ public class AppController implements LogListener
 	{
 		getLoginForm().info(inString);
 	}
-	public void downloadFolders(String catalogid, String mediadbid, String collectionid, Map inRoot)
+	public void downloadFolders(Map inRoot)
 	{
-		getModel().downloadFolders( catalogid,  mediadbid,  collectionid, inRoot);
+		getModel().downloadFolders( inRoot);
 	}
 	
 	//has connection
@@ -143,9 +146,8 @@ public class AppController implements LogListener
 
 	public void loginComplete(String inValue)
 	{
-		// TODO Auto-generated method stub
 		getModel().loginComplete(inValue);
-				
+		info("Login complete");
 	}
 
 	public boolean reconnect()
@@ -263,5 +265,23 @@ public class AppController implements LogListener
 		{
 			exec.runExec("start", args);
 		}
+	}
+
+	public void debug(String inString)
+	{
+		if( isDebug() )
+		{
+			getLoginForm().info("Debug: " + inString);
+		}
+		else
+		{
+			System.out.println(inString);
+		}
+	}
+
+
+	protected boolean isDebug()
+	{
+		return getModel().getServer().startsWith("http:");
 	}
 }

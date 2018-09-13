@@ -5,6 +5,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -191,15 +192,30 @@ public class EnterMediaModel
 		getConnection().send(mes);
 	}
 
-	public void downloadFolders(String catalogid, String mediadbid, String collectionid, Map inRoot)
+	public void downloadFolders(Map inReq)
 	{
 		busy(true);
 		try
 		{
-			String folder = (String)inRoot.get("subpath");
-			downloadFolder(catalogid,mediadbid,collectionid,inRoot); //Recursive
+			String catalogid = (String)inReq.get("catalogid");
+			String mediadbid = (String)inReq.get("mediadbid");
+			String collectionid = (String)inReq.get("collectionid");
+			String categoryid = (String)inReq.get("categoryid");
+
+			Map folder = (Map)inReq.get("folderdetails"); //This has children
+			String rootname = (String)inReq.get("rootname");
 			
-			getLogListener().info("Downloaded  complete" + folder);
+			JSONObject inParams = new JSONObject();
+			inParams.put("catalogid",catalogid);
+			inParams.put("mediadbid",mediadbid);
+			inParams.put("rootname", rootname);
+			inParams.put("collectionid", collectionid);
+			inParams.put("categoryid", categoryid);
+			inParams.put("server",getServer());
+
+			downloadFolder(inParams,folder); //Recursive
+			
+			getLogListener().info(rootname + " download complete");
 			Message mess = new Message("folderedited");
 			mess.put("foldername", folder);
 			getConnection().send(mess);
@@ -209,52 +225,50 @@ public class EnterMediaModel
 			busy(false);
 		}
 	}
-	private void downloadFolder(String catalogid, String inMediadb, String inCollectionid, Map inChild)
+	private void downloadFolder(Map inParams, Map inFolder)
 	{
-		String path = (String)inChild.get("subpath");
+		String mediadbid = (String)inParams.get("mediadbid");
 
-		JSONObject inParams = new JSONObject();
-		inParams.put("catalogid",catalogid);
-		inParams.put("collectionid", inChild.get("collectionid"));
-		inParams.put("categoryid", inChild.get("categoryid"));
-		inParams.put("server",getServer());
-				
+		JSONObject request = new JSONObject(inParams);
+		String categoryid = (String)inFolder.get("categoryid");
+		request.put("categoryid",categoryid);
 		//One folder at a time
-		String url = getServer() + "/" + inMediadb + "/services/module/asset/sync/downloadfolder.json";
+		String url = getServer() + "/" + mediadbid + "/services/module/asset/sync/downloadfolder.json";
 		try
 		{
-			debug("downloadFolders on" + path + " sent " + inParams.toJSONString());
-			HttpResponse resp = getHttpConnection().sharedJsonPost(url,inParams);
+			String subpath = (String)inFolder.get("subpath");
+			debug("downloadFolders on" + subpath + " sent " + request.toJSONString());
+			HttpResponse resp = getHttpConnection().sharedJsonPost(url,request);
 	
 			if (resp.getStatusLine().getStatusCode() == 200)
 			{
 				JSONParser parser = new JSONParser();
 				String returned = EntityUtils.toString(resp.getEntity());
-				debug("download " + path + " returned: " + returned);
+				debug("download " + subpath + " returned: " + returned);
 				JSONObject parsed = (JSONObject)parser.parse(returned);
 //				Reader reader = new InputStreamReader(resp.getEntity().getContent(),"UTF-8");
 //				JSONObject parsed = (JSONObject)parser.parse(reader);
 //				getFiller().close(reader);
 				EntityUtils.consume(resp.getEntity());
 
-				Collection children = (Collection)inChild.get("children");
+				Collection children = (Collection)inFolder.get("children");
 				Set subfolders = new HashSet();
 				for (Iterator iterator = children.iterator(); iterator.hasNext();)
 				{
 					Map subfolder = (Map) iterator.next();
 					subfolders.add(subfolder.get("name"));
 				}
-				downloadFilesinFolder(inParams,path,subfolders,parsed);
+				downloadFilesinFolder(inParams,subpath,subfolders,parsed);
 
 				for (Iterator iterator = children.iterator(); iterator.hasNext();)
 				{
 					Map subfolder = (Map) iterator.next();
-					downloadFolder(catalogid,inMediadb,inCollectionid,subfolder);
+					downloadFolder(inParams,subfolder);
 				}
 			}
 			else
 			{
-				debug("downloadFolder Error on " + path  + " code:" + resp.getStatusLine().getStatusCode() );
+				debug("downloadFolder Error on " + subpath  + " code:" + resp.getStatusLine().getStatusCode() );
 				getLogListener().info(resp.getStatusLine().getStatusCode() + " Could not upload " + url + " " + resp.getStatusLine().getReasonPhrase());
 			}
 		}
@@ -264,10 +278,10 @@ public class EnterMediaModel
 		}
 	}
 
-	private void downloadFilesinFolder(JSONObject params, String inPath, Set inSubFolders, JSONObject inParsed)
+	private void downloadFilesinFolder(Map params, String inPath, Set inSubFolders, JSONObject inParsed)
 	{
 		//The path is a collection path
-		String path = getWorkFolder() + "/" +  inPath;
+		String path = getWorkFolder() + inPath;
 		File folder = new File(path);
 		folder.mkdirs();
 		File[] files = folder.listFiles();
@@ -548,6 +562,25 @@ public class EnterMediaModel
 		getConfig().put("key", inEnterMediaKey);
 		getConfig().save();
 		getHttpConnection().addSharedHeader("entermedia.key", inEnterMediaKey);
+		
+		String server = getServer();
+		String host = getHost();
+		getHttpConnection().addSharedCookie(host,"entermedia.key", inEnterMediaKey);
+	}
+
+	protected String getHost()
+	{
+		URI uri = null;
+		try
+		{
+			uri = new URI(getServer());
+		}
+		catch (URISyntaxException e)
+		{
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return uri.getHost();
 	}
 
 

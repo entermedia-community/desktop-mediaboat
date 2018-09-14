@@ -255,6 +255,8 @@ public class AppController implements LogListener
 	        } catch (IOException e) {
 	            
 	        }
+	        //https://stackoverflow.com/questions/11253772/setting-the-default-application-icon-image-in-java-swing-on-os-x
+
 	        frame.setTitle("EnterMedia Boat");
 	        frame.setIconImages(images);	        
 	        setLoginForm(frame);

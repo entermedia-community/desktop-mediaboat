@@ -59,10 +59,10 @@ public class LoginForm extends JFrame
 	{
 		errorlog.setContentType("text/html");
 		SmoothLabel l1, l2, l3, l4;
-		l1 = new SmoothLabel("EnterMedia Login");
-		l1.setForeground(Color.green);
+		l1 = new SmoothLabel("Login");
+		l1.setForeground(Color.DARK_GRAY);
 		
-		l1.setFont(new Font("Serif", Font.BOLD, 18));
+		l1.setFont(new Font("San-Serif", Font.BOLD, 20));
 
 		l2 = new SmoothLabel("Username");
 		l3 = new SmoothLabel("Password");

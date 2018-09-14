@@ -1,15 +1,20 @@
 package org.entermediadb.mediaboat;
 
 import java.awt.Dimension;
+import java.awt.Image;
 import java.awt.Toolkit;
 import java.io.File;
+import java.io.IOException;
 import java.net.URI;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
 
+import javax.imageio.ImageIO;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 
@@ -236,6 +241,22 @@ public class AppController implements LogListener
 	        //Display the window.
 	        LoginForm frame = new LoginForm();
 	        
+	        URL ICON20 = getClass().getResource("/em20.png");
+	        URL ICON40 = getClass().getResource("/em40.png");
+	        URL ICONBIG = getClass().getResource("/EMLogo.png");
+
+	        List<Image> images = new ArrayList<>();
+	        try {
+	            images.add(ImageIO.read(ICONBIG));
+	            images.add(ImageIO.read(ICON40));
+	            images.add(ImageIO.read(ICON20));
+	            //https://stackoverflow.com/questions/18224184/sizes-of-frame-icons-used-in-swing
+	           // images.add(ImageIO.read(ICON16));
+	        } catch (IOException e) {
+	            
+	        }
+	        frame.setTitle("EnterMedia Boat");
+	        frame.setIconImages(images);	        
 	        setLoginForm(frame);
 	        frame.setAppController(this);
 	        frame.setLogListener(this);

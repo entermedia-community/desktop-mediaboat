@@ -245,7 +245,7 @@ public class AppController implements LogListener
 	        URL ICON40 = getClass().getResource("/em40.png");
 	        URL ICONBIG = getClass().getResource("/EMLogo.png");
 
-	        List<Image> images = new ArrayList<>();
+	        List<Image> images = new ArrayList<Image>();
 	        try {
 	            images.add(ImageIO.read(ICONBIG));
 	            images.add(ImageIO.read(ICON40));

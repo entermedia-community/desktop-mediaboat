@@ -241,24 +241,23 @@ public class AppController implements LogListener
 	        //Display the window.
 	        LoginForm frame = new LoginForm();
 	        
-//	        URL ICON20 = getClass().getResource("em20.png");
-//	        URL ICON40 = getClass().getResource("em40.png");
-//	        URL ICONBIG = getClass().getResource("EMLogo.png");
-//
-//	        List<Image> images = new ArrayList<Image>();
-//	        try {
-//	            images.add(ImageIO.read(ICONBIG));
-//	            images.add(ImageIO.read(ICON40));
-//	            images.add(ImageIO.read(ICON20));
-//	            //https://stackoverflow.com/questions/18224184/sizes-of-frame-icons-used-in-swing
-//	           // images.add(ImageIO.read(ICON16));
-//	        } catch (IOException e) {
-//	            
-//	        }
+	        try {
+		        URL ICON20 = getClass().getResource("/em20.png");
+		        URL ICON40 = getClass().getResource("/em40.png");
+		        URL ICONBIG = getClass().getResource("/EMLogo.png");
+		        List<Image> images = new ArrayList<Image>();
+	            images.add(ImageIO.read(ICONBIG));
+	            images.add(ImageIO.read(ICON40));
+	            images.add(ImageIO.read(ICON20));
+	            //https://stackoverflow.com/questions/18224184/sizes-of-frame-icons-used-in-swing
+	           // images.add(ImageIO.read(ICON16));
+		        frame.setIconImages(images);	        
+	        } catch (Exception e) {
+	            
+	        }
 	        //https://stackoverflow.com/questions/11253772/setting-the-default-application-icon-image-in-java-swing-on-os-x
 
 	        frame.setTitle("EnterMedia Boat");
-//	        frame.setIconImages(images);	        
 	        setLoginForm(frame);
 	        frame.setAppController(this);
 	        frame.setLogListener(this);

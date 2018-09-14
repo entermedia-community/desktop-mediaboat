@@ -8,7 +8,7 @@
 
     <target name="compile">
         <mkdir dir="${build}/classes" />
-        <javac includeantruntime="false" debug="on" srcdir="src"
+        <javac includeantruntime="false" debug="on" srcdir="${basedir}/src"
                destdir="${build}/classes" target="1.6" source="1.6">
                
       <classpath>
@@ -25,6 +25,7 @@
         <mkdir dir="${dist}"/>
         <jar destfile="${dist}/MediaBoatClient.jar" manifest="MANIFEST.MF">
             <fileset dir="${build}/classes" includes="**/*.class" />
+            <fileset dir="${basedir}/src" includes="**/*.png" />
         </jar>
     	
     	 <exec executable="/bin/bash">

@@ -41,8 +41,12 @@ java -jar $BIN_FOLDER/packr.jar $SCRIPTS_FOLDER/mediaboat-windows7-64.json
 java -jar $BIN_FOLDER/packr.jar $SCRIPTS_FOLDER/mediaboat-windows10-64.json
 java -jar $BIN_FOLDER/packr.jar $SCRIPTS_FOLDER/mediaboat-mac.json
 
+
+
 rm -f $DIST_FOLDER/mediaboat-windows7.zip && cd $DIST_FOLDER/windows7-64/ && zip -r $DIST_FOLDER/mediaboat-windows7.zip .
 rm -f $DIST_FOLDER/mediaboat-windows10.zip && cd $DIST_FOLDER/windows10-64/ && zip -r $DIST_FOLDER/mediaboat-windows10.zip .
+
+cp $SCRIPTS_FOLDER/MediaBoat-mac.sh $DIST_FOLDER/mediaboat.app/Contents/MacOS/MediaBoatClient && rm -rf $DIST_FOLDER/mediaboat.app/Contents/Resources/config.json $DIST_FOLDER/mediaboat.app/Contents/Resources/jre 
 rm -f $DIST_FOLDER/mediaboat-mac.zip && cd $DIST_FOLDER/ && zip -r $DIST_FOLDER/mediaboat-mac.zip mediaboat.app
 
 cd $DIST_FOLDER/ && mkdir linux && cp $SCRIPTS_FOLDER/MediaBoat.sh linux/ && cp MediaBoatClient.jar linux/ && cp -rf $WORKSPACE_FOLDER/lib $DIST_FOLDER/linux/

@@ -137,6 +137,11 @@ public class WsConnection implements WebSocketListener
 			{
 				getAppController().cmdOpenFolder(map);
 			}
+			else if( "replaceddesktop".equals( command))
+			{
+				getAppController().replacedDesktop(map);
+			}
+			
 			
 			
 		} catch (Throwable ex)

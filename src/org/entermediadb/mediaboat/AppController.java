@@ -318,4 +318,14 @@ public class AppController implements LogListener
 	{
 		return model == null || getModel().getServer() == null || getModel().getServer().startsWith("http:");
 	}
+
+
+	public void replacedDesktop(JSONObject inMap)
+	{
+		String desktopid = (String)inMap.get("desktopid");
+		String message = "New client connected to server. " + desktopid;
+		JOptionPane.showMessageDialog(getLoginForm(),  message, "Logout",JOptionPane.ERROR_MESSAGE);
+		createAndShowGUI();
+
+	}
 }

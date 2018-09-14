@@ -467,6 +467,9 @@ public class EnterMediaModel
 				fileinfo.put("fullpath", child.getAbsolutePath());
 				fileinfo.put("filesize", child.length());
 				fileinfo.put("modificationdate", child.lastModified());
+//				String newmd5 = runMd5(child);
+//				fileinfo.put("newmd5", newmd5);
+				
 				filelist.add(fileinfo);
 			}
 		}

@@ -12,7 +12,7 @@
     "resources": [
         "/var/jenkins_home/jobs/MediaBoat/workspace/lib/"
     ],
-    "icon": "../images/em.icns",
+    "icon": "/var/jenkins_home/jobs/MediaBoat/workspace/installer/images/em.icns",
     "minimizejre": "soft",
     "output": "/var/jenkins_home/jobs/MediaBoat/workspace/dist/mediaboat.app"
 }

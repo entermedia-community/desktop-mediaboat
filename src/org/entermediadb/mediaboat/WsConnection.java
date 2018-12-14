@@ -121,6 +121,12 @@ public class WsConnection implements WebSocketListener
 				
 				//getAppController().getConfig().put("entermedia.key", value);
 			}
+			else if( "openasset".equals( command))
+			{
+				getAppController().openAsset(map);
+			}
+			
+			
 			else if( "downloadfolders".equals( command))
 			{
 				getAppController().downloadFolders(map);

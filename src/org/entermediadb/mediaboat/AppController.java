@@ -126,13 +126,13 @@ public class AppController implements LogListener
 		getModel().downloadFolders( inRoot);
 		String rootname = (String)inRoot.get("rootname");
 		String path = getModel().getWorkFolder() + "/" + rootname;
-		openFolder(path);
+		openPath(path);
 	}
 	
 	public void cmdOpenFolder(JSONObject inMap)
 	{
 		String path = (String)inMap.get("fullpath");
-		openFolder(path);
+		openPath(path);
 			
 	}
 
@@ -277,7 +277,7 @@ public class AppController implements LogListener
 	
 	
 
-	protected void openFolder(String path)
+	protected void openPath(String path)
 	{
 		if( OS.isWindows() )
 		{
@@ -300,6 +300,11 @@ public class AppController implements LogListener
 			exec.runExec("start", args);
 		}
 	}
+	
+	
+	
+	
+	
 
 	public void debug(String inString)
 	{
@@ -327,5 +332,14 @@ public class AppController implements LogListener
 		JOptionPane.showMessageDialog(getLoginForm(),  message, "Logout",JOptionPane.ERROR_MESSAGE);
 		createAndShowGUI();
 
+	}
+
+
+	public void openAsset(JSONObject inMap)
+	{
+		String finalpath = getModel().downloadFile( inMap);
+	
+		openPath(finalpath);
+		
 	}
 }

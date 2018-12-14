@@ -599,6 +599,58 @@ public class EnterMediaModel
 		return uri.getHost();
 	}
 
+	public String downloadFile(JSONObject inMap)
+	{
+
+		String url = (String) inMap.get("url");
+		String assetid = (String) inMap.get("assetid");
+		String catalogid = (String) inMap.get("catalogid");
+		String filename = (String) inMap.get("filename");
+		String mediadb = (String) inMap.get("mediadbid");
+
+		String finalurl = getServer() +"/"+ mediadb + "/services/module/asset/downloads/originals/" + url;
+		String path = getWorkFolder() + "/assets/" + catalogid + "/" + assetid + "/" + filename ;
+		File folder = new File(path);
+		folder.getParentFile().mkdirs();
+		inMap.put("entermedia.key", getEnterMediaKey());
+
+		HttpResponse resp = getHttpConnection().sharedTextPost(finalurl, inMap);
+		if (resp.getStatusLine().getStatusCode() == 200)
+		{
+			InputStream input = null;
+			FileOutputStream output = null;
+			try
+			{
+				input = resp.getEntity().getContent();
+				folder.getParentFile().mkdirs();
+				output = new FileOutputStream(folder);
+				getFiller().fill(input, output);
+
+				String savetime = (String) inMap.get("assetmodificationdate");
+				folder.setLastModified(Long.parseLong(savetime));
+				
+			}
+			catch (Throwable ex)
+			{
+				getLogListener().reportError("Problem downloading", ex);
+			}
+			finally
+			{
+				getFiller().consume(resp);
+				getFiller().close(input);
+				getFiller().close(output);
+			}
+
+		}
+		else
+		{
+			getLogListener().info(resp.getStatusLine().getStatusCode() + " Could not download " + url + " " + resp.getStatusLine().getReasonPhrase());
+		}
+		
+		return path;
+		
+	}
+
 
 	/*
 	public void uploadFile(JSONObject inMap)

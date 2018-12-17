@@ -16,7 +16,9 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpPost;
 import org.apache.http.util.EntityUtils;
+import org.entermediadb.utils.HttpMimeBuilder;
 import org.entermediadb.utils.HttpSharedConnection;
 import org.entermediadb.utils.OutputFiller;
 import org.json.simple.JSONObject;
@@ -651,23 +653,35 @@ public class EnterMediaModel
 		
 	}
 
-
-	/*
-	public void uploadFile(JSONObject inMap)
+	public void uploadAsset(JSONObject inMap)
 	{
+		// TODO Auto-generated method stub
+		
+	
+
+	
 		try
 		{
 			//String url = (String) inMap.get("uploadurl");
-			String filepath = (String) inMap.get("filepath");
-			String serverpath = (String) inMap.get("serverpath");
+					
+			String mediadbid = (String)inMap.get("mediadb");
+			String catalogid = (String) inMap.get("catalogid");
+			String assetid = (String) inMap.get("assetid");
+			String name = (String) inMap.get("filename");
+			String filepath = getWorkFolder() + "/assets/" + catalogid + "/" + assetid + "/" + name ;
+			
+			boolean replace = (Boolean)inMap.get("replace");
+			String url = null;
+			if(replace == true) {
+				url = getServer() + "/" + mediadbid + "/services/module/asset/attachments/uploadprimary.json?assetid=" + assetid;
+			}
+			
+			else {
+				inMap.remove("assetid"); //need a new one.
+				
+				url = getServer() + "/" + mediadbid + "/services/module/asset/create";
 
-			//					url  = "http://localhost:8080/openedit/views/filemanager/upload/uploadfile-finish.html?entermedia.key=" + getEnterMediaKey();
-			//					filepath = "/home/ian/testfile.tiff";
-			//					serverpath = "/test/new/folder/";
-			String mediadbid = (String)inMap.get("mediadbid");
-
-			String url = getServer() + "/" + mediadbid + "/services/module/asset/sync/syncfolder.json";
-
+			}
 			File file = new File(filepath);
 			HttpMimeBuilder builder = new HttpMimeBuilder();
 
@@ -676,7 +690,7 @@ public class EnterMediaModel
 			//POST https://www.googleapis.com/upload/storage/v1/b/myBucket/o?uploadType=multipart
 			builder.addPart("metadata", inMap.toJSONString(), "application/json"); //What should this be called?
 			builder.addPart("file.0", file);
-			builder.addPart("path", serverpath);
+			builder.addPart("path", url);
 
 			method.setEntity(builder.build());
 
@@ -687,6 +701,9 @@ public class EnterMediaModel
 				String returned = EntityUtils.toString(resp.getEntity());
 
 			}
+			
+			
+			
 		}
 		catch (Exception e)
 		{
@@ -695,7 +712,7 @@ public class EnterMediaModel
 		}
 
 	}
-	*/
+	
 	
 	
 	

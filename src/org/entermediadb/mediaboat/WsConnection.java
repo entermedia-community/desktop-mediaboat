@@ -147,6 +147,10 @@ public class WsConnection implements WebSocketListener
 			{
 				getAppController().replacedDesktop(map);
 			}
+			else if( "singleupload".equals( command))
+			{
+				getAppController().uploadAsset(map);
+			}
 			
 			
 			

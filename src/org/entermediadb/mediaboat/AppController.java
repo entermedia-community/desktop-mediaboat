@@ -342,4 +342,11 @@ public class AppController implements LogListener
 		openPath(finalpath);
 		
 	}
+
+
+	public void uploadAsset(JSONObject inCommand)
+	{
+		getModel().uploadAsset(inCommand);
+		
+	}
 }

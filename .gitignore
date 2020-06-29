@@ -3,3 +3,5 @@
 /dist/
 /installer/dist/
 /installer/bin/
+/electron/node_modules
+/electron/out

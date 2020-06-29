@@ -1,0 +1,76 @@
+{
+  "name": "em-app",
+  "productName": "em-app",
+  "version": "1.0.0",
+  "description": "Entermedia that connects directly to",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "makewin": "electron-forge make --platform win32",
+    "makemac": "electron-forge make --platform darwin",
+    "publish": "electron-forge publish",
+    "lint": "echo \"No linting configured\""
+  },
+  "keywords": [],
+  "author": {
+    "name": "Mitsuo Yazawa",
+    "email": "mitsuo@entermediadb.org"
+  },
+  "license": "---",
+  "config": {
+    "forge": {
+      "packagerConfig": {},
+      "makers": [
+        {
+          "name": "@electron-forge/maker-squirrel",
+          "config": {
+            "name": "em_app"
+          }
+        },
+        {
+          "name": "@electron-forge/maker-zip",
+          "platforms": [
+            "darwin",
+            "linux",
+            "win32"
+          ]
+        },
+        {
+          "name": "@electron-forge/maker-rpm",
+          "config": {
+            "options": {
+              "maintainer": "Rishi Bond",
+              "homepage": "http://entermediadb.org"
+            }
+          }
+        },
+        {
+          "name": "@electron-forge/maker-deb",
+          "config": {
+            "options": {
+              "maintainer": "Rishi Bond",
+              "homepage": "http://entermediadb.org"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.0"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^6.0.0-beta.51",
+    "@electron-forge/maker-appx": "^6.0.0-beta.51",
+    "@electron-forge/maker-deb": "^6.0.0-beta.51",
+    "@electron-forge/maker-dmg": "^6.0.0-beta.51",
+    "@electron-forge/maker-rpm": "^6.0.0-beta.51",
+    "@electron-forge/maker-squirrel": "^6.0.0-beta.51",
+    "@electron-forge/maker-wix": "^6.0.0-beta.51",
+    "@electron-forge/maker-zip": "^6.0.0-beta.51",
+    "electron": "9.0.5",
+    "electron-builder": "^22.7.0"
+  }
+}

@@ -1,5 +1,10 @@
+var fileWatcher = require("chokidar");
+
 const { app, BrowserWindow, Menu, getCurrentWindow } = require('electron');
 const path = require('path');
+
+// exports to renderer
+exports.execCmd = execCmd;
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) { // eslint-disable-line global-require
@@ -14,19 +19,24 @@ const createWindow = () => {
   this.mainWindow = new BrowserWindow({
     width: 1024,
     height: 768,
-    icon: __dirname + '/assets/images/em-logo.png'
+    icon: __dirname + '/assets/images/em-logo.png',
+    webPreferences: {
+      nodeIntegration: true
+    }
   });
   
   // and load the index.html of the app.
-  this.mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  // this.mainWindow.loadFile(path.join(__dirname, 'index.html'));
   
   // Open the DevTools.
-  // this.mainWindow.webContents.openDevTools();
+  this.mainWindow.webContents.openDevTools();
   
   // mine
   setMainMenu(this.mainWindow);
   checkSession(this.mainWindow);
+  
 };
+
 function setMainMenu(win) {
   const template = [{
     label: 'EnterMedia',
@@ -51,6 +61,27 @@ function setMainMenu(win) {
     }]
   }];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// Executing commands
+function execCmd(command) {
+  let spawn = require("child_process").spawn;
+  cmd = ["-c"];
+  command.forEach(c => {
+    cmd.push(c);
+  });
+  console.log(cmd.length)
+  let exec = spawn("bash", cmd);
+  
+  exec.stdout.on("data", (data) => {
+    console.log('data:', data.toString());
+  });  
+  exec.stderr.on("data", (err) => {
+    // Handle error...
+  });  
+  exec.on("exit", (code) => {
+    console.log(`exitcode: ${code}`);
+  });
 }
 
 function checkSession(win) {
@@ -81,3 +112,5 @@ app.on('activate', () => {
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.
 // background-image: url('/entermediadb/mediadb/services/module/asset/downloads/preset/2019/12/f0/94a/image200x200.png')
+
+

@@ -32,6 +32,12 @@ import org.apache.http.message.BasicHeader;
 import org.apache.http.message.BasicNameValuePair;
 import org.json.simple.JSONObject;
 
+/**
+ * @deprecated
+ * @author shanti
+ *
+ */
+
 public class HttpSharedConnection
 {
 	

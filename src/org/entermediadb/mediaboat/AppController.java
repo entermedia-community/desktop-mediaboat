@@ -5,6 +5,7 @@ import java.awt.Image;
 import java.awt.Toolkit;
 import java.io.File;
 import java.io.IOException;
+import java.io.StringReader;
 import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
@@ -23,6 +24,8 @@ import org.entermediadb.utils.Exec;
 import org.entermediadb.utils.ExecutorManager;
 import org.entermediadb.utils.WhatOs;
 import org.json.simple.JSONObject;
+
+import com.neovisionaries.ws.client.WebSocket;
 
 public class AppController implements LogListener
 {
@@ -58,12 +61,11 @@ public class AppController implements LogListener
 	}
 	
 	
-	
 	public Configuration getConfig()
 	{
 		return getModel().getConfig();
 	}
-	public boolean connect(String server, String inUname, String inPass)
+	public boolean connect(String server, String inUname, String inKey)
 	{
 		try
 		{
@@ -103,7 +105,7 @@ public class AppController implements LogListener
 			debug("Connected ok");
 			getModel().setConnection(connection);
 			// more about drafts here: http://github.com/TooTallNate/Java-WebSocket/wiki/Drafts
-			return getModel().login(uri, server,inUname,inPass);
+			return getModel().login(uri, server,inUname,inKey);
 		}
 		catch( Exception ex)
 		{
@@ -115,11 +117,25 @@ public class AppController implements LogListener
 	}
 	public void reportError(String inString, Throwable inEx)
 	{
-		getLoginForm().reportError(inString, inEx);
+		if( isDebug() )
+		{
+			getLoginForm().info("Error: " + inString);
+		}
+		else
+		{
+			System.out.println(inString);
+		}
 	}
 	public void info(String inString)
 	{
-		getLoginForm().info(inString);
+		if( isDebug() )
+		{
+			getLoginForm().info("Info: " + inString);
+		}
+		else
+		{
+			System.out.println(inString);
+		}
 	}
 	public void downloadFolders(Map inRoot)
 	{
@@ -135,7 +151,7 @@ public class AppController implements LogListener
 		openPath(path);
 			
 	}
-
+	
 	
 	//has connection
 	//has UI
@@ -167,9 +183,9 @@ public class AppController implements LogListener
 				});
 	}
 
-	public void loginComplete(String inValue)
+	public void loginComplete(String inEnterMediaKey)
 	{
-		getModel().loginComplete(inValue);
+		getModel().loginComplete(inEnterMediaKey);
 		info("Login complete");
 	}
 
@@ -270,9 +286,21 @@ public class AppController implements LogListener
 	        
 	    }
 
-	public void init()
+	public void init(String[] args )
 	{
-		createAndShowGUI();
+		String server = args[0];
+		String username = args[1];
+		String key = args[2];
+		
+		getConfig().put("username", username);
+		getConfig().put("server", server);
+		//check  for key
+		getConfig().put("key", key);
+		getConfig().save();
+
+		//createAndShowGUI();
+		connect(server,username,key);
+
 	}
 	
 	
@@ -321,6 +349,10 @@ public class AppController implements LogListener
 
 	protected boolean isDebug()
 	{
+		if( fieldLoginForm == null)
+		{
+			return false;
+		}
 		return model == null || getModel().getServer() == null || getModel().getServer().startsWith("http:");
 	}
 
@@ -349,4 +381,69 @@ public class AppController implements LogListener
 		getModel().uploadAsset(inCommand);
 		
 	}
+	
+	public void onTextMessage(WebSocket inWebsocket, String inMessage) throws Exception
+	{
+		try
+		{
+			JSONObject map = (JSONObject)getModel().getConnection().getJSONParser().parse(new StringReader(inMessage));
+			String command = (String)map.get("command");
+			debug("received " + command );
+			if( "authenticated".equals( command))
+			{
+				String value = (String)map.get("entermedia.key");
+				loginComplete(value);
+				getModel().getConnection().autoreconnect = true;
+				//getConfig().put("entermedia.key", value);
+			}
+			else if( "authenticatefail".equals( command))
+			{
+				String value = (String)map.get("reason");
+				getModel().getConnection().autoreconnect = false;
+				getModel().getConnection().disconnect();
+				loginFailed(value);
+				
+				//getConfig().put("entermedia.key", value);
+			}
+			else if( "openasset".equals( command))
+			{
+				openAsset(map);
+			}
+			else if( "downloadfolders".equals( command))
+			{
+				downloadFolders(map);
+			}
+			else if( "checkincollection".equals( command))
+			{
+				checkinFiles(map);
+			}
+			else if( "newclientconnect".equals( command))
+			{
+				disconnect(map);
+			}
+			else if( "openremotefolder".equals( command))
+			{
+				cmdOpenFolder(map);
+			}
+			else if( "replaceddesktop".equals( command))
+			{
+				replacedDesktop(map);
+			}
+			else if( "singleupload".equals( command))
+			{
+				uploadAsset(map);
+			}
+			else if( "addlocalfilestocache".equals( command))
+			{
+				String absrootfolder = (String)map.get("fullpath");
+				getModel().listLocalFilesToCache(map,absrootfolder);
+			}
+			
+		} catch (Throwable ex)
+		{
+	 		//throw new RuntimeException(ex);
+			reportError("Message problem", ex);
+		}
+	}
+	
 }

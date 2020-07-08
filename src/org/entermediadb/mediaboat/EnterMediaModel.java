@@ -16,10 +16,11 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.util.EntityUtils;
+import org.entermediadb.net.HttpSharedConnection;
 import org.entermediadb.utils.HttpMimeBuilder;
-import org.entermediadb.utils.HttpSharedConnection;
 import org.entermediadb.utils.OutputFiller;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -110,11 +111,6 @@ public class EnterMediaModel
 			path = findHome();
 			getConfig().put("home", path);
 		}
-		getConfig().put("username", inUname);
-		getConfig().put("server", server);
-		//check  for key
-		getConfig().put("key", inKey);
-		getConfig().save();
 		//Check disk space etc?
 //		try
 //		{
@@ -253,7 +249,7 @@ public class EnterMediaModel
 		{
 			String subpath = (String)inFolder.get("subpath");
 			debug("downloadFolders on" + subpath + " sent " + request.toJSONString());
-			HttpResponse resp = getHttpConnection().sharedJsonPost(url,request);
+			HttpResponse resp = getHttpConnection().sharedPostWithJson(url,request);
 	
 			if (resp.getStatusLine().getStatusCode() == 200)
 			{
@@ -325,7 +321,7 @@ public class EnterMediaModel
 				continue;
 			}	
 			String url = (String) downloadreq.get("url"); //Full URL to content. Might be in other servers
-			HttpResponse resp = getHttpConnection().sharedTextPost(url, params);
+			HttpResponse resp = getHttpConnection().sharedPost(url, params);
 			if (resp.getStatusLine().getStatusCode() == 200)
 			{
 				InputStream input = null;
@@ -499,18 +495,14 @@ public class EnterMediaModel
 		{
 			debug("pushFolder on" + subfolder + " sent " + inParams.toJSONString());
 			
-			HttpResponse resp = getHttpConnection().sharedJsonPost(url,inParams);
+			CloseableHttpResponse resp = getHttpConnection().sharedPostWithJson(url,inParams);
 	
 			if (resp.getStatusLine().getStatusCode() == 200)
 			{
 				JSONParser parser = new JSONParser();
 				String returned = EntityUtils.toString(resp.getEntity());
 				debug(subfolder + " returned: " + returned);
-				JSONObject parsed = (JSONObject)parser.parse(returned);
-//				Reader reader = new InputStreamReader(resp.getEntity().getContent(),"UTF-8");
-//				JSONObject parsed = (JSONObject)parser.parse(reader);
-//				getFiller().close(reader);
-				EntityUtils.consume(resp.getEntity());
+				JSONObject parsed = getHttpConnection().parseJson(resp);
 				uploadFilesIntoCollection(subfolder,parsed);
 			}
 			else
@@ -523,7 +515,6 @@ public class EnterMediaModel
 		{
 			throw new RuntimeException(ex);
 		}
-
 	}
 	private void debug(String inString)
 	{
@@ -616,7 +607,7 @@ public class EnterMediaModel
 		folder.getParentFile().mkdirs();
 		inMap.put("entermedia.key", getEnterMediaKey());
 
-		HttpResponse resp = getHttpConnection().sharedTextPost(finalurl, inMap);
+		HttpResponse resp = getHttpConnection().sharedPost(finalurl, inMap);
 		if (resp.getStatusLine().getStatusCode() == 200)
 		{
 			InputStream input = null;
@@ -699,9 +690,9 @@ public class EnterMediaModel
 			if (resp.getStatusLine().getStatusCode() != 200)
 			{
 				String returned = EntityUtils.toString(resp.getEntity());
+				getFiller().consume(resp);
 
 			}
-			
 			
 			
 		}
@@ -713,7 +704,98 @@ public class EnterMediaModel
 
 	}
 	
+
+	protected void listLocalFilesToCache(Map inParams, String absrootfolder)
+	{
+		JSONObject params = new JSONObject(inParams);
+		params.put("entermedia.key", getEnterMediaKey());
+		params.put("rootfolder",absrootfolder);
+
+		File parentfolder = new File(absrootfolder);
+
+		ArrayList filelist = new ArrayList();
+		ArrayList childfolders = new ArrayList();
+
+		JSONObject root = new JSONObject();
+		
+		params.put("folderdetails", root);
+		
+		root.put("rootfolder",absrootfolder);
+		root.put("foldername", parentfolder.getName());
+		root.put("filelist", filelist);
+		root.put("childfolders", childfolders);
+
+		File[] files = parentfolder.listFiles();
+
+		for (int i = 0; i < files.length; i++)
+		{
+			File child = files[i];
+			if (child.isDirectory())
+			{
+
+				JSONObject folderinfo = new JSONObject();
+				folderinfo.put("foldername", child.getName());
+				childfolders.add(folderinfo);
+			}
+			else
+			{
+				JSONObject fileinfo = new JSONObject();
+				fileinfo.put("filename", child.getName());
+				fileinfo.put("fullpath", child.getAbsolutePath());
+				fileinfo.put("filesize", child.length());
+				fileinfo.put("modificationdate", child.lastModified());
+//					String newmd5 = runMd5(child);
+//					fileinfo.put("newmd5", newmd5);
+				
+				filelist.add(fileinfo);
+			}
+		}
+		//sendFolderCache(params);
+		Message mes = new Message("addlocalfilestocache_response");
+		mes.putAll(params);
+		
+		getConnection().send(mes);
+	}
+
+	/*
+	protected void sendFolderCache(JSONObject inParams)
+	{
+		//TODO: Call some post command and POST a folder full of content
+
+		//POST https://www.googleapis.com/upload/storage/v1/b/myBucket/o?uploadType=multipart
+		//builder.addParts(inParams);
+		String mediadbid = (String)inParams.get("mediadbid");
+		String rootfolder = (String)inParams.get("rootfolder");
+		String url = getServer() + "/" + mediadbid + "/services/module/asset/sync/uploadfoldercache.json";
+		try
+		{
+			debug("pushFolderCache on" + rootfolder + " sent " + inParams.toJSONString());
+			
+			HttpResponse resp = getHttpConnection().sharedJsonPost(url,inParams);
 	
-	
-	
+			if (resp.getStatusLine().getStatusCode() == 200)
+			{
+				JSONParser parser = new JSONParser();
+				String returned = EntityUtils.toString(resp.getEntity());
+				debug(rootfolder + " returned: " + returned);
+				JSONObject parsed = (JSONObject)parser.parse(returned);
+//				Reader reader = new InputStreamReader(resp.getEntity().getContent(),"UTF-8");
+//				JSONObject parsed = (JSONObject)parser.parse(reader);
+//				getFiller().close(reader);
+				EntityUtils.consume(resp.getEntity());
+				//uploadFilesIntoCollection(subfolder,parsed);
+				
+			}
+			else
+			{
+				debug("pushFolder Error on " + rootfolder  + " code:" + resp.getStatusLine().getStatusCode() );
+				getLogListener().info(resp.getStatusLine().getStatusCode() + " Could not upload " + url + " " + resp.getStatusLine().getReasonPhrase());
+			}
+		}
+		catch( Exception ex)
+		{
+			throw new RuntimeException(ex);
+		}
+	}
+	*/
 }

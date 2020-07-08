@@ -15,12 +15,12 @@ public class MainLaunch
 	}
 	
 
-	    public static void main(String[] args) {
+	    public static void main(final String[] args) {
 	        //Schedule a job for the event-dispatching thread:
 	        //creating and showing this application's GUI.
 	        javax.swing.SwingUtilities.invokeLater(new Runnable() {
 	            public void run() {
-	                new AppController().init();
+	                new AppController().init(args);
 	            }
 	        });
 	    }

@@ -95,70 +95,12 @@ public class WsConnection implements WebSocketListener
 	@Override
 	public void onTextMessage(WebSocket inWebsocket, String inMessage) throws Exception
 	{
-		try
+		if( disconnect )
 		{
-			if( disconnect )
-			{
-				getAppController().info("disconnected");
-				return;
-			}
-			JSONObject map = (JSONObject)getJSONParser().parse(new StringReader(inMessage));
-			String command = (String)map.get("command");
-			getAppController().debug("received " + command );
-			if( "authenticated".equals( command))
-			{
-				String value = (String)map.get("entermedia.key");
-				getAppController().loginComplete(value);
-				autoreconnect = true;
-				//getAppController().getConfig().put("entermedia.key", value);
-			}
-			else if( "authenticatefail".equals( command))
-			{
-				String value = (String)map.get("reason");
-				autoreconnect = false;
-				disconnect();
-				getAppController().loginFailed(value);
-				
-				//getAppController().getConfig().put("entermedia.key", value);
-			}
-			else if( "openasset".equals( command))
-			{
-				getAppController().openAsset(map);
-			}
-			
-			
-			else if( "downloadfolders".equals( command))
-			{
-				getAppController().downloadFolders(map);
-			}
-			else if( "checkincollection".equals( command))
-			{
-				getAppController().checkinFiles(map);
-			}
-			else if( "newclientconnect".equals( command))
-			{
-				getAppController().disconnect(map);
-			}
-			else if( "openremotefolder".equals( command))
-			{
-				getAppController().cmdOpenFolder(map);
-			}
-			else if( "replaceddesktop".equals( command))
-			{
-				getAppController().replacedDesktop(map);
-			}
-			else if( "singleupload".equals( command))
-			{
-				getAppController().uploadAsset(map);
-			}
-			
-			
-			
-		} catch (Throwable ex)
-		{
-	 		//throw new RuntimeException(ex);
-			getAppController().reportError("Message problem", ex);
+			getAppController().info("disconnected");
+			return;
 		}
+		getAppController().onTextMessage(inWebsocket, inMessage);
 	}
 
 	public void disconnect()

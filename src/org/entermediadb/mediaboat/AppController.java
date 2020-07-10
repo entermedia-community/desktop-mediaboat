@@ -124,6 +124,8 @@ public class AppController implements LogListener
 		else
 		{
 			System.out.println(inString);
+			inEx.printStackTrace();
+			
 		}
 	}
 	public void info(String inString)
@@ -437,6 +439,10 @@ public class AppController implements LogListener
 			{
 				String absrootfolder = (String)map.get("fullpath");
 				getModel().listLocalFilesToCache(map,absrootfolder);
+			}
+			else if( "gettoplevelfolders".equals( command))
+			{
+				getModel().getTopLevelFolders(map);
 			}
 			
 		} catch (Throwable ex)

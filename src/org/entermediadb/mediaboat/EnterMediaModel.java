@@ -726,35 +726,75 @@ public class EnterMediaModel
 		root.put("childfolders", childfolders);
 
 		File[] files = parentfolder.listFiles();
-
-		for (int i = 0; i < files.length; i++)
+		if( files != null)
 		{
-			File child = files[i];
-			if (child.isDirectory())
+			for (int i = 0; i < files.length; i++)
 			{
-
-				JSONObject folderinfo = new JSONObject();
-				folderinfo.put("foldername", child.getName());
-				childfolders.add(folderinfo);
-			}
-			else
-			{
-				JSONObject fileinfo = new JSONObject();
-				fileinfo.put("filename", child.getName());
-				fileinfo.put("fullpath", child.getAbsolutePath());
-				fileinfo.put("filesize", child.length());
-				fileinfo.put("modificationdate", child.lastModified());
-//					String newmd5 = runMd5(child);
-//					fileinfo.put("newmd5", newmd5);
-				
-				filelist.add(fileinfo);
+				File child = files[i];
+				if (child.isDirectory())
+				{
+	
+					JSONObject folderinfo = new JSONObject();
+					folderinfo.put("foldername", child.getName());
+					childfolders.add(folderinfo);
+				}
+				else
+				{
+					JSONObject fileinfo = new JSONObject();
+					fileinfo.put("filename", child.getName());
+					fileinfo.put("fullpath", child.getAbsolutePath());
+					fileinfo.put("filesize", child.length());
+					fileinfo.put("modificationdate", child.lastModified());
+	//					String newmd5 = runMd5(child);
+	//					fileinfo.put("newmd5", newmd5);
+					
+					filelist.add(fileinfo);
+				}
 			}
 		}
-		//sendFolderCache(params);
+		Message mes = new Message("addlocalfilestocache_response " + absrootfolder);
+		mes.putAll(params);
+		
+		getConnection().send(mes);
+	}
+
+	public void getTopLevelFolders(JSONObject inParams)
+	{
+		JSONObject params = new JSONObject(inParams);
+		params.put("entermedia.key", getEnterMediaKey());
+
+		ArrayList childfolders = new ArrayList();
+
+		params.put("childfolders", childfolders);
+		
+		File homefolder = new File(findHome());
+		JSONObject folderinfo = new JSONObject();
+		folderinfo.put("foldername", "Home");
+		folderinfo.put("abspath", homefolder.getPath());
+		childfolders.add(folderinfo);
+	
+		addSubFolder(childfolders, homefolder, "Desktop");
+		addSubFolder(childfolders, homefolder, "Documents");
+		addSubFolder(childfolders, homefolder, "Downloads");
+		addSubFolder(childfolders, homefolder, "Pictures");
+		addSubFolder(childfolders, homefolder, "Videos");
+		
 		Message mes = new Message("addlocalfilestocache_response");
 		mes.putAll(params);
 		
 		getConnection().send(mes);
+	}
+
+	protected void addSubFolder(ArrayList childfolders, File homefolder, String inSub)
+	{
+		File folder = new File(homefolder, inSub);
+		if( folder.exists() )
+		{
+			JSONObject folderinfo = new JSONObject();
+			folderinfo.put("foldername", inSub);
+			folderinfo.put("abspath", folder.getPath());
+			childfolders.add(folderinfo);
+		}
 	}
 
 	/*

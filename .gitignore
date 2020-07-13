@@ -5,3 +5,4 @@
 /installer/bin/
 /electron/node_modules
 /electron/out
+/electron/src/jars

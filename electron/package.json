@@ -11,7 +11,9 @@
     "makewin": "electron-forge make --platform win32",
     "makemac": "electron-forge make --platform darwin",
     "publish": "electron-forge publish",
-    "lint": "echo \"No linting configured\""
+    "lint": "echo \"No linting configured\"",
+    "winbuild": "electron-packager . entermediaapp --platform win32 --overwrite --arch x64 --out dist/",
+    "winsetup": "electron-installer-windows --src dist/entermediaapp-win32-x64/ --dest dist/installers/"
   },
   "keywords": [],
   "author": {
@@ -41,7 +43,7 @@
           "name": "@electron-forge/maker-rpm",
           "config": {
             "options": {
-              "maintainer": "Rishi Bond",
+              "maintainer": "EnterMedia <help@entermediadb.org>",
               "homepage": "http://entermediadb.org"
             }
           }
@@ -50,7 +52,7 @@
           "name": "@electron-forge/maker-deb",
           "config": {
             "options": {
-              "maintainer": "Rishi Bond",
+              "maintainer": "EnterMedia <help@entermediadb.org>",
               "homepage": "http://entermediadb.org"
             }
           }
@@ -73,6 +75,10 @@
     "@electron-forge/maker-wix": "^6.0.0-beta.51",
     "@electron-forge/maker-zip": "^6.0.0-beta.51",
     "electron": "9.0.5",
-    "electron-builder": "^22.7.0"
+    "electron-builder": "^22.7.0",
+    "electron-installer-squirrel-windows": "^1.3.0",
+    "electron-installer-windows": "^3.0.0",
+    "electron-packager": "*",
+    "electron-prebuilt": "*"
   }
 }

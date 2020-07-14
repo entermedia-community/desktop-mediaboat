@@ -1,49 +1,60 @@
 <project default="all" name="MediaBoat" basedir="." >
-
-
-	<target name="all" depends="clean, jar,copy" />
-	<property name="build" location="${basedir}/build"/>
-	<property name="dist" location="${basedir}/dist"/>
-	<property name="installer" location="${basedir}/installer"/>
-
+    <target name="all" depends="clean,jar,copy,electron-installers" />
+    <property name="build" location="${basedir}/build"/>
+    <property name="dist" location="${basedir}/dist"/>
+    <property name="installer" location="${basedir}/installer"/>
+    <property name="electron" location="${basedir}/electron" />
     <target name="compile">
         <mkdir dir="${build}/classes" />
-        <javac includeantruntime="false" debug="on" srcdir="${basedir}/src"
-               destdir="${build}/classes" target="1.6" source="1.6">
-               
-      <classpath>
-        <fileset dir="lib">
-          <include name="*.jar"/>
-        </fileset>
-      </classpath>
-      <include name="**"/>
-               
+        <javac includeantruntime="false" debug="on" srcdir="${basedir}/src" destdir="${build}/classes" target="1.6" source="1.6">
+            <classpath>
+                <fileset dir="lib">
+                    <include name="*.jar"/>
+                </fileset>
+            </classpath>
+            <include name="**"/>
         </javac>
     </target>
-
     <target name="jar" depends="compile" >
         <mkdir dir="${dist}"/>
         <jar destfile="${dist}/MediaBoatClient.jar" manifest="MANIFEST.MF">
             <fileset dir="${build}/classes" includes="**/*.class" />
             <fileset dir="${basedir}/src" includes="**/*.png" />
         </jar>
-    	
-    	 <exec executable="/bin/bash">
-    	    <arg value="${installer}/scripts/build-installers.sh"/>
-    	  </exec>
+        <exec executable="/bin/bash"><arg value="${installer}/scripts/build-installers.sh"/></exec>
     </target>
-
-   <target name="copy">
-	  <copy todir="${dist}/lib">
-		<fileset dir="lib">
-		  <include name="*.jar"/>
-		</fileset>
-	</copy>   
-   </target>
-   
-     <target name="clean">
+    <target name="copy">
+        <copy todir="${dist}/lib">
+            <fileset dir="lib">
+                <include name="*.jar"/>
+            </fileset>
+        </copy>
+    </target>
+    <target name="clean">
         <delete dir="${build}" />
         <delete dir="${dist}" />
     </target>
-
+    <!-- electron -->
+    <target name="electron-mediaboat">
+        <delete dir="${electron}/src/jars" />
+        <mkdir dir="${electron}/src/jars"/>
+        <copy todir="${electron}/src/jars">
+            <fileset dir="lib">
+                <include name="*.jar"/>
+            </fileset>
+        </copy>
+    </target>
+    <target name="electron-dependencies" depends="electron-mediaboat">
+        <exec dir="${electron}" executable="npm">
+            <arg line="install"/>
+        </exec>
+    </target>
+    <target name="electron-installers" depends="electron-dependencies">
+        <exec dir="${electron}" executable="npm">
+            <arg line="run make" />
+        </exec>
+        <exec dir="${electron}" executable="npm">
+            <arg line="run makewin" />
+        </exec>
+    </target>
 </project>

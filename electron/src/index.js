@@ -1,4 +1,3 @@
-var fileWatcher = require("chokidar");
 process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
 
 const { app, BrowserWindow, Menu, getCurrentWindow, Tray } = require('electron');
@@ -29,8 +28,7 @@ const createWindow = () => {
     icon: __dirname + '/assets/images/em-logo.png',
     webPreferences: {
       nodeIntegration: true,
-      nodeIntegrationInWorker: true,
-      
+      nodeIntegrationInWorker: true,      
     }
   });
   
@@ -39,7 +37,7 @@ const createWindow = () => {
   // this.mainWindow.loadURL("http://localhost/electron/index.html");
   
   // Open the DevTools.
-  this.mainWindow.webContents.openDevTools();
+  // this.mainWindow.webContents.openDevTools();
   
   // mine
   setMainMenu(this.mainWindow);
@@ -154,26 +152,26 @@ function startMediaBoat(server, username, key) {
   });
 }
 
-function createTray() {
-  this.tray = new Tray(__dirname + '/assets/images/em-logo.png');
+// function createTray() {
+//   this.tray = new Tray(__dirname + '/assets/images/em-logo.png');
   
-  this.tray.setToolTip("EntermediaDB");
-  var contextMenu = Menu.buildFromTemplate([
-    { label: 'Show App', click: () => {
-      this.mainWindow.show();
-      console.log('Clicking')
-    } },
-    { label: 'Quit', click: () => {
-      app.isQuiting = true;
-      app.quit();
-    } }
-  ]);
-  this.tray.setContextMenu(contextMenu);
+//   this.tray.setToolTip("EntermediaDB");
+//   var contextMenu = Menu.buildFromTemplate([
+//     { label: 'Show App', click: () => {
+//       this.mainWindow.show();
+//       console.log('Clicking')
+//     } },
+//     { label: 'Quit', click: () => {
+//       app.isQuiting = true;
+//       app.quit();
+//     } }
+//   ]);
+//   this.tray.setContextMenu(contextMenu);
   
-  this.tray.on('click', () => {
-    console.log('clicked tray');
-  });
-}
+//   this.tray.on('click', () => {
+//     console.log('clicked tray');
+//   });
+// }
 
 function checkSession(win) {
   this.session = win.webContents.session

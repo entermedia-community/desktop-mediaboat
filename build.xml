@@ -56,5 +56,8 @@
         <exec dir="${electron}" executable="npm">
             <arg line="run makewin" />
         </exec>
+        <exec dir="${electron}" executable="npm">
+            <arg line="run makemac" />
+        </exec>
     </target>
 </project>

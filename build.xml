@@ -6,7 +6,7 @@
     <property name="electron" location="${basedir}/electron" />
     <target name="compile">
         <mkdir dir="${build}/classes" />
-        <javac includeantruntime="false" debug="on" srcdir="${basedir}/src" destdir="${build}/classes" target="1.6" source="1.6">
+        <javac includeantruntime="false" debug="on" srcdir="${basedir}/src" destdir="${build}/classes" target="1.6" source="1.6" encoding="utf-8">
             <classpath>
                 <fileset dir="lib">
                     <include name="*.jar"/>

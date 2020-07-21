@@ -39,10 +39,11 @@
         <delete dir="${electron}/src/jars" />
         <mkdir dir="${electron}/src/jars"/>
         <copy todir="${electron}/src/jars">
-            <fileset dir="lib">
+            <fileset dir="${dist}">
                 <include name="*.jar"/>
             </fileset>
         </copy>
+        <copydir src="${dist}/lib" dest="${electron}/src/jars/lib" />
     </target>
     <target name="electron-dependencies" depends="electron-mediaboat">
         <exec dir="${electron}" executable="npm">
@@ -51,13 +52,13 @@
     </target>
     <target name="electron-installers" depends="electron-dependencies">
         <exec dir="${electron}" executable="npm">
-            <arg line="run make" />
+            <arg line="run distlin" />
         </exec>
         <exec dir="${electron}" executable="npm">
-            <arg line="run makewin" />
+            <arg line="run distwin" />
         </exec>
         <exec dir="${electron}" executable="npm">
-            <arg line="run makemac" />
+            <arg line="run distmac" />
         </exec>
     </target>
 </project>

@@ -1,26 +1,25 @@
 {
-  "name": "em-app",
-  "productName": "em-app",
-  "version": "1.0.0",
-  "description": "Entermedia that connects directly to",
+  "name": "entermediaapp",
+  "productName": "entermediaApp",
+  "version": "1.1.1",
+  "description": "Connecting your computer to entermedia workspace",
   "main": "src/index.js",
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
-    "makewin": "electron-forge make --platform win32",
-    "makemac": "electron-forge make --platform darwin",
-    "publish": "electron-forge publish",
     "lint": "echo \"No linting configured\"",
-    "winbuild": "electron-packager . entermediaapp --platform win32 --overwrite --arch x64 --out dist/",
-    "winsetup": "electron-installer-windows --src dist/entermediaapp-win32-x64/ --dest dist/installers/"
+    "distwin": "electron-builder --win",
+    "distlin": "electron-builder --linux deb rpm tar.xz",
+    "distmac": "electron-builder --mac zip"
   },
   "keywords": [],
   "author": {
     "name": "Mitsuo Yazawa",
     "email": "mitsuo@entermediadb.org"
   },
-  "license": "---",
+  "license": "Entermediadb.org",
+  "homepage": "https://entermediadb.org",
   "config": {
     "forge": {
       "packagerConfig": {},
@@ -62,7 +61,7 @@
   },
   "dependencies": {
     "electron-squirrel-startup": "^1.0.0",
-    "jquery": "^3.5.1"
+    "jquery": "^3.3.1"
   },
   "devDependencies": {
     "@electron-forge/cli": "^6.0.0-beta.51",
@@ -79,5 +78,35 @@
     "electron-installer-windows": "^3.0.0",
     "electron-packager": "*",
     "electron-prebuilt": "*"
+  },
+  "build": {
+    "appId": "com.entermedia.app",
+    "productName": "Entermedia Desktop App",
+    "asar": false,
+    "files": [
+      "src/**/*"
+    ],
+    "linux": {
+      "target": "deb, rpm",
+      "maintainer": "help@entermedia.org",
+      "synopsis": "Entermedia App",
+      "category": "Utility"
+    },
+    "protocols": [
+      {
+        "name": "entermedia",
+        "role": "Viewer",
+        "schemes": [
+          "entermedia"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/emrlogo256.png"
+    },
+    "nsis": {
+      "perMachine": true
+    }
   }
 }

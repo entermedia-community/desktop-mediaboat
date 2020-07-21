@@ -7,3 +7,4 @@
 /electron/out
 /electron/src/jars
 /electron/package-lock.json
+/electron/dist

@@ -9,7 +9,7 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "lint": "echo \"No linting configured\"",
-    "distwin": "electron-builder --win zip",
+    "distwin": "electron-builder --win nsis zip",
     "distlin": "electron-builder --linux deb rpm tar.gz",
     "distmac": "electron-builder --mac zip"
   },

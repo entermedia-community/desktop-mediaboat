@@ -122,13 +122,13 @@ function execCmd(command) {
       stdio: 'inherit', shell: true, cwd: `${__dirname}/jars`
     });
   console.log(this.mediaBoatClient.pid);
-  exec.stdout.on("data", (data) => {
+  mediaBoatClient.stdout.on("data", (data) => {
     console.log('data:', data.toString());
   });
-  exec.stderr.on("data", (err) => {
+  mediaBoatClient.stderr.on("data", (err) => {
     console.log(err.toString());
   });
-  exec.on("exit", (code) => {
+  mediaBoatClient.on("exit", (code) => {
     console.log(`exitcode: ${code}`);
   });
 }
@@ -139,13 +139,13 @@ function execCmd(command) {
 //     stdio: 'inherit', shell: true, cwd: `${__dirname}/jars`
 //   });
 //   console.log(this.mediaBoatClient.pid);
-//   mediaBoatClient.stdout.on("data", (data) => {
+//   exec.stdout.on("data", (data) => {
 //     console.log('data:', data.toString());
 //   });
-//   mediaBoatClient.stderr.on("data", (err) => {
+//   exec.stderr.on("data", (err) => {
 //     console.log(err.toString());
 //   });
-//   mediaBoatClient.on("exit", (code) => {
+//   exec.on("exit", (code) => {
 //     console.log(`exitcode: ${code}`);
 //   });
 // }

@@ -1,7 +1,7 @@
 {
   "name": "entermediaapp",
   "productName": "entermediaApp",
-  "version": "1.1.1",
+  "version": "0.1.1",
   "description": "Connecting your computer to entermedia workspace",
   "main": "src/index.js",
   "scripts": {
@@ -9,8 +9,8 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "lint": "echo \"No linting configured\"",
-    "distwin": "electron-builder --win",
-    "distlin": "electron-builder --linux deb rpm tar.xz",
+    "distwin": "electron-builder --win zip",
+    "distlin": "electron-builder --linux deb rpm tar.gz",
     "distmac": "electron-builder --mac zip"
   },
   "keywords": [],

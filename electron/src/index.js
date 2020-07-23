@@ -74,8 +74,9 @@ const createWindow = () => {
     } else {
       if (this.mediaBoatClient) process.kill(this.mediaBoatClient.pid + 1);
     }
-    return false;                                                                                                                                      
+    return false;
   });
+
 };
 
 function openWorkspace(url) {
@@ -133,30 +134,33 @@ function execCmd(command) {
   });
 }
 
+function startMediaBoat(server, key) {
+  if (this.mediaBoatClient && this.mediaBoatClient.pid) process.kill(this.mediaBoatClient.pid + 1);
+  let spawn = require("child_process").spawn;
+  this.mediaBoatClient = spawn("java", ["-jar", "MediaBoatClient.jar", server, 'admin', key], {
+    stdio: 'inherit', shell: true, cwd: `${__dirname}/jars`
+  });
+  console.log(this.mediaBoatClient.pid);
+  exec.stdout.on("data", (data) => {
+    console.log('data:', data.toString());
+  });
+  exec.stderr.on("data", (err) => {
+    console.log(err.toString());
+  });
+  exec.on("exit", (code) => {
+    console.log(`exitcode: ${code}`);
+  });
+}
+
 // function startMediaBoat(server, username, key) {
+//   if (this.mediaBoatClient.pid) process.kill(this.mediaBoatClient.pid + 1);
 //   let spawn = require("child_process").spawn;
 //   this.mediaBoatClient = spawn("java", ["-jar", "MediaBoatClient.jar", server, username, key], {
 //     stdio: 'inherit', shell: true, cwd: `${__dirname}/jars`
 //   });
-//   console.log(this.mediaBoatClient.pid);
-//   exec.stdout.on("data", (data) => {
-//     console.log('data:', data.toString());
-//   });
-//   exec.stderr.on("data", (err) => {
-//     console.log(err.toString());
-//   });
-//   exec.on("exit", (code) => {
-//     console.log(`exitcode: ${code}`);
-//   });
+//   this.mainWindow.setTitle(server);
+//   return this.mediaBoatClient;
 // }
-
-function startMediaBoat(server, username, key) {
-  let spawn = require("child_process").spawn;
-  this.mediaBoatClient = spawn("java", ["-jar", "MediaBoatClient.jar", server, username, key], {
-    stdio: 'inherit', shell: true, cwd: `${__dirname}/jars`
-  });
-  return this.mediaBoatClient;
-}
 
 function CreateTray(workSpaces, mainWin) {
   this.trayMenu = []

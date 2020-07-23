@@ -24,7 +24,8 @@ public class Configuration
 	}
 	public void save()
 	{
-		File input = new File(System.getenv("HOME") +   "/.mediaboat.properties");
+		String homepath = System.getenv("HOME") == "" ? System.getenv("HOME") : System.getenv("HOMEPATH");
+		File input = new File(homepath + "/.mediaboat.properties");
 		FileWriter writer  = null;
 		try
 		{
@@ -45,7 +46,7 @@ public class Configuration
 		// TODO Auto-generated method stub
 		
 	}
-
+	
 	public Properties getProps()
 	{
 		if (properties == null)
@@ -75,10 +76,10 @@ public class Configuration
 				}
 			}
 		}
-
+		
 		return properties;
 	}
-
+	
 	private void close(FileReader inReader)
 	{
 		// TODO Auto-generated method stub

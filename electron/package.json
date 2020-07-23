@@ -1,7 +1,7 @@
 {
   "name": "entermediaapp",
   "productName": "entermediaApp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Connecting your computer to entermedia workspace",
   "main": "src/index.js",
   "scripts": {
@@ -11,7 +11,8 @@
     "lint": "echo \"No linting configured\"",
     "distwin": "electron-builder --win nsis zip",
     "distlin": "electron-builder --linux deb rpm tar.gz",
-    "distmac": "electron-builder --mac zip"
+    "distmac": "electron-builder --mac zip",
+    "distonmac": "electron-builder --mac zip dmg"
   },
   "keywords": [],
   "author": {

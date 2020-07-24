@@ -7,7 +7,7 @@ const { app, BrowserWindow, Menu, getCurrentWindow, Tray } = require('electron')
 
 // logos
 const appLogo = '/assets/images/emrlogo.png';
-const trayLogo = '/assets/images/emrlogo.png';
+const trayLogo = '/assets/images/em20.png';
 
 // exports to renderer
 exports.execCmd = execCmd;

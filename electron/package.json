@@ -1,7 +1,7 @@
 {
   "name": "entermediaapp",
   "productName": "entermediaApp",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Connecting your computer to entermedia workspace",
   "main": "src/index.js",
   "scripts": {

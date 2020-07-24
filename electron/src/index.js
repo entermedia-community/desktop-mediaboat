@@ -5,6 +5,11 @@ const PROTOCOL_SCHEME = "entermedia";
 const protocol = electron.protocol;
 const { app, BrowserWindow, Menu, getCurrentWindow, Tray, } = require("electron");
 
+// url
+const homeUrl = "https://entermediadb.org/app/workspaces/index.html";
+// const homeUrl = "https://em10.entermediadb.org/assets/mediaapp/index.html";
+// const homeUrl = "http://localhost/electron/index.html";
+
 // logos
 const appLogo = "/assets/images/emrlogo.png";
 const trayLogo = "/assets/images/em20.png";
@@ -15,9 +20,7 @@ exports.loadNewUrl = openWorkspace;
 exports.updateWorkSpaces = updateWorkSpaces;
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require("electron-squirrel-startup")) {
-    app.quit();
-}
+if (require("electron-squirrel-startup")) { app.quit(); }
 
 // electron components
 let mainWindow;
@@ -44,10 +47,7 @@ const createWindow = () => {
         mainWindow.loadURL(fullUrl);
     });
 
-    // this.mainWindow.loadURL("https://em10.entermediadb.org/assets/mediaapp/index.html");
-    this.mainWindow.loadURL("https://entermediadb.org/app/workspaces/index.html");
-    // this.mainWindow.loadURL("http://localhost/electron/index.html");
-
+    this.mainWindow.loadURL(homeUrl);
     // Open the DevTools.
     this.mainWindow.webContents.openDevTools();
 
@@ -89,47 +89,30 @@ function setMainMenu(win) {
     const template = [{
         label: "EnterMedia",
         submenu: [{
-                label: "Logout",
-                click() {
-                    this.session.clearStorageData([], function(data) {});
-                    win.reload();
-                }
-            },
-            { label: "Refresh", accelerator: "F5", click() { win.reload(); }, },
-            { label: "Exit", click() { app.quit(); }, },
+            label: "Logout",
+            click() {
+                this.session.clearStorageData([], function (data) { });
+                win.reload();
+            }
+        },
+        { label: "Refresh", accelerator: "F5", click() { win.reload(); }, },
+        { label: "Exit", click() { app.quit(); }, },
         ],
     }];
     // Menu.setApplicationMenu(Menu.buildFromTemplate(template));
     Menu.setApplicationMenu(null);
 }
 
-// Executing commands
-function startMediaBoat(server, key) {
-    if (this.mediaBoatClient && this.mediaBoatClient.pid)
-        process.kill(this.mediaBoatClient.pid + 1);
+// Start MediaBoat
+function startMediaBoat(workspaceURL, key) {
+    if (this.mediaBoatClient && this.mediaBoatClient.pid) process.kill(this.mediaBoatClient.pid + 1);
     let spawn = require("child_process").spawn;
-    this.mediaBoatClient = spawn(
-        "java", ["-jar", "MediaBoatClient.jar", server, "admin", key], {
-            stdio: "inherit",
-            shell: true,
-            cwd: `${__dirname}/jars`,
-        }
-    );
-    console.log(this.mediaBoatClient.pid);
-    exec.stdout.on("data", (data) => { console.log("data:", data.toString()); });
-    exec.stderr.on("data", (err) => { console.log(err.toString()); });
-    exec.on("exit", (code) => { console.log(`exitcode: ${code}`); });
+    this.mediaBoatClient = spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, "admin", key], {
+        stdio: 'inherit', shell: true, cwd: `${__dirname}/jars`
+    });
+    this.mainWindow.loadURL(workspaceURL + "?entermedia.key=" + key);
+    return this.mediaBoatClient;
 }
-
-// function startMediaBoat(server, username, key) {
-//   if (this.mediaBoatClient.pid) process.kill(this.mediaBoatClient.pid + 1);
-//   let spawn = require("child_process").spawn;
-//   this.mediaBoatClient = spawn("java", ["-jar", "MediaBoatClient.jar", server, username, key], {
-//     stdio: 'inherit', shell: true, cwd: `${__dirname}/jars`
-//   });
-//   this.mainWindow.setTitle(server);
-//   return this.mediaBoatClient;
-// }
 
 function CreateTray(workSpaces, mainWin) {
     this.trayMenu = [];
@@ -144,7 +127,7 @@ function CreateTray(workSpaces, mainWin) {
             }
         });
     });
-    DrawTray();
+    DrawTray(mainWin);
     click = 0;
     this.tray.on("click", () => {
         click += 1;
@@ -153,7 +136,18 @@ function CreateTray(workSpaces, mainWin) {
     });
 }
 
-function DrawTray() {
+function DrawTray(mainWin) {
+    this.trayMenu.push({
+        label: "Show App",
+        click: () => { mainWin.show(); },
+    });
+    this.trayMenu.push({
+        label: "Home",
+        click: () => {
+            mainWin.show();
+            mainWin.loadURL(homeUrl);
+        },
+    });
     this.trayMenu.push({
         label: "Quit",
         click: () => {
@@ -161,7 +155,7 @@ function DrawTray() {
             app.quit();
         },
     });
-    this.tray.setToolTip("EntermediaDB");
+    this.tray.setToolTip("Entermedia App");
     var contextMenu = Menu.buildFromTemplate(this.trayMenu);
     this.tray.setContextMenu(contextMenu);
 }
@@ -209,7 +203,7 @@ app.on("activate", () => {
 });
 
 // on open via OS entermedia://data
-app.on("open-url", function(event, data) {
+app.on("open-url", function (event, data) {
     event.preventDefault();
 });
 

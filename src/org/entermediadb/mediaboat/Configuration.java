@@ -24,7 +24,9 @@ public class Configuration
 	}
 	public void save()
 	{
-		String homepath = System.getenv("HOME") == "" ? System.getenv("HOME") : System.getenv("HOMEPATH");
+		String homepath = System.getenv("HOME") != null && !System.getenv("HOME").trim().isEmpty()
+				? System.getenv("HOME")
+				: System.getenv("HOMEPATH");
 		File input = new File(homepath + "/.mediaboat.properties");
 		FileWriter writer  = null;
 		try

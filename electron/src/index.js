@@ -183,6 +183,20 @@ function checkSession(win) {
     this.session = win.webContents.session;
 }
 
+var shouldQuit = app.makeSingleInstance(() => {
+    if (this.mainWindow) this.mainWindow.show();
+});
+
+if (shouldQuit) {
+    app.quit();
+    return;
+}
+
+app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // Someone tried to run a second instance, we should focus our window.
+    console.log('this is second instance');
+});
+
 app.on("ready", createWindow);
 
 app.on("window-all-closed", () => {

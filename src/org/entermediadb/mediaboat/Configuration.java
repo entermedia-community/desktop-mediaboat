@@ -53,8 +53,11 @@ public class Configuration
 	{
 		if (properties == null)
 		{
+			String homepath = System.getenv("HOME") != null && !System.getenv("HOME").trim().isEmpty()
+				? System.getenv("HOME")
+				: System.getenv("HOMEPATH");
 			properties = new Properties();
-			File input = new File(System.getenv("HOME") +   "/.mediaboat.properties");
+			File input = new File(homepath +   "/.mediaboat.properties");
 			if( !input.exists())
 			{
 				input.getParentFile().mkdirs();

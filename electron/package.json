@@ -1,8 +1,8 @@
 {
-  "name": "entermedia-desktop-app",
-  "productName": "EntermediaApp",
-  "version": "0.2.0",
-  "description": "Connecting your computer to entermedia workspace",
+  "name": "media-drive-ai",
+  "productName": "Media Drive AI",
+  "version": "0.3.0",
+  "description": "Connecting your computer to entermedia workspaces",
   "main": "src/index.js",
   "scripts": {
     "start": "electron-forge start",
@@ -82,7 +82,7 @@
   },
   "build": {
     "appId": "com.entermedia.app",
-    "productName": "Entermedia Desktop App",
+    "productName": "Media Drive AI",
     "asar": false,
     "files": [
       "src/**/*"
@@ -90,7 +90,7 @@
     "linux": {
       "target": "deb, rpm",
       "maintainer": "help@entermedia.org",
-      "synopsis": "Entermedia App",
+      "synopsis": "Media Drive AI",
       "category": "Utility"
     },
     "protocols": [

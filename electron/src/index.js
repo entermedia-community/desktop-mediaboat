@@ -3,12 +3,12 @@ process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 const PROTOCOL_SCHEME = "entermedia";
 
 const protocol = electron.protocol;
-const { app, BrowserWindow, Menu, getCurrentWindow, Tray, } = require("electron");
+const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell } = require("electron");
 
 // url
-const homeUrl = "https://entermediadb.org/app/workspaces/index.html";
-// const homeUrl = "https://em10.entermediadb.org/assets/mediaapp/index.html";
-// const homeUrl = "http://localhost/electron/index.html";
+// const homeUrl = "https://entermediadb.org/app/workspaces/index.html";
+const homeUrl = "https://em10.entermediadb.org/assets/mediaapp/index.html";
+// const homeUrl = "http://localhost:4200";
 
 // logos
 const appLogo = "/assets/images/emrlogo.png";
@@ -18,6 +18,7 @@ const trayLogo = "/assets/images/em20.png";
 exports.startMediaBoat = startMediaBoat;
 exports.loadNewUrl = openWorkspace;
 exports.updateWorkSpaces = updateWorkSpaces;
+exports.openLocalBrowser = openLocalBrowser;
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require("electron-squirrel-startup")) { app.quit(); }
@@ -44,7 +45,9 @@ const createWindow = () => {
 
     // internal protocol Scheme
     protocol.registerHttpProtocol(PROTOCOL_SCHEME, (req, cb) => {
-        mainWindow.loadURL(fullUrl);
+        const url = req.url.replace('entermedia', 'http');
+        this.mainWindow.loadURL(url);
+        console.log("req:", req);
     });
 
     this.mainWindow.loadURL(homeUrl);
@@ -104,14 +107,20 @@ function setMainMenu(win) {
 }
 
 // Start MediaBoat
-function startMediaBoat(workspaceURL, key) {
+function startMediaBoat(workspaceURL, username, key) {
+    console.log(workspaceURL, username, key);
     if (this.mediaBoatClient && this.mediaBoatClient.pid) process.kill(this.mediaBoatClient.pid + 1);
     let spawn = require("child_process").spawn;
-    this.mediaBoatClient = spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, "admin", key], {
+    this.mediaBoatClient = spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, username, key], {
         stdio: 'inherit', shell: true, cwd: `${__dirname}/jars`
     });
-    this.mainWindow.loadURL(workspaceURL + "?entermedia.key=" + key);
+    // this.mainWindow.loadURL(workspaceURL + "?entermedia.key=" + key);
     return this.mediaBoatClient;
+}
+
+// open Browser
+function openLocalBrowser(url) {
+    shell.openExternal(url);
 }
 
 function CreateTray(workSpaces, mainWin) {
@@ -183,10 +192,6 @@ function checkSession(win) {
     this.session = win.webContents.session;
 }
 
-
-// var shouldQuit = app.makeSingleInstance(() => {
-//     if (this.mainWindow) this.mainWindow.show();
-// });
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
     app.quit();
@@ -195,35 +200,35 @@ if (!gotTheLock) {
         if (this.mainWindow) {
             this.mainWindow.show()
         }
-    })
-    app.on("ready", createWindow);
+        console.log('length:', commandLine.length);
+        if (commandLine.length >= 2) {
+            commandLine.forEach(c => {
+                if (c.indexOf(PROTOCOL_SCHEME) !== -1) {
+                    this.mainWindow.loadURL(c.replace(PROTOCOL_SCHEME, 'http'));
+                }
+            });
+        }
+    });
+app.on("ready", createWindow);
+    app.on("open-url", (event, url) => {
+        if (this.mainWindow)
+            this.mainWindow.loadURL(url.replace(PROTOCOL_SCHEME, 'http'));
+        event.preventDefault();
+    });
 }
 
-app.on('second-instance', (event, commandLine, workingDirectory) => {
-    // Someone tried to run a second instance, we should focus our window.
-    console.log('this is second instance');
-});
-
 app.on("window-all-closed", () => {
-    process.kill(this.mediaBoatClient.pid + 1);
+    if (this.mediaBoatClient)
+        process.kill(this.mediaBoatClient.pid + 1);
     if (process.platform !== "darwin") {
         app.quit();
     }
-});
-
-app.on("open-url", () => {
-    console.log("Open by url thingie");
 });
 
 app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
     }
-});
-
-// on open via OS entermedia://data
-app.on("open-url", function (event, data) {
-    event.preventDefault();
 });
 
 // register protocol Scheme, only runs on install

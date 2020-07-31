@@ -6,8 +6,8 @@ const protocol = electron.protocol;
 const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell } = require("electron");
 
 // url
-// const homeUrl = "https://entermediadb.org/app/workspaces/index.html";
-const homeUrl = "https://em10.entermediadb.org/assets/mediaapp/index.html";
+const homeUrl = "https://entermediadb.org/app/workspaces/index.html";
+// const homeUrl = "https://em10.entermediadb.org/assets/mediaapp/index.html";
 // const homeUrl = "http://localhost:4200";
 
 // logos

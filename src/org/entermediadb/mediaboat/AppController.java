@@ -149,7 +149,7 @@ public class AppController implements LogListener
 	
 	public void cmdOpenFolder(JSONObject inMap)
 	{
-		String path = (String)inMap.get("fullpath");
+		String path = (String)inMap.get("abspath");
 		openPath(path);
 			
 	}
@@ -213,7 +213,24 @@ public class AppController implements LogListener
 		
 		return false;
 	}
+	public void renewKeyLater() 
+	{
+		if( timer == null)
+		{
+			timer = new Timer();
+		}
 
+	    TimerTask delayedThreadStartTask = new TimerTask() {
+	        @Override
+	        public void run() 
+	        {
+	        	getModel().renewKeyNow();
+	        }
+	    };
+	    
+	    timer.schedule(delayedThreadStartTask, 1000 * 60 * 60 * 10); //every 10 hours
+		
+	}
 	public void loginLater() {
 	    // Do your startup work here
 
@@ -398,6 +415,12 @@ public class AppController implements LogListener
 				getModel().getConnection().autoreconnect = true;
 				//getConfig().put("entermedia.key", value);
 			}
+			else if( "renew_completed".equals( command))
+			{
+				String value = (String)map.get("entermedia.key");
+				loginComplete(value);
+				renewKeyLater(); //10hours later
+			}
 			else if( "authenticatefail".equals( command))
 			{
 				String value = (String)map.get("reason");
@@ -437,7 +460,7 @@ public class AppController implements LogListener
 			}
 			else if( "addlocalfilestocache".equals( command))
 			{
-				String absrootfolder = (String)map.get("fullpath");
+				String absrootfolder = (String)map.get("abspath");
 				getModel().listLocalFilesToCache(map,absrootfolder);
 			}
 			else if( "gettoplevelfolders".equals( command))

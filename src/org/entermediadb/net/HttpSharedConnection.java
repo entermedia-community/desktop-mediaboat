@@ -332,8 +332,18 @@ public class HttpSharedConnection
 		return builder.build();
 	}
 
-	public void addSharedHeader(String inType, String inVal)
+	public void putSharedHeader(String inType, String inVal)
 	{
+		Collection copy = new ArrayList(getSharedHeaders());
+		for (Iterator iterator = copy.iterator(); iterator.hasNext();)
+		{
+			BasicHeader header = (BasicHeader) iterator.next();
+			if( header.getName().equals(inType) )
+			{
+				getSharedHeaders().remove(header);
+			}
+		}
+		
 		BasicHeader header = new BasicHeader(inType, inVal);
 		getSharedHeaders().add(header);
 	}

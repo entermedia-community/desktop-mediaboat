@@ -570,11 +570,13 @@ public class EnterMediaModel
 	{
 		getConfig().put("key", inEnterMediaKey);
 		getConfig().save();
-		getHttpConnection().addSharedHeader("entermedia.key", inEnterMediaKey);
-		
-		String server = getServer();
-		String host = getHost();
-		getHttpConnection().addSharedCookie(host,"entermedia.key", inEnterMediaKey);
+
+		getHttpConnection().putSharedHeader("X-tokentype", "entermedia");
+		getHttpConnection().putSharedHeader("X-token", inEnterMediaKey);
+
+//		String server = getServer();
+//		String host = getHost();
+//		getHttpConnection().addSharedCookie(host,"entermedia.key", inEnterMediaKey);
 	}
 
 	protected String getHost()
@@ -736,13 +738,14 @@ public class EnterMediaModel
 	
 					JSONObject folderinfo = new JSONObject();
 					folderinfo.put("foldername", child.getName());
+					folderinfo.put("abspath", child.getAbsolutePath());
 					childfolders.add(folderinfo);
 				}
 				else
 				{
 					JSONObject fileinfo = new JSONObject();
 					fileinfo.put("filename", child.getName());
-					fileinfo.put("fullpath", child.getAbsolutePath());
+					fileinfo.put("abspath", child.getAbsolutePath());
 					fileinfo.put("filesize", child.length());
 					fileinfo.put("modificationdate", child.lastModified());
 	//					String newmd5 = runMd5(child);
@@ -795,6 +798,14 @@ public class EnterMediaModel
 			folderinfo.put("abspath", folder.getPath());
 			childfolders.add(folderinfo);
 		}
+	}
+
+	public void renewKeyNow()
+	{
+		// TODO Auto-generated method stub
+		Message mes = new Message("renew_entermediakey");
+		mes.put("entermedia.key", getEnterMediaKey());
+		getConnection().send(mes);
 	}
 
 	/*

@@ -1,6 +1,6 @@
 {
-  "name": "media-drive-ai",
-  "productName": "Media Drive AI",
+  "name": "entermedia-finder",
+  "productName": "EMedia Finder",
   "version": "0.3.0",
   "description": "Connecting your computer to entermedia workspaces",
   "main": "src/index.js",
@@ -83,7 +83,7 @@
   },
   "build": {
     "appId": "com.entermedia.app",
-    "productName": "Media Drive AI",
+    "productName": "EMedia Finder",
     "asar": false,
     "files": [
       "src/**/*"
@@ -91,7 +91,7 @@
     "linux": {
       "target": "deb, rpm",
       "maintainer": "help@entermedia.org",
-      "synopsis": "Media Drive AI",
+      "synopsis": "EMedia Finder",
       "category": "Utility"
     },
     "protocols": [

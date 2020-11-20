@@ -168,7 +168,7 @@ function DrawTray(mainWin) {
             app.quit();
         },
     });
-    this.tray.setToolTip("Media Drive AI");
+    this.tray.setToolTip("EMedia Finder");
     var contextMenu = Menu.buildFromTemplate(this.trayMenu);
     this.tray.setContextMenu(contextMenu);
 }

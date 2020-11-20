@@ -1,4 +1,6 @@
 const electron = require("electron");
+var request = require('request');
+var fs = require('fs');
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 const PROTOCOL_SCHEME = "entermedia";
 
@@ -42,6 +44,8 @@ const createWindow = () => {
             nodeIntegrationInWorker: false,
         },
     });
+
+    getMediaBoat();
 
     // internal protocol Scheme
     protocol.registerHttpProtocol(PROTOCOL_SCHEME, (req, cb) => {
@@ -164,7 +168,7 @@ function DrawTray(mainWin) {
             app.quit();
         },
     });
-    this.tray.setToolTip("Entermedia App");
+    this.tray.setToolTip("Media Drive AI");
     var contextMenu = Menu.buildFromTemplate(this.trayMenu);
     this.tray.setContextMenu(contextMenu);
 }
@@ -192,6 +196,42 @@ function checkSession(win) {
     this.session = win.webContents.session;
 }
 
+function getMediaBoat() {
+    var url = 'http://dev.entermediasoftware.com/jenkins/view/EM9DEV/job/MediaBoat/lastSuccessfulBuild/artifact/dist/MediaBoatClient.jar';
+    var dest = `${__dirname}/jars/MediaBoatClient.jar`
+    downloadFile(url, dest);
+}
+
+function downloadFile(url, destPath) {
+    var received_bytes = 0;
+    var total_bytes = 0;
+
+    var req = request({
+        method: 'GET',
+        uri: url
+    });
+
+    var out = fs.createWriteStream(destPath);
+    req.pipe(out);
+
+    req.on('response', function (data) {
+        // Change the total bytes value to get progress later.
+        total_bytes = parseInt(data.headers['content-length']);
+    });
+
+    req.on('data', function (chunk) {
+        // Update the received bytes
+        received_bytes += chunk.length;
+        showProgress(received_bytes, total_bytes);
+    });
+}
+
+// temp
+function showProgress(received, total) {
+    var percentage = (received * 100) / total;
+    console.log(percentage + "% | " + received + " bytes out of " + total + " bytes.");
+}
+
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
     app.quit();
@@ -209,7 +249,7 @@ if (!gotTheLock) {
             });
         }
     });
-app.on("ready", createWindow);
+    app.on("ready", createWindow);
     app.on("open-url", (event, url) => {
         if (this.mainWindow)
             this.mainWindow.loadURL(url.replace(PROTOCOL_SCHEME, 'http'));

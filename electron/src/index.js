@@ -45,13 +45,13 @@ const createWindow = () => {
         },
     });
 
-    getMediaBoat();
+    // No longer onstart
+    // getMediaBoat();
 
     // internal protocol Scheme
     protocol.registerHttpProtocol(PROTOCOL_SCHEME, (req, cb) => {
         const url = req.url.replace('entermedia', 'http');
         this.mainWindow.loadURL(url);
-        console.log("req:", req);
     });
 
     this.mainWindow.loadURL(homeUrl);
@@ -113,14 +113,7 @@ function setMainMenu(win) {
 
 // Start MediaBoat
 function startMediaBoat(workspaceURL, username, key) {
-    console.log(workspaceURL, username, key);
-    if (this.mediaBoatClient && this.mediaBoatClient.pid) process.kill(this.mediaBoatClient.pid + 1);
-    let spawn = require("child_process").spawn;
-    this.mediaBoatClient = spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, username, key], {
-        stdio: 'inherit', shell: true, cwd: `${__dirname}/jars`
-    });
-    // this.mainWindow.loadURL(workspaceURL + "?entermedia.key=" + key);
-    return this.mediaBoatClient;
+    var req = getMediaBoat(workspaceURL, username, key);
 }
 
 // open Browser
@@ -197,40 +190,60 @@ function checkSession(win) {
     this.session = win.webContents.session;
 }
 
-function getMediaBoat() {
-    var url = 'http://dev.entermediasoftware.com/jenkins/view/EM9DEV/job/MediaBoat/lastSuccessfulBuild/artifact/dist/MediaBoatClient.jar';
-    var dest = `${__dirname}/jars/MediaBoatClient.jar`
-    downloadFile(url, dest);
+function getMediaBoat(workspaceURL, username, key) {
+    // var url = 'http://dev.entermediasoftware.com/jenkins/view/EM9DEV/job/MediaBoat/lastSuccessfulBuild/artifact/dist';
+    console.log('workspace', workspaceURL);
+    // var url = 'http://localhost:8080/finder/install';
+    var dest = `${__dirname}/jars`
+    return downloadFile(workspaceURL + '/install/MediaBoatClient.jar', dest + '/MediaBoatClient.jar', workspaceURL, username, key);
+    // leaving this here, in case they are needed in the future
+    // downloadFile(url + '/lib/commons-codec-1.9.jar', dest + '/lib/commons-codec-1.9.jar');
+    // downloadFile(url + '/lib/commons-logging-1.2.jar', dest + '/lib/commons-logging-1.2.jar');
+    // downloadFile(url + '/lib/httpclient-4.5.2.jar', dest + '/lib/httpclient-4.5.2.jar');
+    // downloadFile(url + '/lib/httpcore-4.4.4.jar', dest + '/lib/httpcore-4.4.4.jar');
+    // downloadFile(url + '/lib/httpmime-4.5.2.jar', dest + '/lib/httpmime-4.5.2.jar');
+    // downloadFile(url + '/lib/json-simple-1.1.1.jar', dest + '/lib/json-simple-1.1.1.jar');
+    // downloadFile(url + '/lib/nv-websocket-client.jar', dest + '/lib/nv-websocket-client.jar');
 }
 
-function downloadFile(url, destPath) {
+function downloadFile(url, destPath,workspaceURL, username, key) {
     var received_bytes = 0;
     var total_bytes = 0;
 
-    var req = request({
-        method: 'GET',
-        uri: url
-    });
+    var req = request({ method: 'GET', uri: url });
 
     var out = fs.createWriteStream(destPath);
     req.pipe(out);
-
     req.on('response', function (data) {
         // Change the total bytes value to get progress later.
         total_bytes = parseInt(data.headers['content-length']);
-    });
+        console.log('total bytes', total_bytes);
+    });    
 
     req.on('data', function (chunk) {
         // Update the received bytes
         received_bytes += chunk.length;
-        showProgress(received_bytes, total_bytes);
+        showProgress(received_bytes, total_bytes, workspaceURL, username, key);
     });
+
+    return req;   
 }
 
 // temp
-function showProgress(received, total) {
+function showProgress(received, total, workspaceURL, username, key) {
     var percentage = (received * 100) / total;
-    console.log(percentage + "% | " + received + " bytes out of " + total + " bytes.");
+    // console.log(percentage + "% | " + received + " bytes out of " + total + " bytes.");
+    if (percentage === 100) {
+        setTimeout(() => {
+            if (this.mediaBoatClient && this.mediaBoatClient.pid) process.kill(this.mediaBoatClient.pid + 1);
+            let spawn = require("child_process").spawn;
+            this.mediaBoatClient = spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, username, key], {
+                stdio: 'inherit', shell: true, cwd: `${__dirname}/jars`
+            });
+        // this.mainWindow.loadURL(workspaceURL + "?entermedia.key=" + key);
+        }, 200);
+        return this.mediaBoatClient;
+    }
 }
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -250,7 +263,7 @@ if (!gotTheLock) {
             });
         }
     });
-    app.on("ready", createWindow);
+app.on("ready", createWindow);
     app.on("open-url", (event, url) => {
         if (this.mainWindow)
             this.mainWindow.loadURL(url.replace(PROTOCOL_SCHEME, 'http'));

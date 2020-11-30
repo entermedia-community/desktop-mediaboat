@@ -104,10 +104,11 @@ function setMainMenu(win) {
         },
         { label: "Refresh", accelerator: "F5", click() { win.reload(); }, },
         { label: "Exit", click() { app.quit(); }, },
-        ],
-    }];
-    // Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-    Menu.setApplicationMenu(null);
+        ]
+    },
+    { label: "back", click() { win.webContents.goBack(); }, },];
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+    // Menu.setApplicationMenu(null);
 }
 
 // Start MediaBoat

@@ -142,15 +142,15 @@ public class AppController implements LogListener
 	public void downloadFolders(Map inRoot)
 	{
 		getModel().downloadFolders( inRoot);
-		String rootname = (String)inRoot.get("rootname");
-		String path = getModel().getWorkFolder() + "/" + rootname;
-		openPath(path);
+//		String rootname = (String)inRoot.get("rootname");
+//		String path = getModel().getWorkFolder() + "/" + rootname;
+//		openPath(path);
 	}
 	
 	public void cmdOpenFolder(JSONObject inMap)
 	{
 		String path = (String)inMap.get("abspath");
-		openPath(path);
+		openAbsPath(path);
 			
 	}
 	
@@ -324,7 +324,7 @@ public class AppController implements LogListener
 	
 	
 
-	protected void openPath(String path)
+	protected void openAbsPath(String path)
 	{
 		if( OS.isWindows() )
 		{
@@ -390,10 +390,16 @@ public class AppController implements LogListener
 	{
 		String finalpath = getModel().downloadFile( inMap);
 	
-		openPath(finalpath);
+		openAbsPath(finalpath);
 		
 	}
 
+	public void downloadAsset(JSONObject inMap)
+	{
+		String finalpath = getModel().downloadFile( inMap);
+		//openPath(finalpath);
+	}
+	
 
 	public void uploadAsset(JSONObject inCommand)
 	{
@@ -430,11 +436,26 @@ public class AppController implements LogListener
 				
 				//getConfig().put("entermedia.key", value);
 			}
+			else if( "downloadasset".equals( command))
+			{
+				downloadAsset(map);
+			}
 			else if( "openasset".equals( command))
 			{
 				openAsset(map);
 			}
-			else if( "downloadfolders".equals( command))
+			else if( "downloadcategory".equals( command))
+			{
+				downloadFolders(map);
+			}
+			else if( "opencategorypath".equals( command))
+			{
+				String path = (String)map.get("categorypath");
+				String abs = getModel().getWorkFolder() + "/" + path;
+				openAbsPath(abs);
+
+			}
+			else if( "downloadcollection".equals( command))
 			{
 				downloadFolders(map);
 			}

@@ -209,7 +209,7 @@ public class EnterMediaModel
 		{
 			String catalogid = (String)inReq.get("catalogid");
 			String mediadbid = (String)inReq.get("mediadbid");
-			String collectionid = (String)inReq.get("collectionid");
+			//String collectionid = (String)inReq.get("collectionid");
 			String categoryid = (String)inReq.get("categoryid");
 
 			Map folder = (Map)inReq.get("folderdetails"); //This has children
@@ -219,7 +219,7 @@ public class EnterMediaModel
 			inParams.put("catalogid",catalogid);
 			inParams.put("mediadbid",mediadbid);
 			inParams.put("rootname", rootname);
-			inParams.put("collectionid", collectionid);
+			//inParams.put("collectionid", collectionid);
 			inParams.put("categoryid", categoryid);
 			inParams.put("server",getServer());
 
@@ -609,6 +609,7 @@ public class EnterMediaModel
 		folder.getParentFile().mkdirs();
 		inMap.put("entermedia.key", getEnterMediaKey());
 
+		String error = null;
 		HttpResponse resp = getHttpConnection().sharedPost(finalurl, inMap);
 		if (resp.getStatusLine().getStatusCode() == 200)
 		{
@@ -619,6 +620,8 @@ public class EnterMediaModel
 				input = resp.getEntity().getContent();
 				folder.getParentFile().mkdirs();
 				output = new FileOutputStream(folder);
+				
+				//TODO: Send progress reports back to the Server for display
 				getFiller().fill(input, output);
 
 				String savetime = (String) inMap.get("assetmodificationdate");
@@ -627,6 +630,7 @@ public class EnterMediaModel
 			}
 			catch (Throwable ex)
 			{
+				error = ex.getMessage();
 				getLogListener().reportError("Problem downloading", ex);
 			}
 			finally
@@ -641,7 +645,22 @@ public class EnterMediaModel
 		{
 			getLogListener().info(resp.getStatusLine().getStatusCode() + " Could not download " + url + " " + resp.getStatusLine().getReasonPhrase());
 		}
-		
+
+		if( error != null)
+		{
+			Message mes = new Message();
+			mes.putAll(inMap);
+			mes.setCommand("downloadasset_error");
+			mes.put("errormessage",error);
+			getConnection().send(mes);		
+		}
+		else
+		{
+			Message mes = new Message();
+			mes.putAll(inMap);
+			mes.setCommand("downloadasset_completed");
+			getConnection().send(mes);		
+		}
 		return path;
 		
 	}
@@ -755,8 +774,9 @@ public class EnterMediaModel
 				}
 			}
 		}
-		Message mes = new Message("addlocalfilestocache_response " + absrootfolder);
+		Message mes = new Message();
 		mes.putAll(params);
+		mes.setCommand("addlocalfilestocache_response " + absrootfolder);
 		
 		getConnection().send(mes);
 	}
@@ -782,8 +802,9 @@ public class EnterMediaModel
 		addSubFolder(childfolders, homefolder, "Pictures");
 		addSubFolder(childfolders, homefolder, "Videos");
 		
-		Message mes = new Message("addlocalfilestocache_response");
+		Message mes = new Message();
 		mes.putAll(params);
+		mes.setCommand("addlocalfilestocache_response");
 		
 		getConnection().send(mes);
 	}

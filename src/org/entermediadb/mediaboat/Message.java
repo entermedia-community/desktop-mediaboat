@@ -9,6 +9,11 @@ public class Message extends HashMap
 		setCommand(inString);
 	}
 
+	public Message()
+	{
+		// TODO Auto-generated constructor stub
+	}
+
 	public String getCommand()
 	{
 		return (String)get("command");

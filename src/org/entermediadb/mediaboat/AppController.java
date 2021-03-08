@@ -142,9 +142,9 @@ public class AppController implements LogListener
 	public void downloadFolders(Map inRoot)
 	{
 		getModel().downloadFolders( inRoot);
-//		String rootname = (String)inRoot.get("rootname");
-//		String path = getModel().getWorkFolder() + "/" + rootname;
-//		openPath(path);
+		String rootname = (String)inRoot.get("rootname");
+		String path = getModel().getWorkFolder() + "/" + rootname;
+		openAbsPath(path);
 	}
 	
 	public void cmdOpenFolder(JSONObject inMap)
@@ -397,7 +397,7 @@ public class AppController implements LogListener
 	public void downloadAsset(JSONObject inMap)
 	{
 		String finalpath = getModel().downloadFile( inMap);
-		//openPath(finalpath);
+		openAbsPath(finalpath);
 	}
 	
 

@@ -142,8 +142,10 @@ public class AppController implements LogListener
 	public void downloadFolders(Map inRoot)
 	{
 		getModel().downloadFolders( inRoot);
-		String rootname = (String)inRoot.get("rootname");
-		String path = getModel().getWorkFolder() + "/" + rootname;
+		Map folder = (Map)inRoot.get("folderdetails"); //This has children
+
+		String subpath = (String)folder.get("subpath");
+		String path = getModel().getWorkFolder() + "/" + subpath;
 		openAbsPath(path);
 	}
 	

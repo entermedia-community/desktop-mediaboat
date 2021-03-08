@@ -292,7 +292,7 @@ public class EnterMediaModel
 	private void downloadFilesinFolder(Map params, String inPath, Set inSubFolders, JSONObject inParsed)
 	{
 		//The path is a collection path
-		String path = getWorkFolder() + inPath;
+		String path = getWorkFolder() + "/" + inPath;
 		File folder = new File(path);
 		folder.mkdirs();
 		File[] files = folder.listFiles();

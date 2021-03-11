@@ -7,10 +7,14 @@ const PROTOCOL_SCHEME = "entermedia";
 const protocol = electron.protocol;
 const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell } = require("electron");
 
+// env
+const isDev = true;
+
 // url
-const homeUrl = "https://entermediadb.org/app/workspaces/index.html";
-// const homeUrl = "https://em10.entermediadb.org/assets/mediaapp/index.html";
-// const homeUrl = "http://localhost:4200";
+// const homeUrl = "https://emediafinder.com/app/authentication/gotoapp.html";
+// const homeUrl = "https://emediafinder.com/app/workspaces/index.html";
+const homeUrl = 'https://notimportant4-30.t47.entermediadb.net/finder/find/index.html';
+
 
 // logos
 const appLogo = "/assets/images/emrlogo.png";
@@ -56,7 +60,7 @@ const createWindow = () => {
 
     this.mainWindow.loadURL(homeUrl);
     // Open the DevTools.
-    // this.mainWindow.webContents.openDevTools();
+    if (isDev) { this.mainWindow.webContents.openDevTools(); }
 
     // Main Menu
     setMainMenu(this.mainWindow);
@@ -74,13 +78,17 @@ const createWindow = () => {
     });
 
     this.mainWindow.on("close", (event) => {
-        if (!app.isQuiting) {
-            event.preventDefault();
-            this.mainWindow.hide();
+        if (!isDev) {
+            if (!app.isQuiting) {
+                event.preventDefault();
+                this.mainWindow.hide();
+            } else {
+                if (this.mediaBoatClient) process.kill(this.mediaBoatClient.pid + 1);
+            }
+            return false;
         } else {
             if (this.mediaBoatClient) process.kill(this.mediaBoatClient.pid + 1);
         }
-        return false;
     });
 };
 
@@ -113,7 +121,9 @@ function setMainMenu(win) {
 
 // Start MediaBoat
 function startMediaBoat(workspaceURL, username, key) {
+    console.log('starting mediaboat...')
     var req = getMediaBoat(workspaceURL, username, key);
+    console.log('started mediaboat')
 }
 
 // open Browser
@@ -206,7 +216,7 @@ function getMediaBoat(workspaceURL, username, key) {
     // downloadFile(url + '/lib/nv-websocket-client.jar', dest + '/lib/nv-websocket-client.jar');
 }
 
-function downloadFile(url, destPath,workspaceURL, username, key) {
+function downloadFile(url, destPath, workspaceURL, username, key) {
     var received_bytes = 0;
     var total_bytes = 0;
 
@@ -218,7 +228,7 @@ function downloadFile(url, destPath,workspaceURL, username, key) {
         // Change the total bytes value to get progress later.
         total_bytes = parseInt(data.headers['content-length']);
         console.log('total bytes', total_bytes);
-    });    
+    });
 
     req.on('data', function (chunk) {
         // Update the received bytes
@@ -226,7 +236,7 @@ function downloadFile(url, destPath,workspaceURL, username, key) {
         showProgress(received_bytes, total_bytes, workspaceURL, username, key);
     });
 
-    return req;   
+    return req;
 }
 
 // temp
@@ -240,35 +250,39 @@ function showProgress(received, total, workspaceURL, username, key) {
             this.mediaBoatClient = spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, username, key], {
                 stdio: 'inherit', shell: true, cwd: `${__dirname}/jars`
             });
-        // this.mainWindow.loadURL(workspaceURL + "?entermedia.key=" + key);
+            // this.mainWindow.loadURL(workspaceURL + "?entermedia.key=" + key);
         }, 200);
         return this.mediaBoatClient;
     }
 }
 
-const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock) {
-    app.quit();
+if (!isDev) {
+    const gotTheLock = app.requestSingleInstanceLock();
+    if (!gotTheLock) {
+        app.quit();
+    } else {
+        app.on('second-instance', (event, commandLine, workingDirectory) => {
+            if (this.mainWindow) {
+                this.mainWindow.show()
+            }
+            console.log('length:', commandLine.length);
+            if (commandLine.length >= 2) {
+                commandLine.forEach(c => {
+                    if (c.indexOf(PROTOCOL_SCHEME) !== -1) {
+                        this.mainWindow.loadURL(c.replace(PROTOCOL_SCHEME, 'http'));
+                    }
+                });
+            }
+        });
+        app.on("ready", createWindow);
+        app.on("open-url", (event, url) => {
+            if (this.mainWindow)
+                this.mainWindow.loadURL(url.replace(PROTOCOL_SCHEME, 'http'));
+            event.preventDefault();
+        });
+    }
 } else {
-    app.on('second-instance', (event, commandLine, workingDirectory) => {
-        if (this.mainWindow) {
-            this.mainWindow.show()
-        }
-        console.log('length:', commandLine.length);
-        if (commandLine.length >= 2) {
-            commandLine.forEach(c => {
-                if (c.indexOf(PROTOCOL_SCHEME) !== -1) {
-                    this.mainWindow.loadURL(c.replace(PROTOCOL_SCHEME, 'http'));
-                }
-            });
-        }
-    });
-app.on("ready", createWindow);
-    app.on("open-url", (event, url) => {
-        if (this.mainWindow)
-            this.mainWindow.loadURL(url.replace(PROTOCOL_SCHEME, 'http'));
-        event.preventDefault();
-    });
+    app.on("ready", createWindow);
 }
 
 app.on("window-all-closed", () => {

@@ -8,12 +8,12 @@ const protocol = electron.protocol;
 const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell } = require("electron");
 
 // env
-const isDev = true;
+const isDev = false;
 
 // url
 // const homeUrl = "https://emediafinder.com/app/authentication/gotoapp.html";
 // const homeUrl = "https://emediafinder.com/app/workspaces/index.html";
-const homeUrl = 'https://notimportant4-30.t47.entermediadb.net/finder/find/index.html';
+const homeUrl = 'https://notimportant4-30.t47.entermediadb.net/finder/find/startmediaboat.html';
 
 
 // logos
@@ -205,7 +205,7 @@ function getMediaBoat(workspaceURL, username, key) {
     console.log('workspace', workspaceURL);
     // var url = 'http://localhost:8080/finder/install';
     var dest = `${__dirname}/jars`
-    return downloadFile(workspaceURL + '/install/MediaBoatClient.jar', dest + '/MediaBoatClient.jar', workspaceURL, username, key);
+    return downloadFile(workspaceURL + '/finder/install/MediaBoatClient.jar', dest + '/MediaBoatClient.jar', workspaceURL, username, key);
     // leaving this here, in case they are needed in the future
     // downloadFile(url + '/lib/commons-codec-1.9.jar', dest + '/lib/commons-codec-1.9.jar');
     // downloadFile(url + '/lib/commons-logging-1.2.jar', dest + '/lib/commons-logging-1.2.jar');
@@ -242,7 +242,7 @@ function downloadFile(url, destPath, workspaceURL, username, key) {
 // temp
 function showProgress(received, total, workspaceURL, username, key) {
     var percentage = (received * 100) / total;
-    // console.log(percentage + "% | " + received + " bytes out of " + total + " bytes.");
+    console.log(percentage + "% | " + received + " bytes out of " + total + " bytes.");
     if (percentage === 100) {
         setTimeout(() => {
             if (this.mediaBoatClient && this.mediaBoatClient.pid) process.kill(this.mediaBoatClient.pid + 1);

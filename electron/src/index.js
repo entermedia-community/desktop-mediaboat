@@ -11,10 +11,9 @@ const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell } = require("ele
 const isDev = false;
 
 // url
-const homeUrl = "https://emediafinder.com/app/authentication/gotoapp.html";
+// const homeUrl = "https://emediafinder.com/app/authentication/gotoapp.html";
 // const homeUrl = "https://emediafinder.com/app/workspaces/index.html";
-// const homeUrl = 'https://alfred-b-ny.entermediadb.net/finder/find/startmediaboat.html';
-
+const homeUrl = 'https://notimportant4-30.t47.entermediadb.net/finder/find/startmediaboat.html';
 
 // logos
 const appLogo = "/assets/images/emrlogo.png";

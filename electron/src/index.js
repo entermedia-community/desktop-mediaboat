@@ -8,7 +8,7 @@ const protocol = electron.protocol;
 const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell } = require("electron");
 
 // env
-const isDev = false;
+const isDev = true;
 
 // url
 const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";
@@ -112,9 +112,21 @@ function setMainMenu(win) {
         },
         { label: "Refresh", accelerator: "F5", click() { win.reload(); }, },
         { label: "Exit", click() { app.quit(); }, },
+
         ]
     },
-    { label: "back", click() { win.webContents.goBack(); }, },];
+    { label: "back", click() { win.webContents.goBack(); }, }, {
+        label: "Edit",
+        submenu: [
+            { label: "Undo", accelerator: "CmdOrCtrl+Z", selector: "undo:" },
+            { label: "Redo", accelerator: "Shift+CmdOrCtrl+Z", selector: "redo:" },
+            { type: "separator" },
+            { label: "Cut", accelerator: "CmdOrCtrl+X", selector: "cut:" },
+            { label: "Copy", accelerator: "CmdOrCtrl+C", selector: "copy:" },
+            { label: "Paste", accelerator: "CmdOrCtrl+V", selector: "paste:" },
+            { label: "Select All", accelerator: "CmdOrCtrl+A", selector: "selectAll:" }
+        ]
+    }];
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
     // Menu.setApplicationMenu(null);
 }

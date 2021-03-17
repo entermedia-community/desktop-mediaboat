@@ -1,7 +1,7 @@
 {
   "name": "entermedia-finder",
-  "productName": "EMedia Finder",
-  "version": "0.3.0",
+  "productName": "eMedia Finder",
+  "version": "0.4.0",
   "description": "Connecting your computer to entermedia workspaces",
   "main": "src/index.js",
   "scripts": {

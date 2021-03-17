@@ -8,7 +8,7 @@ const protocol = electron.protocol;
 const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell } = require("electron");
 
 // env
-const isDev = true;
+const isDev = false;
 
 // url
 const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";
@@ -136,11 +136,12 @@ function setMainMenu(win) {
 // Start MediaBoat
 function startMediaBoat(workspaceURL, username, key) {
     console.log('starting mediaboat...')
-    var req = getMediaBoat(workspaceURL, username, key);
+    var req = getMediaBoat(workspaceURL, username, key, this.mainWindow);
     req.on('pipe', resp => {
         console.log('resp', resp);
     });
     console.log('started mediaboat')
+    return req;
 }
 
 // open Browser
@@ -217,12 +218,12 @@ function checkSession(win) {
     this.session = win.webContents.session;
 }
 
-function getMediaBoat(workspaceURL, username, key) {
+function getMediaBoat(workspaceURL, username, key, mainWin) {
     // var url = 'http://dev.entermediasoftware.com/jenkins/view/EM9DEV/job/MediaBoat/lastSuccessfulBuild/artifact/dist';
     console.log('workspace', workspaceURL, username, key);
     // var url = 'http://localhost:8080/finder/install';
     var dest = `${__dirname}/jars`;
-    return downloadFile(workspaceURL + '/finder/install/MediaBoatClient.jar', dest + '/MediaBoatClient.jar', workspaceURL, username, key);
+    return downloadFile(workspaceURL + '/finder/install/MediaBoatClient.jar', dest + '/MediaBoatClient.jar', workspaceURL, username, key, mainWin);
     // leaving this here, in case they are needed in the future
     // downloadFile(url + '/lib/commons-codec-1.9.jar', dest + '/lib/commons-codec-1.9.jar');
     // downloadFile(url + '/lib/commons-logging-1.2.jar', dest + '/lib/commons-logging-1.2.jar');
@@ -233,51 +234,49 @@ function getMediaBoat(workspaceURL, username, key) {
     // downloadFile(url + '/lib/nv-websocket-client.jar', dest + '/lib/nv-websocket-client.jar');
 }
 
-function downloadFile(url, destPath, workspaceURL, username, key) {
+function downloadFile(url, destPath, workspaceURL, username, key, mainWin) {
     var received_bytes = 0;
     var total_bytes = 0;
-
     var req = request({ method: 'GET', uri: url });
 
     var out = fs.createWriteStream(destPath);
     req.pipe(out);
-    req.on('response', function (data) {
+    req.on('response', data => {
         // Change the total bytes value to get progress later.
         total_bytes = parseInt(data.headers['content-length']);
         console.log('total bytes', total_bytes);
     });
 
-    req.on('data', (chunk) => {
+    req.on('data', chunk => {
         // Update the received bytes
         received_bytes += chunk.length;
-        showProgress(received_bytes, total_bytes, workspaceURL, username, key);
+        showProgress(received_bytes, total_bytes, workspaceURL, username, key, mainWin);
     });
 
     return req;
 }
 
 // temp
-function showProgress(received, total, workspaceURL, username, key) {
+function showProgress(received, total, workspaceURL, username, key, mainWin) {
     var percentage = (received * 100) / total;
     console.log(percentage + "% | " + received + " bytes out of " + total + " bytes.");
     if (percentage === 100) {
-        setTimeout(() => {
+        setTimeout(() => { // give some time for buffer to write disk
             if (this.mediaBoatClient && this.mediaBoatClient.pid) process.kill(this.mediaBoatClient.pid + 1);
             const spawn = require("child_process").spawn;
             let jMediaBoat = spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, username, key], {
                 stdio: ['pipe', 'pipe', 'pipe'], shell: true, cwd: `${__dirname}/jars`
             });
-
             jMediaBoat.stdout.on('data', data => {
                 console.log(data.toString());
                 if (data.toString().indexOf('Login complete') >= 0) {
-                    console.log('mainwin', this.mainWindow);
-                    // this.mainWindow.loadURL(workspaceURL + '/assets/find/index.html');
-                    console.log('url:', workspaceURL + '/assets/find/index.html');
+                    const newUrl = workspaceURL + '/assets/find/index.html';
+                    console.log('Loading index: ', newUrl)
+                    mainWin.loadURL(newUrl);
                 }
             });
         }, 200);
-        return this.mediaBoatClient;
+        return this.jMediaBoat;
     }
 }
 

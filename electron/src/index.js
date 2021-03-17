@@ -137,6 +137,9 @@ function setMainMenu(win) {
 function startMediaBoat(workspaceURL, username, key) {
     console.log('starting mediaboat...')
     var req = getMediaBoat(workspaceURL, username, key);
+    req.on('pipe', resp => {
+        console.log('resp', resp);
+    });
     console.log('started mediaboat')
 }
 
@@ -218,7 +221,7 @@ function getMediaBoat(workspaceURL, username, key) {
     // var url = 'http://dev.entermediasoftware.com/jenkins/view/EM9DEV/job/MediaBoat/lastSuccessfulBuild/artifact/dist';
     console.log('workspace', workspaceURL, username, key);
     // var url = 'http://localhost:8080/finder/install';
-    var dest = `${__dirname}/jars`
+    var dest = `${__dirname}/jars`;
     return downloadFile(workspaceURL + '/finder/install/MediaBoatClient.jar', dest + '/MediaBoatClient.jar', workspaceURL, username, key);
     // leaving this here, in case they are needed in the future
     // downloadFile(url + '/lib/commons-codec-1.9.jar', dest + '/lib/commons-codec-1.9.jar');
@@ -244,7 +247,7 @@ function downloadFile(url, destPath, workspaceURL, username, key) {
         console.log('total bytes', total_bytes);
     });
 
-    req.on('data', function (chunk) {
+    req.on('data', (chunk) => {
         // Update the received bytes
         received_bytes += chunk.length;
         showProgress(received_bytes, total_bytes, workspaceURL, username, key);
@@ -260,11 +263,19 @@ function showProgress(received, total, workspaceURL, username, key) {
     if (percentage === 100) {
         setTimeout(() => {
             if (this.mediaBoatClient && this.mediaBoatClient.pid) process.kill(this.mediaBoatClient.pid + 1);
-            let spawn = require("child_process").spawn;
-            this.mediaBoatClient = spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, username, key], {
-                stdio: 'inherit', shell: true, cwd: `${__dirname}/jars`
+            const spawn = require("child_process").spawn;
+            let jMediaBoat = spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, username, key], {
+                stdio: ['pipe', 'pipe', 'pipe'], shell: true, cwd: `${__dirname}/jars`
             });
-            // this.mainWindow.loadURL(workspaceURL + "?entermedia.key=" + key);
+
+            jMediaBoat.stdout.on('data', data => {
+                console.log(data.toString());
+                if (data.toString().indexOf('Login complete') >= 0) {
+                    console.log('mainwin', this.mainWindow);
+                    // this.mainWindow.loadURL(workspaceURL + '/assets/find/index.html');
+                    console.log('url:', workspaceURL + '/assets/find/index.html');
+                }
+            });
         }, 200);
         return this.mediaBoatClient;
     }

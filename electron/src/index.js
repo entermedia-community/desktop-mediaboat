@@ -114,8 +114,10 @@ function setMainMenu(win) {
         { label: "Exit", click() { app.quit(); }, },
 
         ]
-    },
-    { label: "back", click() { win.webContents.goBack(); }, }, {
+    }, {
+        label: 'Browser', submenu: [
+            { label: "Back", click() { win.webContents.goBack(); }, }]
+    }, {
         label: "Edit",
         submenu: [
             { label: "Undo", accelerator: "CmdOrCtrl+Z", selector: "undo:" },

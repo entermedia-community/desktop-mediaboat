@@ -270,7 +270,7 @@ function showProgress(received, total, workspaceURL, username, key, mainWin) {
             jMediaBoat.stdout.on('data', data => {
                 console.log(data.toString());
                 if (data.toString().indexOf('Login complete') >= 0) {
-                    const newUrl = workspaceURL + '/finder/find/index.html';
+                    const newUrl = `${workspaceURL}/finder/find/index.html?entermedia.key=${key}`;
                     console.log('Loading index: ', newUrl)
                     mainWin.loadURL(newUrl);
                 }

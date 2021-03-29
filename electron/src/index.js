@@ -102,7 +102,7 @@ function updateWorkSpaces(workspaces) {
 
 function setMainMenu(win) {
     const template = [{
-        label: "EnterMedia",
+        label: "eMedia Finder",
         submenu: [{
             label: "Logout",
             click() {
@@ -190,7 +190,7 @@ function DrawTray(mainWin) {
             app.quit();
         },
     });
-    this.tray.setToolTip("EMedia Finder");
+    this.tray.setToolTip("eMedia Finder");
     var contextMenu = Menu.buildFromTemplate(this.trayMenu);
     this.tray.setContextMenu(contextMenu);
 }

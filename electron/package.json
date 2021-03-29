@@ -1,7 +1,8 @@
 {
   "name": "emedia-finder",
   "productName": "eMedia Finder",
-  "version": "0.4.1",
+  "proudctFilename": "emediafinder",
+  "version": "0.4.2",
   "description": "Connecting your computer to entermedia workspaces",
   "main": "src/index.js",
   "scripts": {
@@ -83,7 +84,7 @@
   },
   "build": {
     "appId": "org.entermedia.app",
-    "productName": "EMedia Finder",
+    "productName": "eMedia Finder",
     "asar": false,
     "files": [
       "src/**/*"
@@ -91,8 +92,14 @@
     "linux": {
       "target": "deb, rpm",
       "maintainer": "help@entermedia.org",
-      "synopsis": "EMedia Finder",
+      "synopsis": "eMedia Finder",
       "category": "Utility"
+    },
+    "deb": {
+      "afterInstall": "./build/linux/afterinstall-linux.tpl"
+    },
+    "rpm": {
+      "afterInstall": "./build/linux/afterinstall-linux.tpl"
     },
     "protocols": [
       {

@@ -324,7 +324,7 @@ app.on("window-all-closed", () => {
 app.on("will-quit", () => {
     if (mediaPID)
         if (process.platform === "darwin") {
-            process.kill(this.mediaBoatClient.pid);
+            process.kill(mediaPID);
         }
 });
 

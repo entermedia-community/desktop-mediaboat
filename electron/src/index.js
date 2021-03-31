@@ -321,10 +321,10 @@ app.on("window-all-closed", () => {
     }
 });
 
-app.on("window-all-closed", () => {
+app.on("will-quit", () => {
     if (mediaPID)
         if (process.platform === "darwin") {
-            app.quit();
+            process.kill(this.mediaBoatClient.pid);
         }
 });
 

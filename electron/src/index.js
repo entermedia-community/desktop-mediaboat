@@ -37,6 +37,7 @@ let tray;
 
 let trayMenu = [];
 let workSpaces = [];
+var mediaPID;
 
 const createWindow = () => {
     this.mainWindow = new BrowserWindow({
@@ -107,7 +108,9 @@ function setMainMenu(win) {
             label: "Logout",
             click() {
                 this.session.clearStorageData([], function (data) { });
-                win.reload();
+                win.loadURL(homeUrl);
+                this.session.clearStorageData([], function (data) { });
+                // win.reload();
             }
         },
         { label: "Refresh", accelerator: "F5", click() { win.reload(); }, },
@@ -267,6 +270,7 @@ function showProgress(received, total, workspaceURL, username, key, mainWin) {
             let jMediaBoat = spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, username, key], {
                 stdio: ['pipe', 'pipe', 'pipe'], shell: true, cwd: `${__dirname}/jars`
             });
+            mediaPID = jMediaBoat.pid;
             jMediaBoat.stdout.on('data', data => {
                 console.log(data.toString());
                 if (data.toString().indexOf('Login complete') >= 0) {
@@ -315,6 +319,13 @@ app.on("window-all-closed", () => {
     if (process.platform !== "darwin") {
         app.quit();
     }
+});
+
+app.on("window-all-closed", () => {
+    if (mediaPID)
+        if (process.platform === "darwin") {
+            app.quit();
+        }
 });
 
 app.on("activate", () => {

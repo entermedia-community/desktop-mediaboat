@@ -3,15 +3,17 @@ var request = require('request');
 var fs = require('fs');
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 const PROTOCOL_SCHEME = "entermedia";
+const { dialog } = require('electron');
 
 const protocol = electron.protocol;
 const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell } = require("electron");
 
 // env
 const isDev = false;
-
+const currentVersion = '0.4.2';
 // url
 const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";
+// const homeUrl = "https://critobaltunnel.t47.entermediadb.net/entermediadb/app/workspaces/gotoapp.html";
 // const homeUrl = "https://emediafinder.com/entermediadb/emshare2/index.html";
 // const homeUrl = 'https://notimportant4-30.t47.entermediadb.net/finder/find/startmediaboat.html';
 // const homeUrl = "https://alfred-b-ny.entermediadb.net/assets/find/startmediaboat.html";
@@ -131,6 +133,19 @@ function setMainMenu(win) {
             { label: "Paste", accelerator: "CmdOrCtrl+V", selector: "paste:" },
             { label: "Select All", accelerator: "CmdOrCtrl+A", selector: "selectAll:" }
         ]
+    }, {
+        label: 'Help', submenu: [{
+            label: "version", click() {
+                const options = {
+                    buttons: ['Close'],
+                    defaultId: 2,
+                    title: 'Version',
+                    message: 'Current version',
+                    detail: 'eMediaFinder Desktop Version: ' + currentVersion
+                };
+                dialog.showMessageBox(null, options);
+            },
+        }]
     }];
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
     // Menu.setApplicationMenu(null);

@@ -328,13 +328,15 @@ public class AppController implements LogListener
 
 	protected void openAbsPath(String path)
 	{
+		Collection args = new ArrayList();
 		if( OS.isWindows() )
 		{
-			path = path.replace("/", File.pathSeparator);
+			//TODO: make it run not from powershell, for some reason the other start doesn't work
+			args.add("-command");
+			path = "start " + "\\\"" + path.replace("/", "\\").replace(";", "\\")+ "\\\"";
 		}
 		File folder = new File(path);
 		folder.mkdirs();
-		Collection args = new ArrayList();
 		args.add(path);
 		if( OS.isMac() )
 		{
@@ -345,8 +347,8 @@ public class AppController implements LogListener
 			exec.runExec("xdg-open", args);
 		}
 		else if( OS.isWindows() )
-		{
-			exec.runExec("start", args);
+		{			
+			exec.runExec("powershell", args);
 		}
 	}
 	

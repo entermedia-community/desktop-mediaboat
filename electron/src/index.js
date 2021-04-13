@@ -5,8 +5,11 @@ process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 const PROTOCOL_SCHEME = "entermedia";
 const { dialog } = require('electron');
 
+const findProcess = require('find-process');
+
 const protocol = electron.protocol;
 const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell } = require("electron");
+const { platform } = require("os");
 
 // env
 const isDev = false;
@@ -88,11 +91,11 @@ const createWindow = () => {
                 event.preventDefault();
                 this.mainWindow.hide();
             } else {
-                if (this.mediaBoatClient) process.kill(this.mediaBoatClient.pid + 1);
+                if (this.mediaBoatClient) KillMediaBoatProcess(this.mediaBoatClient.pid);
             }
             return false;
         } else {
-            if (this.mediaBoatClient) process.kill(this.mediaBoatClient.pid + 1);
+            if (this.mediaBoatClient) KillMediaBoatProcess(this.mediaBoatClient.pid);
         }
     });
 };
@@ -138,6 +141,8 @@ function setMainMenu(win) {
     }, {
         label: 'Help', submenu: [{
             label: "Log", click() {
+                console.log('pid', mediaPID);
+                this.mediaBoatLog += `MediaBoatPID: ${mediaPID}\n`;
                 const options = {
                     buttons: ['Close'],
                     defaultId: 2,
@@ -296,29 +301,46 @@ function showProgress(received, total, workspaceURL, username, key, mainWin) {
     console.log(percentage + "% | " + received + " bytes out of " + total + " bytes.");
     if (percentage === 100) {
         setTimeout(() => { // give some time for buffer to write disk
-            if (this.mediaBoatClient && this.mediaBoatClient.pid)
-                process.kill(this.mediaBoatClient.pid + 1);
+            if (this.mediaBoatClient && this.mediaBoatClient.pid) { KillMediaBoatProcess(this.mediaBoatClient.pid); }
             spawnMediaBoat(workspaceURL, username, key, mainWin);
         }, 200);
-        return this.jMediaBoat;
     }
 }
 
 function spawnMediaBoat(workspaceURL, username, key, mainWin) {
-    const spawn = require("child_process").spawn;
-    let jMediaBoat = spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, username, key], {
+    const child_process = require("child_process");
+    let jMediaBoat = child_process.spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, username, key], {
         stdio: ['pipe', 'pipe', 'pipe'], shell: true, cwd: `${__dirname}/jars`
     });
     mediaPID = jMediaBoat.pid;
     jMediaBoat.stdout.on('data', data => {
         console.log(data.toString());
-        if (data) { this.mediaBoatLog += data.toString(); }
+        if (data.toString() !== 'undefined') { this.mediaBoatLog += data.toString(); }
         if (data.toString().indexOf('Login complete') >= 0) {
             const newUrl = `${workspaceURL}/finder/find/index.html?entermedia.key=${key}`;
             console.log('Loading index: ', newUrl)
             mainWin.loadURL(newUrl);
         }
     });
+
+    jMediaBoat.on('close', () => {
+        console.log('MediaBoat closed pid:' + jMediaBoat.pid);
+    });
+    FindProcess();
+    return jMediaBoat;
+}
+
+function FindProcess() {
+    if (process.platform === "win32") {
+        findProcess('name', "java.exe")
+            .then(function (list) {
+                for (var i = 0; i < list.length; i++) {
+                    console.log('Assigning pid windows', list[i].pid);
+                    pidToKill = list[i].pid;
+                    mediaPID = pidToKill.toString();
+                }
+            });
+    }
 }
 
 if (!isDev) {
@@ -350,19 +372,29 @@ if (!isDev) {
     app.on("ready", createWindow);
 }
 
+function KillMediaBoatProcess(pid) {
+    console.log(`Killing Process: ${pid}, ${process.platform}`);
+    if (process.platform === 'win32') {
+        process.kill(pid);
+        const child_process = require("child_process");
+        child_process.spawn("taskkill", ["/pid", pid, '/T', '/F'], { // Sometimes it needs a taskkill
+            stdio: ['pipe', 'pipe', 'pipe'], shell: true,
+        });
+    } else
+        if (process.platform === "darwin") {
+            process.kill(pid);
+        } else {
+            process.kill(pid + 1);
+        }
+}
+
 app.on("window-all-closed", () => {
-    if (this.mediaBoatClient)
-        process.kill(this.mediaBoatClient.pid + 1);
-    if (process.platform !== "darwin") {
-        app.quit();
-    }
+    if (this.mediaBoatClient) { KillMediaBoatProcess(this.mediaBoatClient.pid); }
+    if (process.platform !== "darwin") { app.quit(); }
 });
 
 app.on("will-quit", () => {
-    if (mediaPID)
-        if (process.platform === "darwin") {
-            process.kill(mediaPID);
-        }
+    if (mediaPID) { KillMediaBoatProcess(mediaPID); }
 });
 
 app.on("activate", () => {

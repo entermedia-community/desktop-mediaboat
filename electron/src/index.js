@@ -40,6 +40,7 @@ let tray;
 let trayMenu = [];
 let workSpaces = [];
 var mediaPID;
+var mediaBoatLog = '';
 
 const createWindow = () => {
     this.mainWindow = new BrowserWindow({
@@ -61,6 +62,7 @@ const createWindow = () => {
         this.mainWindow.loadURL(url);
     });
 
+    console.log('loading', homeUrl);
     this.mainWindow.loadURL(homeUrl);
     // Open the DevTools.
     if (isDev) { this.mainWindow.webContents.openDevTools(); }
@@ -135,6 +137,17 @@ function setMainMenu(win) {
         ]
     }, {
         label: 'Help', submenu: [{
+            label: "Log", click() {
+                const options = {
+                    buttons: ['Close'],
+                    defaultId: 2,
+                    title: 'eMediaBoatLog',
+                    message: 'Logs',
+                    detail: this.mediaBoatLog
+                };
+                dialog.showMessageBox(null, options);
+            }
+        }, {
             label: "version", click() {
                 const options = {
                     buttons: ['Close'],
@@ -288,6 +301,7 @@ function showProgress(received, total, workspaceURL, username, key, mainWin) {
             mediaPID = jMediaBoat.pid;
             jMediaBoat.stdout.on('data', data => {
                 console.log(data.toString());
+                if (data) { this.mediaBoatLog += data.toString(); }
                 if (data.toString().indexOf('Login complete') >= 0) {
                     const newUrl = `${workspaceURL}/finder/find/index.html?entermedia.key=${key}`;
                     console.log('Loading index: ', newUrl)

@@ -13,7 +13,7 @@ const { platform } = require("os");
 
 // env
 const isDev = false;
-const currentVersion = '0.4.2';
+const currentVersion = '0.4.4';
 // url
 const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";
 // const homeUrl = "https://critobaltunnel.t47.entermediadb.net/entermediadb/app/workspaces/gotoapp.html";

@@ -250,11 +250,14 @@ function checkSession(win) {
 }
 
 function getMediaBoat(workspaceURL, username, key, mainWin) {
-    // var url = 'http://dev.entermediasoftware.com/jenkins/view/EM9DEV/job/MediaBoat/lastSuccessfulBuild/artifact/dist';
     console.log('workspace', workspaceURL, username, key);
-    // var url = 'http://localhost:8080/finder/install';
     var dest = `${__dirname}/jars`;
-    return downloadFile(workspaceURL + '/finder/install/MediaBoatClient.jar', dest + '/MediaBoatClient.jar', workspaceURL, username, key, mainWin);
+    console.log(process.platform);
+    if (process.platform === 'win32') { // windows do not like it. even if we change permissions
+        return spawnMediaBoat(workspaceURL, username, key, mainWin);
+    } else {
+        return downloadFile(workspaceURL + '/finder/install/MediaBoatClient.jar', dest + '/MediaBoatClient.jar', workspaceURL, username, key, mainWin);
+    }
     // leaving this here, in case they are needed in the future
     // downloadFile(url + '/lib/commons-codec-1.9.jar', dest + '/lib/commons-codec-1.9.jar');
     // downloadFile(url + '/lib/commons-logging-1.2.jar', dest + '/lib/commons-logging-1.2.jar');
@@ -293,24 +296,29 @@ function showProgress(received, total, workspaceURL, username, key, mainWin) {
     console.log(percentage + "% | " + received + " bytes out of " + total + " bytes.");
     if (percentage === 100) {
         setTimeout(() => { // give some time for buffer to write disk
-            if (this.mediaBoatClient && this.mediaBoatClient.pid) process.kill(this.mediaBoatClient.pid + 1);
-            const spawn = require("child_process").spawn;
-            let jMediaBoat = spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, username, key], {
-                stdio: ['pipe', 'pipe', 'pipe'], shell: true, cwd: `${__dirname}/jars`
-            });
-            mediaPID = jMediaBoat.pid;
-            jMediaBoat.stdout.on('data', data => {
-                console.log(data.toString());
-                if (data) { this.mediaBoatLog += data.toString(); }
-                if (data.toString().indexOf('Login complete') >= 0) {
-                    const newUrl = `${workspaceURL}/finder/find/index.html?entermedia.key=${key}`;
-                    console.log('Loading index: ', newUrl)
-                    mainWin.loadURL(newUrl);
-                }
-            });
+            if (this.mediaBoatClient && this.mediaBoatClient.pid)
+                process.kill(this.mediaBoatClient.pid + 1);
+            spawnMediaBoat(workspaceURL, username, key, mainWin);
         }, 200);
         return this.jMediaBoat;
     }
+}
+
+function spawnMediaBoat(workspaceURL, username, key, mainWin) {
+    const spawn = require("child_process").spawn;
+    let jMediaBoat = spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, username, key], {
+        stdio: ['pipe', 'pipe', 'pipe'], shell: true, cwd: `${__dirname}/jars`
+    });
+    mediaPID = jMediaBoat.pid;
+    jMediaBoat.stdout.on('data', data => {
+        console.log(data.toString());
+        if (data) { this.mediaBoatLog += data.toString(); }
+        if (data.toString().indexOf('Login complete') >= 0) {
+            const newUrl = `${workspaceURL}/finder/find/index.html?entermedia.key=${key}`;
+            console.log('Loading index: ', newUrl)
+            mainWin.loadURL(newUrl);
+        }
+    });
 }
 
 if (!isDev) {

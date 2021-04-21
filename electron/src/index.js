@@ -13,13 +13,9 @@ const { platform } = require("os");
 
 // env
 const isDev = false;
-const currentVersion = '0.4.4';
+const currentVersion = '0.5.0';
 // url
 const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";
-// const homeUrl = "https://critobaltunnel.t47.entermediadb.net/entermediadb/app/workspaces/gotoapp.html";
-// const homeUrl = "https://emediafinder.com/entermediadb/emshare2/index.html";
-// const homeUrl = 'https://notimportant4-30.t47.entermediadb.net/finder/find/startmediaboat.html';
-// const homeUrl = "https://alfred-b-ny.entermediadb.net/assets/find/startmediaboat.html";
 
 // logos
 const appLogo = "/assets/images/emrlogo.png";
@@ -91,11 +87,11 @@ const createWindow = () => {
                 event.preventDefault();
                 this.mainWindow.hide();
             } else {
-                if (this.mediaBoatClient) KillMediaBoatProcess(this.mediaBoatClient.pid);
+                if (this.mediaBoatClient) KillAllMediaBoatProcesses();
             }
             return false;
         } else {
-            if (this.mediaBoatClient) KillMediaBoatProcess(this.mediaBoatClient.pid);
+            if (this.mediaBoatClient) KillAllMediaBoatProcesses();
         }
     });
 };
@@ -117,13 +113,16 @@ function setMainMenu(win) {
                 this.session.clearStorageData([], function (data) { });
                 win.loadURL(homeUrl);
                 this.session.clearStorageData([], function (data) { });
-                // win.reload();
+                KillAllMediaBoatProcesses();
             }
-        },
-        { label: "Refresh", accelerator: "F5", click() { win.reload(); }, },
-        { label: "Exit", click() { app.quit(); }, },
-
-        ]
+        }, {
+            label: "Refresh", accelerator: "F5", click() { win.reload(); },
+        }, {
+            label: "Exit", click() {
+                app.isQuiting = true;
+                app.quit();
+            },
+        },]
     }, {
         label: 'Browser', submenu: [
             { label: "Back", click() { win.webContents.goBack(); }, }]
@@ -141,7 +140,6 @@ function setMainMenu(win) {
     }, {
         label: 'Help', submenu: [{
             label: "Log", click() {
-                console.log('pid', mediaPID);
                 this.mediaBoatLog += `MediaBoatPID: ${mediaPID}\n`;
                 const options = {
                     buttons: ['Close'],
@@ -301,7 +299,7 @@ function showProgress(received, total, workspaceURL, username, key, mainWin) {
     console.log(percentage + "% | " + received + " bytes out of " + total + " bytes.");
     if (percentage === 100) {
         setTimeout(() => { // give some time for buffer to write disk
-            if (this.mediaBoatClient && this.mediaBoatClient.pid) { KillMediaBoatProcess(this.mediaBoatClient.pid); }
+            if (this.mediaBoatClient && mediaPID) { KillAllMediaBoatProcesses(); }
             spawnMediaBoat(workspaceURL, username, key, mainWin);
         }, 200);
     }
@@ -309,6 +307,7 @@ function showProgress(received, total, workspaceURL, username, key, mainWin) {
 
 function spawnMediaBoat(workspaceURL, username, key, mainWin) {
     const child_process = require("child_process");
+    console.log("exec: java -jar MediaBoatClient.jar ", workspaceURL, username, key);
     let jMediaBoat = child_process.spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, username, key], {
         stdio: ['pipe', 'pipe', 'pipe'], shell: true, cwd: `${__dirname}/jars`
     });
@@ -373,7 +372,6 @@ if (!isDev) {
 }
 
 function KillMediaBoatProcess(pid) {
-    console.log(`Killing Process: ${pid}, ${process.platform}`);
     if (process.platform === 'win32') {
         process.kill(pid);
         const child_process = require("child_process");
@@ -388,9 +386,22 @@ function KillMediaBoatProcess(pid) {
         }
 }
 
+function KillAllMediaBoatProcesses() {
+    findProcess('name', "MediaBoatClient").then(list => {
+        console.log('processes to kill: ', list.length);
+        for (var i = 0; i < list.length; i++) {
+            console.log('Found MediaBoat: ', list[i].pid, list[i]);
+            KillMediaBoatProcess(list[i].pid);
+        }
+    });
+}
+KillAllMediaBoatProcesses();
+
 app.on("window-all-closed", () => {
-    if (this.mediaBoatClient) { KillMediaBoatProcess(this.mediaBoatClient.pid); }
-    if (process.platform !== "darwin") { app.quit(); }
+    if (process.platform !== "darwin") {
+        if (mediaPID) { KillMediaBoatProcess(mediaPID); }
+        app.quit();
+    }
 });
 
 app.on("will-quit", () => {
@@ -398,10 +409,9 @@ app.on("will-quit", () => {
 });
 
 app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-    }
+    if (BrowserWindow.getAllWindows().length === 0) { createWindow(); }
 });
 
 // register protocol Scheme, only runs on install
 app.setAsDefaultProtocolClient(PROTOCOL_SCHEME);
+

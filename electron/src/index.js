@@ -214,6 +214,7 @@ function DrawTray(mainWin) {
     this.trayMenu.push({
         label: "Home",
         click: () => {
+            KillAllMediaBoatProcesses();
             mainWin.show();
             mainWin.loadURL(homeUrl);
         },

@@ -118,11 +118,13 @@ function setMainMenu(win) {
         }, {
             label: "Refresh", accelerator: "F5", click() { win.reload(); },
         }, {
+            label: "Minimize To Tray", click() { win.hide(); },
+        }, {
             label: "Exit", click() {
                 app.isQuiting = true;
                 app.quit();
             },
-        },]
+        }]
     }, {
         label: 'Browser', submenu: [
             { label: "Back", click() { win.webContents.goBack(); }, }]

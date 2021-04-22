@@ -13,7 +13,7 @@ const { platform } = require("os");
 
 // env
 const isDev = false;
-const currentVersion = '0.5.0';
+const currentVersion = '0.5.1';
 // url
 const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";
 
@@ -140,7 +140,6 @@ function setMainMenu(win) {
     }, {
         label: 'Help', submenu: [{
             label: "Log", click() {
-                this.mediaBoatLog += `MediaBoatPID: ${mediaPID}\n`;
                 const options = {
                     buttons: ['Close'],
                     defaultId: 2,
@@ -314,7 +313,7 @@ function spawnMediaBoat(workspaceURL, username, key, mainWin) {
     mediaPID = jMediaBoat.pid;
     jMediaBoat.stdout.on('data', data => {
         console.log(data.toString());
-        if (data.toString() !== 'undefined') { this.mediaBoatLog += data.toString(); }
+        if (data.toString() !== 'undefined') { LogMediaBoat(data.toString()); }
         if (data.toString().indexOf('Login complete') >= 0) {
             const newUrl = `${workspaceURL}/finder/find/index.html?entermedia.key=${key}`;
             console.log('Loading index: ', newUrl)
@@ -329,9 +328,21 @@ function spawnMediaBoat(workspaceURL, username, key, mainWin) {
     return jMediaBoat;
 }
 
+function LogMediaBoat(msg) {
+    if (!this.mediaBoatLog) { this.mediaBoatLog = '' }
+    if (msg) {
+        const timeElapsed = Date.now();
+        const today = new Date(timeElapsed);
+        msg = `${today.toISOString()} ${msg} \n`;
+        this.mediaBoatLog += msg;
+        console.log(msg)
+    }
+}
+
 function FindProcess() {
     if (process.platform === "win32") {
-        findProcess('name', "java.exe")
+        LogMediaBoat("Windows Detected");
+        findProcess('name', "MediaBoatClient")
             .then(function (list) {
                 for (var i = 0; i < list.length; i++) {
                     console.log('Assigning pid windows', list[i].pid);
@@ -339,6 +350,7 @@ function FindProcess() {
                     mediaPID = pidToKill.toString();
                 }
             });
+        LogMediaBoat(`MediaBoatPID: ${mediaPID}`);
     }
 }
 

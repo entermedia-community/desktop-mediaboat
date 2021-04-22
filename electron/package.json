@@ -2,7 +2,7 @@
   "name": "emedia-finder",
   "productName": "eMedia Finder",
   "proudctFilename": "emediafinder",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Connecting your computer to entermedia workspaces",
   "main": "src/index.js",
   "scripts": {

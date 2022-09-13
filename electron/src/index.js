@@ -1,5 +1,6 @@
 const electron = require("electron");
-var request = require('request');
+//var request = require('request');
+const https = require("https");
 var fs = require('fs');
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 const PROTOCOL_SCHEME = "entermedia";
@@ -13,7 +14,7 @@ const { platform } = require("os");
 
 // env
 const isDev = false;
-const currentVersion = '0.5.1';
+const currentVersion = '0.5.3';
 // url
 const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";
 
@@ -49,6 +50,7 @@ const createWindow = () => {
         webPreferences: {
             nodeIntegration: true,
             nodeIntegrationInWorker: false,
+            devTools: true,
         },
     });
 
@@ -97,6 +99,7 @@ const createWindow = () => {
 };
 
 function openWorkspace(url) {
+    console.log("loading "+url);
     this.mainWindow.loadURL(url);
 }
 
@@ -170,7 +173,7 @@ function setMainMenu(win) {
 
 // Start MediaBoat
 function startMediaBoat(workspaceURL, username, key) {
-    console.log('starting mediaboat...')
+    console.log('starting mediaboat: '+workspaceURL)
     var req = getMediaBoat(workspaceURL, username, key, this.mainWindow);
     req.on('pipe', resp => {
         console.log('resp', resp);
@@ -255,7 +258,7 @@ function checkSession(win) {
 }
 
 function getMediaBoat(workspaceURL, username, key, mainWin) {
-    console.log('workspace', workspaceURL, username, key);
+    //console.log('getmediaboat workspace', workspaceURL, username, key);
     var dest = `${__dirname}/jars`;
     console.log(process.platform);
     if (process.platform === 'win32') { // windows do not like it. even if we change permissions
@@ -276,20 +279,32 @@ function getMediaBoat(workspaceURL, username, key, mainWin) {
 function downloadFile(url, destPath, workspaceURL, username, key, mainWin) {
     var received_bytes = 0;
     var total_bytes = 0;
-    var req = request({ method: 'GET', uri: url });
+    //var req = request({ method: 'GET', uri: url });
+    var req = https.get(url, (res) => {
 
-    var out = fs.createWriteStream(destPath);
-    req.pipe(out);
-    req.on('response', data => {
-        // Change the total bytes value to get progress later.
-        total_bytes = parseInt(data.headers['content-length']);
-        console.log('total bytes', total_bytes);
-    });
+        var out = fs.createWriteStream(destPath);
+        res.pipe(out);
+    /*  
+        req.on('response', data => {
+            // Change the total bytes value to get progress later.
+            total_bytes = parseInt(data.headers['content-length']);
+            console.log('total bytes', total_bytes);
+        });
 
-    req.on('data', chunk => {
-        // Update the received bytes
-        received_bytes += chunk.length;
-        showProgress(received_bytes, total_bytes, workspaceURL, username, key, mainWin);
+        req.on('data', chunk => {
+            // Update the received bytes
+            received_bytes += chunk.length;
+            showProgress(received_bytes, total_bytes, workspaceURL, username, key, mainWin);
+        });
+    */
+        out.on('finish', () => {
+            out.close();
+            console.log('File downloaded');
+        });
+
+    }).on('error', (err) => {
+        // handle error
+        console.log(err);
     });
 
     return req;

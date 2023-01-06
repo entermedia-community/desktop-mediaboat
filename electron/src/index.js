@@ -4,29 +4,34 @@ const https = require("https");
 var fs = require('fs');
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 const PROTOCOL_SCHEME = "entermedia";
-const { dialog } = require('electron');
 
 const findProcess = require('find-process');
 
 const protocol = electron.protocol;
-const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell } = require("electron");
+const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell, dialog, net } = require("electron");
 const { platform } = require("os");
+//const computerName = os.hostname();
+//const net = electron.net;
 
 // env
-const isDev = false;
+const isDev = true;
 const currentVersion = '0.5.3';
 // url
-const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";
+//const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";
+const homeUrl = "http://localhost:8080/finder/find/index.html?entermedia.key=cristobalmd542602d7e0ba09a4e08c0a6234578650c08d0ba08d";
 
 // logos
 const appLogo = "/assets/images/emrlogo.png";
 const trayLogo = "/assets/images/em20.png";
 
 // exports to renderer
-exports.startMediaBoat = startMediaBoat;
+//exports.startMediaBoat = startMediaBoat;
 exports.loadNewUrl = openWorkspace;
 exports.updateWorkSpaces = updateWorkSpaces;
 exports.openLocalBrowser = openLocalBrowser;
+
+exports.uploadFolder = uploadFolder; 
+
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require("electron-squirrel-startup")) { app.quit(); }
@@ -37,13 +42,15 @@ let session;
 let mediaBoatClient;
 let tray;
 
+let entermediakey;
+
 let trayMenu = [];
 let workSpaces = [];
 var mediaPID;
 var mediaBoatLog = '';
 
 const createWindow = () => {
-    this.mainWindow = new BrowserWindow({
+    mainWindow = new BrowserWindow({
         width: 1920,
         height: 1024,
         icon: __dirname + appLogo,
@@ -60,51 +67,51 @@ const createWindow = () => {
     // internal protocol Scheme
     protocol.registerHttpProtocol(PROTOCOL_SCHEME, (req, cb) => {
         const url = req.url.replace('entermedia', 'http');
-        this.mainWindow.loadURL(url);
+        mainWindow.loadURL(url);
     });
 
     console.log('loading', homeUrl);
-    this.mainWindow.loadURL(homeUrl);
+    mainWindow.loadURL(homeUrl);
     // Open the DevTools.
-    if (isDev) { this.mainWindow.webContents.openDevTools(); }
+    if (isDev) { mainWindow.webContents.openDevTools(); }
 
     // Main Menu
-    setMainMenu(this.mainWindow);
+    setMainMenu(mainWindow);
 
     // session (cookies and stuff)
-    checkSession(this.mainWindow);
+    checkSession(mainWindow);
 
     // tray
-    CreateTray([], this.mainWindow);
+    CreateTray([], mainWindow);
 
     //events
-    this.mainWindow.on("minimize", (event) => {
+    mainWindow.on("minimize", (event) => {
         event.preventDefault();
-        this.mainWindow.hide();
+        mainWindow.hide();
     });
 
-    this.mainWindow.on("close", (event) => {
+    mainWindow.on("close", (event) => {
         if (!isDev) {
             if (!app.isQuiting) {
                 event.preventDefault();
-                this.mainWindow.hide();
+                mainWindow.hide();
             } else {
-                if (this.mediaBoatClient) KillAllMediaBoatProcesses();
+                //if (this.mediaBoatClient) KillAllMediaBoatProcesses();
             }
             return false;
         } else {
-            if (this.mediaBoatClient) KillAllMediaBoatProcesses();
+            //if (this.mediaBoatClient) KillAllMediaBoatProcesses();
         }
     });
 };
 
 function openWorkspace(url) {
     console.log("loading "+url);
-    this.mainWindow.loadURL(url);
+    mainWindow.loadURL(url);
 }
 
 function updateWorkSpaces(workspaces) {
-    UpdateTray(this.mainWindow, workspaces);
+    UpdateTray(mainWindow, workspaces);
 }
 
 function setMainMenu(win) {
@@ -171,10 +178,84 @@ function setMainMenu(win) {
     // Menu.setApplicationMenu(null);
 }
 
+
+function uploadFolder(username, inKey, workspaceURL, mediadbid) {
+    //console.log('uploading folder to: '+workspaceURL);
+    /*
+    dialog.showOpenDialog(mainWindow, {
+        properties: ['openFile', 'openDirectory', 'multiSelections']
+    }).then(result => {
+        console.log('directories selected', result.filePaths)
+        console.log(result.canceled)
+        console.log(result.filePaths)
+
+        var body = JSON.stringify({ key: inKey });
+        postRequest(workspaceURL, body)
+
+      }).catch(err => {
+        console.log(err)
+      })
+    */
+    
+    entermediakey = inKey;
+
+    dialog.showOpenDialog(mainWindow, {
+        properties: ['openFile', 'multiSelections']
+    }, result => {
+        if(result===undefined) return;
+        const filename  = result[0]
+        console.log('directories selected',  filename);
+
+        var body = JSON.stringify({  
+            "name" : "Asset from Electron", 
+            "file": fs.createReadStream(filename)});
+        postRequest(workspaceURL, body)
+
+      });
+}
+
+//JSON Requests
+
+function postRequest(inUrl, inBody) {
+    console.log("Making request to " + inUrl)
+    const request = net.request({
+        method: 'POST',
+        url: inUrl,
+        redirect: 'follow'
+    });
+    request.on('response', (response) => {
+        console.log(`STATUS: ${response.statusCode}`);
+        console.log(`HEADERS: ${JSON.stringify(response.headers)}`);
+ 
+        response.on('data', (chunk) => {
+            console.log(`BODY: ${chunk}`)
+        });
+    });
+    request.on('finish', () => {
+        console.log('Request is Finished')
+    });
+    request.on('abort', () => {
+        console.log('Request is Aborted')
+    });
+    request.on('error', (error) => {
+        console.log(`ERROR: ${JSON.stringify(error)}`)
+    });
+    request.on('close', (error) => {
+        console.log('Last Transaction has occurred')
+    });
+    request.setHeader('Content-Type', 'application/json');
+    request.setHeader("X-tokentype", "entermedia");
+    request.setHeader("X-token", entermediakey);
+    request.write(inBody, 'utf-8');
+    request.end();
+}
+
+
+
 // Start MediaBoat
 function startMediaBoat(workspaceURL, username, key) {
     console.log('starting mediaboat: '+workspaceURL)
-    var req = getMediaBoat(workspaceURL, username, key, this.mainWindow);
+    var req = getMediaBoat(workspaceURL, username, key, mainWindow);
     req.on('pipe', resp => {
         console.log('resp', resp);
     });
@@ -373,27 +454,28 @@ function FindProcess() {
 }
 
 if (!isDev) {
-    const gotTheLock = app.requestSingleInstanceLock();
+    const gotTheLock = app.getVersion()
+    // .requestSingleInstanceLock();
     if (!gotTheLock) {
         app.quit();
     } else {
         app.on('second-instance', (event, commandLine, workingDirectory) => {
-            if (this.mainWindow) {
-                this.mainWindow.show()
+            if (mainWindow) {
+                mainWindow.show()
             }
             console.log('length:', commandLine.length);
             if (commandLine.length >= 2) {
                 commandLine.forEach(c => {
                     if (c.indexOf(PROTOCOL_SCHEME) !== -1) {
-                        this.mainWindow.loadURL(c.replace(PROTOCOL_SCHEME, 'http'));
+                        mainWindow.loadURL(c.replace(PROTOCOL_SCHEME, 'http'));
                     }
                 });
             }
         });
         app.on("ready", createWindow);
         app.on("open-url", (event, url) => {
-            if (this.mainWindow)
-                this.mainWindow.loadURL(url.replace(PROTOCOL_SCHEME, 'http'));
+            if (mainWindow)
+                mainWindow.loadURL(url.replace(PROTOCOL_SCHEME, 'http'));
             event.preventDefault();
         });
     }

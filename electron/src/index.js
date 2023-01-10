@@ -1,16 +1,18 @@
 const electron = require("electron");
 //var request = require('request');
+var http = require('http');
 const https = require("https");
 var fs = require('fs');
+const FormData = require('form-data');
+
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 const PROTOCOL_SCHEME = "entermedia";
 
 const findProcess = require('find-process');
-
 const protocol = electron.protocol;
 const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell, dialog, net } = require("electron");
-const { platform } = require("os");
-//const computerName = os.hostname();
+const os = require("os");
+const computerName = os.hostname();
 //const net = electron.net;
 
 // env
@@ -179,37 +181,37 @@ function setMainMenu(win) {
 }
 
 
-function uploadFolder(username, inKey, workspaceURL, mediadbid) {
-    //console.log('uploading folder to: '+workspaceURL);
-    /*
-    dialog.showOpenDialog(mainWindow, {
-        properties: ['openFile', 'openDirectory', 'multiSelections']
-    }).then(result => {
-        console.log('directories selected', result.filePaths)
-        console.log(result.canceled)
-        console.log(result.filePaths)
-
-        var body = JSON.stringify({ key: inKey });
-        postRequest(workspaceURL, body)
-
-      }).catch(err => {
-        console.log(err)
-      })
-    */
-    
+function uploadFolder(username, inKey, inPostUrl, inSourcepath) {
+  
     entermediakey = inKey;
 
     dialog.showOpenDialog(mainWindow, {
         properties: ['openFile', 'multiSelections']
     }, result => {
         if(result===undefined) return;
-        const filename  = result[0]
-        console.log('directories selected',  filename);
+        const filename  = result[0];
+        console.log('Selected',  filename);
+        const file = fs.createReadStream(filename);
 
-        var body = JSON.stringify({  
-            "name" : "Asset from Electron", 
-            "file": fs.createReadStream(filename)});
-        postRequest(workspaceURL, body)
+        const form = new FormData();
+
+        let userHomePath = app.getPath('home');
+        console.log(userHomePath);
+        let filenamefinal = filename.replace(userHomePath, ''); //remove user home
+        console.log(filenamefinal); 
+        let sourcepath = inSourcepath+'/'+computerName+'/'+filenamefinal;
+        form.append('sourcepath', sourcepath);
+        // form.append('my_buffer', new Buffer.alloc(10));
+        form.append('file', file); 
+        
+        form.submit({
+            host: "localhost",
+            port:8080,
+            path : "/finder/mediadb/services/module/asset/create",
+            url : inPostUrl,
+            headers: {"X-tokentype": 'entermedia', "X-token": entermediakey}
+        });
+        //postRequest(inPostUrl, form)
 
       });
 }
@@ -217,6 +219,53 @@ function uploadFolder(username, inKey, workspaceURL, mediadbid) {
 //JSON Requests
 
 function postRequest(inUrl, inBody) {
+    console.log("Making request to " + inUrl)
+    const request = http.request({
+        method: 'POST',
+        url: inUrl,
+        port: "8080",
+        redirect: 'follow'
+    });
+    request.on('response', (response) => {
+        console.log(`STATUS: ${response.statusCode}`);
+        console.log(`HEADERS: ${JSON.stringify(response.headers)}`);
+ 
+        response.on('data', (chunk) => {
+            console.log(`BODY: ${chunk}`)
+        });
+    });
+    request.on('finish', () => {
+        console.log('Request is Finished')
+    });
+    request.on('abort', () => {
+        console.log('Request is Aborted')
+    });
+    request.on('error', (error) => {
+        console.log(`ERROR: ${JSON.stringify(error)}`);
+        callback(error);
+    });
+    request.on('close', (error) => {
+        console.log('Last Transaction has occurred')
+    });
+    //request.setHeader('Content-Type', 'application/json');
+    //request.setHeader('Content-Type', 'multipart/form-data');
+    
+    
+    request.setHeader("X-tokentype", "entermedia");
+    request.setHeader("X-token", entermediakey);
+
+    //request.write("formData", inBody)
+    console.log(inBody);
+    
+    inBody.pipe(request);
+    //inBody.submit(inUrl)
+
+    //request.write(inBody, 'utf-8');
+    request.end();
+}
+
+
+function postRequest2(inUrl, inBody) {
     console.log("Making request to " + inUrl)
     const request = net.request({
         method: 'POST',
@@ -243,10 +292,15 @@ function postRequest(inUrl, inBody) {
     request.on('close', (error) => {
         console.log('Last Transaction has occurred')
     });
-    request.setHeader('Content-Type', 'application/json');
+    //request.setHeader('Content-Type', 'application/json');
+    request.setHeader('Content-Type', 'multipart/form-data');
+    
+    
     request.setHeader("X-tokentype", "entermedia");
     request.setHeader("X-token", entermediakey);
-    request.write(inBody, 'utf-8');
+
+    request.write("formData", inBody)
+    //request.write(inBody, 'utf-8');
     request.end();
 }
 

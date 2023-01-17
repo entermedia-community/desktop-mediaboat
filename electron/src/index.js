@@ -2,6 +2,7 @@ const electron = require("electron");
 //var request = require('request');
 var http = require('http');
 const https = require("https");
+const url = require('url');
 var fs = require('fs');
 const FormData = require('form-data');
 
@@ -89,7 +90,7 @@ const createWindow = () => {
     //events
     mainWindow.on("minimize", (event) => {
         event.preventDefault();
-        mainWindow.hide();
+        //mainWindow.hide();
     });
 
     mainWindow.on("close", (event) => {
@@ -181,37 +182,48 @@ function setMainMenu(win) {
 }
 
 
-function uploadFolder(username, inKey, inPostUrl, inSourcepath) {
-  
+function uploadFolder(inKey, inSourcepath, inPostUrl, inRedirectUrl) {
+    //console.log(inPostUrl);
     entermediakey = inKey;
 
     dialog.showOpenDialog(mainWindow, {
         properties: ['openFile', 'multiSelections']
     }, result => {
         if(result===undefined) return;
-        const filename  = result[0];
-        console.log('Selected',  filename);
-        const file = fs.createReadStream(filename);
+        const totalfiles = result.length;
+        let filecount = 0;
+        result.forEach(function (filename) {
+            const file = fs.createReadStream(filename);
 
-        const form = new FormData();
+            const form = new FormData();
 
-        let userHomePath = app.getPath('home');
-        console.log(userHomePath);
-        let filenamefinal = filename.replace(userHomePath, ''); //remove user home
-        console.log(filenamefinal); 
-        let sourcepath = inSourcepath+'/'+computerName+'/'+filenamefinal;
-        form.append('sourcepath', sourcepath);
-        // form.append('my_buffer', new Buffer.alloc(10));
-        form.append('file', file); 
-        
-        form.submit({
-            host: "localhost",
-            port:8080,
-            path : "/finder/mediadb/services/module/asset/create",
-            url : inPostUrl,
-            headers: {"X-tokentype": 'entermedia', "X-token": entermediakey}
+            let userHomePath = app.getPath('home');
+            let filenamefinal = filename.replace(userHomePath, ''); //remove user home
+            let sourcepath = inSourcepath+'/'+computerName+'/'+filenamefinal;
+            form.append('sourcepath', sourcepath);
+            form.append('file', file); 
+            const q = url.parse(inPostUrl, true);
+                       
+            form.submit({
+                host: q.hostname,
+                port: q.port,
+                path: q.path,
+                headers: {"X-tokentype": 'entermedia', "X-token": entermediakey}
+            }, function(err, res) {
+                filecount++;
+                if(res.statusCode === 200) {
+                    console.log('Upĺoaded: ',  filename);
+                    if (filecount==totalfiles) {     
+                        mainWindow.loadURL(inRedirectUrl);
+                    }
+                }
+                else {
+                    console.log(res.statusCode);
+                }
+              });
+            
+            //postRequest(inPostUrl, form)
         });
-        //postRequest(inPostUrl, form)
 
       });
 }
@@ -220,10 +232,8 @@ function uploadFolder(username, inKey, inPostUrl, inSourcepath) {
 
 function postRequest(inUrl, inBody) {
     console.log("Making request to " + inUrl)
-    const request = http.request({
+    const request = http.request(inUrl, {
         method: 'POST',
-        url: inUrl,
-        port: "8080",
         redirect: 'follow'
     });
     request.on('response', (response) => {
@@ -242,7 +252,7 @@ function postRequest(inUrl, inBody) {
     });
     request.on('error', (error) => {
         console.log(`ERROR: ${JSON.stringify(error)}`);
-        callback(error);
+        //callback(error);
     });
     request.on('close', (error) => {
         console.log('Last Transaction has occurred')
@@ -255,7 +265,7 @@ function postRequest(inUrl, inBody) {
     request.setHeader("X-token", entermediakey);
 
     //request.write("formData", inBody)
-    console.log(inBody);
+    //console.log(inBody);
     
     inBody.pipe(request);
     //inBody.submit(inUrl)

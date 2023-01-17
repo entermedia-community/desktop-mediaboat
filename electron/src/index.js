@@ -20,7 +20,7 @@ const isDev = true;
 const currentVersion = '0.5.3';
 // url
 //const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";
-const homeUrl = "http://localhost:8080/finder/find/index.html?entermedia.key=cristobalmd542602d7e0ba09a4e08c0a6234578650c08d0ba08d";
+const homeUrl = "http://localhost:8080/finder/find/startworkspace.html?entermedia.key=cristobalmd542602d7e0ba09a4e08c0a6234578650c08d0ba08d";
 
 // logos
 const appLogo = "/assets/images/emrlogo.png";

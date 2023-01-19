@@ -4,6 +4,7 @@ var http = require('http');
 const https = require("https");
 const url = require('url');
 var fs = require('fs');
+var path = require('path');
 const FormData = require('form-data');
 
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
@@ -33,7 +34,11 @@ exports.loadNewUrl = openWorkspace;
 exports.updateWorkSpaces = updateWorkSpaces;
 exports.openLocalBrowser = openLocalBrowser;
 
+//Upload Files
 exports.uploadFolder = uploadFolder; 
+
+//Select Folder for Download
+exports.selectFolder = selectFolder; 
 
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -90,7 +95,7 @@ const createWindow = () => {
     //events
     mainWindow.on("minimize", (event) => {
         event.preventDefault();
-        //mainWindow.hide();
+        mainWindow.hide();
     });
 
     mainWindow.on("close", (event) => {
@@ -182,8 +187,7 @@ function setMainMenu(win) {
 }
 
 
-function uploadFolder(inKey, inSourcepath, inPostUrl, inRedirectUrl) {
-    //console.log(inPostUrl);
+function uploadFolder(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
     entermediakey = inKey;
 
     dialog.showOpenDialog(mainWindow, {
@@ -192,41 +196,78 @@ function uploadFolder(inKey, inSourcepath, inPostUrl, inRedirectUrl) {
         if(result===undefined) return;
         const totalfiles = result.length;
         let filecount = 0;
+        let totalsize = 0;
+
+        result.forEach(function (filename) {
+            var stats = fs.statSync(filename);
+            var fileSizeInBytes = stats.size;
+            totalsize=+fileSizeInBytes;
+            
+        });
+
+        
         result.forEach(function (filename) {
             const file = fs.createReadStream(filename);
-
-            const form = new FormData();
-
             let userHomePath = app.getPath('home');
             let filenamefinal = filename.replace(userHomePath, ''); //remove user home
             let sourcepath = inSourcepath+'/'+computerName+'/'+filenamefinal;
+
+            if(filecount === 0) {
+                let categorypath = path.dirname(sourcepath);
+                let form = new FormData();
+                form.append('sourcepath', categorypath);
+                form.append('totalfilesize', totalsize);
+                submitForm(form, inMediadbUrl+"/services/module/userupload/uploadstart");
+            }
+
+            let form = new FormData();
             form.append('sourcepath', sourcepath);
             form.append('file', file); 
-            const q = url.parse(inPostUrl, true);
-                       
-            form.submit({
-                host: q.hostname,
-                port: q.port,
-                path: q.path,
-                headers: {"X-tokentype": 'entermedia', "X-token": entermediakey}
-            }, function(err, res) {
-                filecount++;
-                if(res.statusCode === 200) {
-                    console.log('Upĺoaded: ',  filename);
-                    if (filecount==totalfiles) {     
-                        mainWindow.loadURL(inRedirectUrl);
-                    }
-                }
-                else {
-                    console.log(res.statusCode);
-                }
-              });
-            
+
+            submitForm(form, inMediadbUrl+"/services/module/asset/create")
+            //Todo if false Exeption
+            filecount++;
+            if (filecount==totalfiles) {     
+                mainWindow.loadURL(inRedirectUrl);
+            }          
             //postRequest(inPostUrl, form)
         });
 
       });
 }
+
+
+function selectFolder(inKey) {
+    entermediakey = inKey;
+
+    dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory']
+    }, result => {
+        if(result===undefined) return;
+        let selectedPath = result[0];
+        console.log(selectedPath);
+    });
+};
+
+
+function submitForm(form, inPostUrl){
+    const q = url.parse(inPostUrl, true);
+    form.submit({
+        host: q.hostname,
+        port: q.port,
+        path: q.path,
+        headers: {"X-tokentype": 'entermedia', "X-token": entermediakey}
+    }, function(err, res) {
+        if(res.statusCode === 200) {
+            return true;
+        }
+        else {
+            console.log(res.statusCode);
+            return false;
+        }
+      });
+}
+
 
 //JSON Requests
 

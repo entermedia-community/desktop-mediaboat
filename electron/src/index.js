@@ -17,8 +17,7 @@ const protocol = electron.protocol;
 const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell, dialog, net, ipcMain } = require("electron");
 const os = require("os");
 const computerName = os.hostname();
-//const net = electron.net;
-
+const userHomePath = app.getPath('home');
 const Store = require('electron-store');
 const store = new Store();
 
@@ -43,6 +42,7 @@ exports.openLocalBrowser = openLocalBrowser;
 
 //Upload Files
 exports.uploadFolder = uploadFolder; 
+exports.uploadFiles = uploadFiles; 
 
 //Select Folder for Download
 exports.selectFolder = selectFolder; 
@@ -229,7 +229,8 @@ function setMainMenu(mainWindow) {
 
 
 
-function uploadFolder(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
+
+function uploadFiles(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
     entermediakey = inKey;
 
     dialog.showOpenDialog(mainWindow, {
@@ -250,7 +251,6 @@ function uploadFolder(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
         
         result.forEach(function (filename) {
             const file = fs.createReadStream(filename);
-            let userHomePath = app.getPath('home');
             let filenamefinal = filename.replace(userHomePath, ''); //remove user home
             let sourcepath = inSourcepath+'/'+computerName+'/'+filenamefinal;
 
@@ -276,6 +276,80 @@ function uploadFolder(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
         });
 
       });
+}
+
+function uploadFolder(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
+    entermediakey = inKey;
+
+    dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory']
+    }, result => {
+        if(result===undefined) return;
+        
+        var directory = result[0];
+        let savingPath = inSourcepath + "/" + computerName;
+        loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl);
+        
+        mainWindow.loadURL(inRedirectUrl);
+  
+    });    
+      
+}
+
+
+function loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl) {
+
+    let filecount = 0;
+    let totalsize = 0;
+    
+    fs.readdir(directory, (err, files) => {
+        
+        files.forEach(file => {
+            let filepath = directory+'/'+file;
+            let stats = fs.statSync(filepath);
+            if(stats.isDirectory()) {
+                console.log('Subdirectory found: ' + filepath);
+                let filenamefinal = filepath.replace(userHomePath, ''); //remove user home
+                loopDirectory(filepath, savingPath, inMediadbUrl, inRedirectUrl);
+            }
+            else {
+                let fileSizeInBytes = stats.size;
+                totalsize=+fileSizeInBytes;
+            }
+            
+        });    
+    });
+
+    //ToDO: Call JSON API to verify files are not already there.
+
+    fs.readdir(directory, (err, files) => {
+        files.forEach(file => {
+            let filepath = directory+'/'+file;
+            let stats = fs.statSync(filepath);
+            if(stats.isDirectory()) {
+                return;
+            }
+            let filestream = fs.createReadStream(filepath);
+            //console.log('Procesing: '+filepath);
+            let filenamefinal = filepath.replace(userHomePath, ''); //remove user home
+            let sourcepath = savingPath+filenamefinal;
+            if(filecount === 0) {
+                let categorypath = path.dirname(sourcepath);
+                let form = new FormData();
+                form.append('sourcepath', categorypath);
+                form.append('totalfilesize', totalsize);
+                submitForm(form, inMediadbUrl+"/services/module/userupload/uploadstart");
+            }
+
+            let form = new FormData();
+            form.append('sourcepath', sourcepath);
+            form.append('file', filestream); 
+            console.log('Uploading: '+ sourcepath);
+            submitForm(form, inMediadbUrl+"/services/module/asset/create")
+            //postRequest(inPostUrl, form)
+        });
+    });
+
 }
 
 
@@ -315,7 +389,7 @@ function openFile(destPath) {
 }
 
 
-function submitForm(form, inPostUrl){
+async function submitForm(form, inPostUrl){
     const q = url.parse(inPostUrl, true);
     form.submit({
         host: q.hostname,

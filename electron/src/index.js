@@ -1,11 +1,13 @@
 const electron = require("electron");
-const { download } = require('electron-dl');
-//var request = require('request');
+
 var http = require('http');
 const https = require("https");
 const url = require('url');
 var fs = require('fs');
+const mkdirp  = require('mkdirp')
 var path = require('path');
+
+const fetch = require('electron-fetch').default;
 
 const FormData = require('form-data');
 
@@ -14,10 +16,12 @@ const PROTOCOL_SCHEME = "entermedia";
 
 const findProcess = require('find-process');
 const protocol = electron.protocol;
-const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell, dialog, net, ipcMain } = require("electron");
+const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell, dialog, net, ipcMain, session } = require("electron");
+
 const os = require("os");
 const computerName = os.hostname();
 const userHomePath = app.getPath('home');
+
 const Store = require('electron-store');
 const store = new Store();
 
@@ -28,7 +32,7 @@ const currentVersion = '0.5.3';
 const selectWorkspaceForm = `file://${__dirname}/selectHome.html`;
 // url
 //const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";
-//const homeUrl = "http://localhost:8080/finder/find/startworkspace.html?entermedia.key=cristobalmd542602d7e0ba09a4e08c0a6234578650c08d0ba08d";
+//const homeUrl = "http://localhost:8080/finder/find/index.html?entermedia.key=cristobalmd542602d7e0ba09a4e08c0a6234578650c08d0ba08d&desktop=true;
 
 // logos
 const appLogo = "/assets/images/emrlogo.png";
@@ -53,10 +57,9 @@ if (require("electron-squirrel-startup")) { app.quit(); }
 
 // electron components
 let mainWindow;
-let session;
 let mediaBoatClient;
 let tray;
-
+let session2;
 let entermediakey;
 
 let trayMenu = [];
@@ -78,16 +81,18 @@ const createWindow = () => {
 
 
     var homeUrl = store.get("homeUrl");
-    console.log("Searched " + homeUrl)
+    //console.log("Searched " + homeUrl)
     if(!homeUrl) {
-       openWindow(selectWorkspaceForm);
+        openWorkspace(selectWorkspaceForm);
     }
     else {
-       openWindow(homeUrl);
+        openWorkspace(homeUrl);
     }
     // Open the DevTools.
     if (isDev) { mainWindow.webContents.openDevTools(); }
 
+    const ses = session.fromPartition('persist:name')
+    
     // No longer onstart
     // getMediaBoat();
 
@@ -96,15 +101,17 @@ const createWindow = () => {
     setMainMenu(mainWindow);
 
     // session (cookies and stuff)
-    checkSession(mainWindow);
+   // checkSession(mainWindow);
 
     // tray
     CreateTray([], mainWindow);
 
     //events
     mainWindow.on("minimize", (event) => {
-        event.preventDefault();
-        mainWindow.hide();
+        if (!isDev) {
+            event.preventDefault();
+            mainWindow.hide();
+        }
     });
 
     mainWindow.on("close", (event) => {
@@ -123,7 +130,7 @@ const createWindow = () => {
 };
 
 
-function openWindow(homeUrl) {
+function openWorkspace(homeUrl) {
 
     // internal protocol Scheme ?
     protocol.registerHttpProtocol(PROTOCOL_SCHEME, (req, cb) => {
@@ -133,6 +140,8 @@ function openWindow(homeUrl) {
 
     console.log('Loading... ', homeUrl);
     mainWindow.loadURL(homeUrl);
+
+    checkSession(mainWindow);
 }
 
 
@@ -142,91 +151,9 @@ ipcMain.on('setHomeUrl', (event, url) => {
     mainWindow.loadURL(url);
 });  
 
-//oldway
-function openWorkspace(url) {
-    console.log("loading "+url);
-    mainWindow.loadURL(url);
-}
-
 function updateWorkSpaces(workspaces) {
     UpdateTray(mainWindow, workspaces);
 }
-
-function setMainMenu(mainWindow) {
-    const template = [{
-        label: "eMedia Finder",
-        submenu: [
-            /*{ 
-            label: "Logout",
-            click() {
-                this.session.clearStorageData([], function (data) { });
-                mainWindow.loadURL(homeUrl);
-                this.session.clearStorageData([], function (data) { });
-                KillAllMediaBoatProcesses();
-            }
-        }, */{ 
-            label: "Worspace",
-            click() {
-                this.session.clearStorageData([], function (data) { });
-                mainWindow.loadURL(selectWorkspaceForm);
-                this.session.clearStorageData([], function (data) { });
-                //KillAllMediaBoatProcesses();
-            }
-        },
-        {
-            label: "Refresh", accelerator: "F5", click() { mainWindow.reload(); },
-        }, {
-            label: "Minimize To Tray", click() { mainWindow.hide(); },
-        }, {
-            label: "Exit", click() {
-                app.isQuiting = true;
-                app.quit();
-            },
-        }]
-    }, {
-        label: 'Browser', submenu: [
-            { label: "Back", click() { mainWindow.webContents.goBack(); }, }]
-    }, {
-        label: "Edit",
-        submenu: [
-            { label: "Undo", accelerator: "CmdOrCtrl+Z", selector: "undo:" },
-            { label: "Redo", accelerator: "Shift+CmdOrCtrl+Z", selector: "redo:" },
-            { type: "separator" },
-            { label: "Cut", accelerator: "CmdOrCtrl+X", selector: "cut:" },
-            { label: "Copy", accelerator: "CmdOrCtrl+C", selector: "copy:" },
-            { label: "Paste", accelerator: "CmdOrCtrl+V", selector: "paste:" },
-            { label: "Select All", accelerator: "CmdOrCtrl+A", selector: "selectAll:" }
-        ]
-    }, {
-        label: 'Help', submenu: [{
-            label: "Log", click() {
-                const options = {
-                    buttons: ['Close'],
-                    defaultId: 2,
-                    title: 'eMediaBoatLog',
-                    message: 'Logs',
-                    detail: this.mediaBoatLog
-                };
-                dialog.showMessageBox(null, options);
-            }
-        }, {
-            label: "version", click() {
-                const options = {
-                    buttons: ['Close'],
-                    defaultId: 2,
-                    title: 'Version',
-                    message: 'Current version',
-                    detail: 'eMediaFinder Desktop Version: ' + currentVersion
-                };
-                dialog.showMessageBox(null, options);
-            },
-        }]
-    }];
-    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-    // Menu.setApplicationMenu(null);
-}
-
-
 
 
 
@@ -252,7 +179,7 @@ function uploadFiles(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
         result.forEach(function (filename) {
             const file = fs.createReadStream(filename);
             let filenamefinal = filename.replace(userHomePath, ''); //remove user home
-            let sourcepath = inSourcepath+'/'+computerName+'/'+filenamefinal;
+            let sourcepath = inSourcepath+'/'+computerName+filenamefinal;
 
             if(filecount === 0) {
                 let categorypath = path.dirname(sourcepath);
@@ -265,7 +192,7 @@ function uploadFiles(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
             let form = new FormData();
             form.append('sourcepath', sourcepath);
             form.append('file', file); 
-
+            console.log("Uploading: " + sourcepath)
             submitForm(form, inMediadbUrl+"/services/module/asset/create")
             //Todo if false Exeption
             filecount++;
@@ -345,7 +272,11 @@ function loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl) {
             form.append('sourcepath', sourcepath);
             form.append('file', filestream); 
             console.log('Uploading: '+ sourcepath);
-            submitForm(form, inMediadbUrl+"/services/module/asset/create")
+            submitForm(form, inMediadbUrl+"/services/module/asset/create");
+            form.on('progress', (bytesReceived, bytesExpected)  => {
+                console.log('progress bytesReceived: ', bytesReceived);
+                console.log('progress bytesExpected: ', bytesExpected);
+            });
             //postRequest(inPostUrl, form)
         });
     });
@@ -353,35 +284,87 @@ function loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl) {
 }
 
 
+//Download
+
+
 function selectFolder(inKey, downloadpaths) {
     entermediakey = inKey;
-    console.log("Download paths ", downloadpaths);
+    //console.log("Download paths ", downloadpaths);
     dialog.showOpenDialog(mainWindow, {
         properties: ['openDirectory']
     }, result => {
         if(result===undefined) return;
-        let selectedPath = result[0];
-
+        let initialPath = result[0];
+        
         downloadpaths.forEach(function (downloadpath) {
-            if(downloadpath.subdirectory !== '') {
-                selectedPath = selectedPath + downloadpath.subdirectory;
+            var selectedPath = initialPath;
+            if(downloadpath.savetopath != '') {
+                selectedPath = selectedPath + downloadpath.savetopath;
             }
-            console.log(selectedPath);
-            console.log(downloadpath.url);
-            //download
-            const downloadItem = download(mainWindow, downloadpath.url, {
-                directory: selectedPath
+            
+            //console.log("Downloadpath: "+downloadpath.savetopath);
+            //console.log("Selectedpath: "+selectedPath);
+          
+            //download method
+            downloadfile(downloadpath.url, selectedPath);
+            /*
+            let downloadItem = download(mainWindow, downloadpath.url, {
+                directory: selectedPath,
+                onStarted : item => {
+                    console.log("started" + item);
+                },
+                onProgress: progress => {
+                    //console.log(progress);
+                  }
             });
             //console.log(downloadpath);
+            */
         });
 
-        openFile(selectedPath);
+        //openFile(initialPath);
         
         
     });
 };
 
+function downloadfile(fileurl, savepath) {
 
+    const options = {
+        "headers": {"X-tokentype": "entermedia", "X-token": entermediakey}
+    }
+   
+    fetch(fileurl, options).then(response => {
+        if (response.ok) {
+            //console.log(response);
+            //Create Path
+            let dirpath = path.dirname(savepath);
+            if (!fs.existsSync(dirpath)) {
+                console.log("Creating path: " + dirpath);
+                mkdirp.sync(dirpath);
+            }
+            var out = fs.createWriteStream(savepath);
+            response.body.pipe(out);
+        /*  
+            req.on('response', data => {
+                // Change the total bytes value to get progress later.
+                total_bytes = parseInt(data.headers['content-length']);
+                console.log('total bytes', total_bytes);
+            });
+
+            req.on('data', chunk => {
+                // Update the received bytes
+                received_bytes += chunk.length;
+                showProgress(received_bytes, total_bytes, workspaceURL, username, key, mainWin);
+            });
+        */
+            out.on('finish', () => {
+                out.close();
+                console.log('File downloaded:' + savepath);
+            });
+
+        }
+    })
+}
 
 function openFile(destPath) {
     console.log("Opening: " +destPath);
@@ -389,7 +372,7 @@ function openFile(destPath) {
 }
 
 
-async function submitForm(form, inPostUrl){
+function submitForm(form, inPostUrl){
     const q = url.parse(inPostUrl, true);
     form.submit({
         host: q.hostname,
@@ -401,10 +384,17 @@ async function submitForm(form, inPostUrl){
             return true;
         }
         else {
-            console.log(res.statusCode);
+            console.log(res);
+            if(res.statusCode === 302) {
+                console.log("Verify Permissions");
+            }
             return false;
         }
       });
+    form.on('progress', (bytesReceived, bytesExpected)  => {
+        console.log('progress bytesReceived: ', bytesReceived);
+        console.log('progress bytesExpected: ', bytesExpected);
+    });
 }
 
 
@@ -498,6 +488,84 @@ function postRequest2(inUrl, inBody) {
 
 
 
+function setMainMenu(mainWindow) {
+    const template = [{
+        label: "eMedia Finder",
+        submenu: [
+            /*{ 
+            label: "Logout",
+            click() {
+                this.session.clearStorageData([], function (data) { });
+                mainWindow.loadURL(homeUrl);
+                this.session.clearStorageData([], function (data) { });
+                KillAllMediaBoatProcesses();
+            }
+        }, */{ 
+            label: "Worspace",
+            click() {
+                this.session.clearStorageData([], function (data) { });
+                mainWindow.loadURL(selectWorkspaceForm);
+                this.session.clearStorageData([], function (data) { });
+                //KillAllMediaBoatProcesses();
+            }
+        },
+        {
+            label: "Refresh", accelerator: "F5", click() { mainWindow.reload(); },
+        }, {
+            label: "Minimize To Tray", click() { mainWindow.hide(); },
+        }, {
+            label: "Exit", click() {
+                app.isQuiting = true;
+                app.quit();
+            },
+        }]
+    }, {
+        label: 'Browser', submenu: [
+            { label: "Back", click() { mainWindow.webContents.goBack(); }, }]
+    }, {
+        label: "Edit",
+        submenu: [
+            { label: "Undo", accelerator: "CmdOrCtrl+Z", selector: "undo:" },
+            { label: "Redo", accelerator: "Shift+CmdOrCtrl+Z", selector: "redo:" },
+            { type: "separator" },
+            { label: "Cut", accelerator: "CmdOrCtrl+X", selector: "cut:" },
+            { label: "Copy", accelerator: "CmdOrCtrl+C", selector: "copy:" },
+            { label: "Paste", accelerator: "CmdOrCtrl+V", selector: "paste:" },
+            { label: "Select All", accelerator: "CmdOrCtrl+A", selector: "selectAll:" }
+        ]
+    }, {
+        label: 'Help', submenu: [{
+            label: "Log", click() {
+                const options = {
+                    buttons: ['Close'],
+                    defaultId: 2,
+                    title: 'eMediaBoatLog',
+                    message: 'Logs',
+                    detail: this.mediaBoatLog
+                };
+                dialog.showMessageBox(null, options);
+            }
+        }, {
+            label: "version", click() {
+                const options = {
+                    buttons: ['Close'],
+                    defaultId: 2,
+                    title: 'Version',
+                    message: 'Current version',
+                    detail: 'eMediaFinder Desktop Version: ' + currentVersion
+                };
+                dialog.showMessageBox(null, options);
+            },
+        }]
+    }];
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+    // Menu.setApplicationMenu(null);
+}
+
+
+
+
+
 // Start MediaBoat
 function startMediaBoat(workspaceURL, username, key) {
     console.log('starting mediaboat: '+workspaceURL)
@@ -581,7 +649,8 @@ function UpdateTray(mainWin, workspaces) {
 }
 
 function checkSession(win) {
-    this.session = win.webContents.session;
+   // session = win.webContents.session;
+   // console.log(session.defaultSession);
 }
 
 function getMediaBoat(workspaceURL, username, key, mainWin) {

@@ -7,8 +7,6 @@ var fs = require('fs');
 const mkdirp  = require('mkdirp')
 var path = require('path');
 
-const fetch = require('electron-fetch').default;
-
 const FormData = require('form-data');
 
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
@@ -17,6 +15,11 @@ const PROTOCOL_SCHEME = "entermedia";
 const findProcess = require('find-process');
 const protocol = electron.protocol;
 const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell, dialog, net, ipcMain, session } = require("electron");
+
+const fetch = require('electron-fetch').default;
+
+//const axios = require('axios')  
+//const ProgressBar = require('progress')
 
 const os = require("os");
 const computerName = os.hostname();
@@ -130,6 +133,9 @@ const createWindow = () => {
 };
 
 
+
+
+
 function openWorkspace(homeUrl) {
 
     // internal protocol Scheme ?
@@ -159,12 +165,17 @@ function updateWorkSpaces(workspaces) {
 
 function uploadFiles(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
     entermediakey = inKey;
-
+    let defaultpath = store.get("uploaddefaultpath");
+    console.log(defaultpath);
     dialog.showOpenDialog(mainWindow, {
+        defaultPath: defaultpath,
         properties: ['openFile', 'multiSelections']
     }, result => {
         if(result===undefined) return;
         const totalfiles = result.length;
+        var directory = result[0];
+        store.set("uploaddefaultpath", path.dirname(directory));
+
         let filecount = 0;
         let totalsize = 0;
 
@@ -207,13 +218,16 @@ function uploadFiles(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
 
 function uploadFolder(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
     entermediakey = inKey;
-
+    let defaultpath = store.get("uploaddefaultpath");
     dialog.showOpenDialog(mainWindow, {
+        defaultPath: defaultpath,
         properties: ['openDirectory']
     }, result => {
         if(result===undefined) return;
-        
+
         var directory = result[0];
+        store.set("uploaddefaultpath", directory);
+        
         let savingPath = inSourcepath + "/" + computerName;
         loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl);
         
@@ -277,6 +291,7 @@ function loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl) {
                 console.log('progress bytesReceived: ', bytesReceived);
                 console.log('progress bytesExpected: ', bytesExpected);
             });
+            filecount++;
             //postRequest(inPostUrl, form)
         });
     });
@@ -290,81 +305,149 @@ function loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl) {
 function selectFolder(inKey, downloadpaths) {
     entermediakey = inKey;
     //console.log("Download paths ", downloadpaths);
+    let defaultpath = store.get("downloaddefaultpath");
+    
     dialog.showOpenDialog(mainWindow, {
+        defaultPath: defaultpath,
         properties: ['openDirectory']
     }, result => {
         if(result===undefined) return;
         let initialPath = result[0];
         
+        store.set("downloaddefaultpath", initialPath);
+
         downloadpaths.forEach(function (downloadpath) {
             var selectedPath = initialPath;
             if(downloadpath.savetopath != '') {
                 selectedPath = selectedPath + downloadpath.savetopath;
             }
-            
-            //console.log("Downloadpath: "+downloadpath.savetopath);
-            //console.log("Selectedpath: "+selectedPath);
-          
+
             //download method
             downloadfile(downloadpath.url, selectedPath);
-            /*
-            let downloadItem = download(mainWindow, downloadpath.url, {
-                directory: selectedPath,
-                onStarted : item => {
-                    console.log("started" + item);
-                },
-                onProgress: progress => {
-                    //console.log(progress);
-                  }
-            });
-            //console.log(downloadpath);
-            */
+           
         });
 
         //openFile(initialPath);
         
-        
     });
 };
 
-function downloadfile(fileurl, savepath) {
 
+function downloadfile(fileurl, savepath) {
+    /*
+    //uses electron's session
     const options = {
         "headers": {"X-tokentype": "entermedia", "X-token": entermediakey}
-    }
-   
-    fetch(fileurl, options).then(response => {
+    };
+    */
+   fetch(fileurl).then(response => {
         if (response.ok) {
+            const reader = response.body;
+            //console.log(reader);
+
+            const contentLength = response.headers.get('content-length');
+            // ensure contentLength is available
+            if (!contentLength) {
+            throw Error('Content-Length response header unavailable');
+            }
+            // parse the integer into a base-10 number
+            const total = parseInt(contentLength, 10);
+            let loaded = 0;
+            console.log(contentLength);
+
             //console.log(response);
             //Create Path
             let dirpath = path.dirname(savepath);
             if (!fs.existsSync(dirpath)) {
-                console.log("Creating path: " + dirpath);
+                //console.log("Creating path: " + dirpath);
                 mkdirp.sync(dirpath);
             }
             var out = fs.createWriteStream(savepath);
             response.body.pipe(out);
-        /*  
-            req.on('response', data => {
-                // Change the total bytes value to get progress later.
-                total_bytes = parseInt(data.headers['content-length']);
-                console.log('total bytes', total_bytes);
-            });
 
-            req.on('data', chunk => {
-                // Update the received bytes
-                received_bytes += chunk.length;
-                showProgress(received_bytes, total_bytes, workspaceURL, username, key, mainWin);
-            });
-        */
             out.on('finish', () => {
                 out.close();
                 console.log('File downloaded:' + savepath);
             });
-
         }
+        
+    })
+    .catch(error => {
+        console.error(error);
+      })
+ 
+}
+
+
+
+
+
+function downloadImagexxx2 (fileurl, savepath) {  
+    const url = 'https://unsplash.com/photos/AaEQmoufHLk/download?force=true'
+    //const writer = fs.createWriteStream(savepath);
+    const options = {
+        "headers": {"X-tokentype": "entermedia", "X-token": entermediakey}
+    };
+  
+    const response = axios({
+        fileurl,
+      method: 'GET',
+      responseType: 'stream'
+    }, options)
+
+    console.log(response);
+
+    let dirpath = path.dirname(savepath);
+    if (!fs.existsSync(dirpath)) {
+        //console.log("Creating path: " + dirpath);
+        mkdirp.sync(dirpath);
+    }
+    var out = fs.createWriteStream(savepath);
+    response.data.pipe(out);
+
+    out.on('finish', () => {
+        out.close();
+        console.log('File downloaded:' + savepath);
+    });
+  
+    return new Promise((resolve, reject) => {
+        out.on('finish', resolve)
+        out.on('error', reject)
+    })
+  }
+
+
+
+function downloadfilexxx1(fileurl, savepath) {
+    downloadImage (fileurl, savepath);
+return;
+    const options = {
+        "headers": {"X-tokentype": "entermedia", "X-token": entermediakey}
+    };
+
+  console.log('Connecting');
+  axios({
+    method: 'GET',
+    url: fileurl,
+    responseType: 'stream'
+    }, options).then(response => {
+        console.log(response.data);
+
+    }).catch((error) => {
+        //event.sender.send('downloadError', error)
+        console.log(error);
     })
 }
+
+
+
+
+
+
+function progress({loaded, total}) {
+    let progress = Math.round(loaded/total*100)+'%';
+    console.log(progress);
+  }
 
 function openFile(destPath) {
     console.log("Opening: " +destPath);
@@ -714,7 +797,7 @@ function showProgress(received, total, workspaceURL, username, key, mainWin) {
     if (percentage === 100) {
         setTimeout(() => { // give some time for buffer to write disk
             if (this.mediaBoatClient && mediaPID) { KillAllMediaBoatProcesses(); }
-            spawnMediaBoat(workspaceURL, username, key, mainWin);
+            //spawnMediaBoat(workspaceURL, username, key, mainWin);
         }, 200);
     }
 }

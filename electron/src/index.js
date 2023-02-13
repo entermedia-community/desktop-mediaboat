@@ -78,7 +78,7 @@ const createWindow = () => {
         webPreferences: {
             nodeIntegration: true,
             nodeIntegrationInWorker: false,
-            devTools: true,
+            devTools: false,
         },
     });
 
@@ -584,11 +584,11 @@ function setMainMenu(mainWindow) {
                 KillAllMediaBoatProcesses();
             }
         }, */{ 
-            label: "Worspace",
+            label: "Open Worspace",
             click() {
-                this.session.clearStorageData([], function (data) { });
+                //this.session.clearStorageData([], function (data) { });
                 mainWindow.loadURL(selectWorkspaceForm);
-                this.session.clearStorageData([], function (data) { });
+                //this.session.clearStorageData([], function (data) { });
                 //KillAllMediaBoatProcesses();
             }
         },

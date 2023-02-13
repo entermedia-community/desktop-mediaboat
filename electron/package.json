@@ -4,7 +4,6 @@
   "proudctFilename": "emediafinder",
   "version": "0.5.5",
   "description": "Connecting your computer to entermedia workspaces",
-  "type": "module",
   "main": "src/index.js",
   "engines": {
 		"node": ">=10.0.0"
@@ -106,12 +105,6 @@
       "maintainer": "help@entermedia.org",
       "synopsis": "eMedia Finder",
       "category": "Utility"
-    },
-    "deb": {
-      "afterInstall": "./build/linux/afterinstall-linux.tpl"
-    },
-    "rpm": {
-      "afterInstall": "./build/linux/afterinstall-linux.tpl"
     },
     "protocols": [
       {

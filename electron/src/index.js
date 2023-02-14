@@ -78,7 +78,7 @@ const createWindow = () => {
         webPreferences: {
             nodeIntegration: true,
             nodeIntegrationInWorker: false,
-            devTools: false,
+            devTools: isDev,
         },
     });
 
@@ -197,14 +197,14 @@ function uploadFiles(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
                 let form = new FormData();
                 form.append('sourcepath', categorypath);
                 form.append('totalfilesize', totalsize);
-                submitForm(form, inMediadbUrl+"/services/module/userupload/uploadstart");
+                submitForm(form, inMediadbUrl+"/services/module/userupload/uploadstart", function() {});
             }
 
             let form = new FormData();
             form.append('sourcepath', sourcepath);
             form.append('file', file); 
             console.log("Uploading: " + sourcepath)
-            submitForm(form, inMediadbUrl+"/services/module/asset/create")
+            submitForm(form, inMediadbUrl+"/services/module/asset/create", function() {})
             //Todo if false Exeption
             filecount++;
             if (filecount==totalfiles) {     
@@ -216,7 +216,7 @@ function uploadFiles(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
       });
 }
 
-function uploadFolder(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
+function uploadFolder(inKey, inSourcepath, inMediadbUrl, inRedirectUrl, options) {
     entermediakey = inKey;
     let defaultpath = store.get("uploaddefaultpath");
     dialog.showOpenDialog(mainWindow, {
@@ -227,14 +227,49 @@ function uploadFolder(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
 
         var directory = result[0];
         store.set("uploaddefaultpath", directory);
+
+        let directoryfinal = directory.replace(userHomePath, ''); //remove user home
+        let categorypath = directoryfinal; //ToDo: get top level folder 
+        categorypath = categorypath.replace("\\","/");
+        let form = new FormData();
+        console.log(categorypath);
+        /*
+        options.map(obj => {
+
+            for (const key in obj) {
+                const value= obj[key];
+                form.append(key, value);
+            }
+        });
+        */
+        if(options["moduleid"] != null && options["entityid"] != null) 
+        {
+            form.append('moduleid', options["moduleid"]);
+            form.append('entityid', options["entityid"]);
+        }
+        form.append('sourcepath', categorypath);
+        //form.append('totalfilesize', totalsize); Todo: loop over files first
+        //console.log(form);
+        console.log("calling SubmitForm");
+        submitForm(form, inMediadbUrl+"/services/module/userupload/uploadstart", function(){
+            console.log("submitForm called at UploadFolder");
+            let savingPath = inSourcepath + "/" + computerName;
+            loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl);
+            runJavaScript('$("#sidebarUserUploads").trigger("click");');
+            runJavaScript('refreshEntiyDialog();');
+        });
+
         
-        let savingPath = inSourcepath + "/" + computerName;
-        loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl);
         
-        mainWindow.loadURL(inRedirectUrl);
+
+        //mainWindow.loadURL(inRedirectUrl);
   
     });    
       
+}
+
+function runJavaScript(code) {
+    mainWindow.webContents.executeJavaScript(code);
 }
 
 
@@ -273,20 +308,14 @@ function loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl) {
             let filestream = fs.createReadStream(filepath);
             //console.log('Procesing: '+filepath);
             let filenamefinal = filepath.replace(userHomePath, ''); //remove user home
-            let sourcepath = savingPath+filenamefinal;
-            if(filecount === 0) {
-                let categorypath = path.dirname(sourcepath);
-                let form = new FormData();
-                form.append('sourcepath', categorypath);
-                form.append('totalfilesize', totalsize);
-                submitForm(form, inMediadbUrl+"/services/module/userupload/uploadstart");
-            }
+            let sourcepath = savingPath+filenamefinal; 
+            
 
             let form = new FormData();
             form.append('sourcepath', sourcepath);
             form.append('file', filestream); 
             console.log('Uploading: '+ sourcepath);
-            submitForm(form, inMediadbUrl+"/services/module/asset/create");
+            submitForm(form, inMediadbUrl+"/services/module/asset/create", function() {});
             form.on('progress', (bytesReceived, bytesExpected)  => {
                 console.log('progress bytesReceived: ', bytesReceived);
                 console.log('progress bytesExpected: ', bytesExpected);
@@ -455,15 +484,24 @@ function openFile(destPath) {
 }
 
 
-function submitForm(form, inPostUrl){
+function submitForm(form, inPostUrl, formCompleted){
     const q = url.parse(inPostUrl, true);
+    console.log(form);
+    console.log(q);
+    console.log(entermediakey);
     form.submit({
         host: q.hostname,
         port: q.port,
         path: q.path,
         headers: {"X-tokentype": 'entermedia', "X-token": entermediakey}
     }, function(err, res) {
+        console.log("submitForm: res");
         if(res.statusCode === 200) {
+            console.log("submitForm: complete ");
+            /*
+            if(typeof formCompleted === 'function') {
+                formCompleted();
+            }*/
             return true;
         }
         else {
@@ -478,6 +516,7 @@ function submitForm(form, inPostUrl){
         console.log('progress bytesReceived: ', bytesReceived);
         console.log('progress bytesExpected: ', bytesExpected);
     });
+
 }
 
 

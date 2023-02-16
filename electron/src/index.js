@@ -156,7 +156,6 @@ function openWorkspace(homeUrl) {
 
 ipcMain.on('setHomeUrl', (event, url) => {
     store.set("homeUrl", url);
-    var homeUrl2 = store.get("homeUrl");
     openWorkspace(url);
 });  
 

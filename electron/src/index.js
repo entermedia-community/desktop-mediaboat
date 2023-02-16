@@ -2,7 +2,8 @@ const electron = require("electron");
 
 var http = require('http');
 const https = require("https");
-const url = require('url');
+var url = require('url');
+var querystring = require('querystring');
 var fs = require('fs');
 const mkdirp  = require('mkdirp')
 var path = require('path');
@@ -14,11 +15,10 @@ const PROTOCOL_SCHEME = "entermedia";
 
 const findProcess = require('find-process');
 const protocol = electron.protocol;
-const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell, dialog, net, ipcMain, session } = require("electron");
+const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell, dialog, net, ipcMain } = require("electron");
 
 const fetch = require('electron-fetch').default;
 
-//const axios = require('axios')  
 //const ProgressBar = require('progress')
 
 const os = require("os");
@@ -30,8 +30,8 @@ const store = new Store();
 
 
 // env
-const isDev = true;
-const currentVersion = '0.5.3';
+const isDev = false;
+const currentVersion = '0.5.6';
 const selectWorkspaceForm = `file://${__dirname}/selectHome.html`;
 // url
 //const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";
@@ -62,8 +62,8 @@ if (require("electron-squirrel-startup")) { app.quit(); }
 let mainWindow;
 let mediaBoatClient;
 let tray;
-let session2;
-let entermediakey;
+let session = require("electron");;
+const entermediakey = '';
 
 let trayMenu = [];
 let workSpaces = [];
@@ -94,7 +94,7 @@ const createWindow = () => {
     // Open the DevTools.
     if (isDev) { mainWindow.webContents.openDevTools(); }
 
-    const ses = session.fromPartition('persist:name')
+    //const ses = session.fromPartition('persist:name')
     
     // No longer onstart
     // getMediaBoat();
@@ -104,7 +104,7 @@ const createWindow = () => {
     setMainMenu(mainWindow);
 
     // session (cookies and stuff)
-   // checkSession(mainWindow);
+    checkSession(mainWindow);
 
     // tray
     CreateTray([], mainWindow);
@@ -140,12 +140,15 @@ function openWorkspace(homeUrl) {
 
     // internal protocol Scheme ?
     protocol.registerHttpProtocol(PROTOCOL_SCHEME, (req, cb) => {
-        const url = req.url.replace('entermedia', 'http');
+        var url = req.url.replace('entermedia', 'http');
         mainWindow.loadURL(url);
     });
 
-    console.log('Loading... ', homeUrl);
-    mainWindow.loadURL(homeUrl);
+    var parsedUrl = url.parse(homeUrl, true);
+    var qs_ = querystring.stringify(parsedUrl.query)+"&desktop=true"
+    var finalUrl = homeUrl.split("?").shift()+'?'+qs_
+    console.log('Loading... ', finalUrl);
+    mainWindow.loadURL(finalUrl);
 
     checkSession(mainWindow);
 }
@@ -216,8 +219,7 @@ function uploadFiles(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
       });
 }
 
-function uploadFolder(inKey, inSourcepath, inMediadbUrl, inRedirectUrl, options) {
-    entermediakey = inKey;
+function uploadFolder(entermediakey, inSourcepath, inMediadbUrl, inRedirectUrl, options) {
     let defaultpath = store.get("uploaddefaultpath");
     dialog.showOpenDialog(mainWindow, {
         defaultPath: defaultpath,
@@ -227,12 +229,18 @@ function uploadFolder(inKey, inSourcepath, inMediadbUrl, inRedirectUrl, options)
 
         var directory = result[0];
         store.set("uploaddefaultpath", directory);
+        console.log("Directory selected:" + directory);
+        startFolderUpload(directory, entermediakey, inSourcepath, inMediadbUrl, inRedirectUrl, options);
 
+    });  
+
+}
+
+function startFolderUpload(directory, entermediakey, inSourcepath, inMediadbUrl, inRedirectUrl, options) {
         let directoryfinal = directory.replace(userHomePath, ''); //remove user home
         let categorypath = directoryfinal; //ToDo: get top level folder 
         categorypath = categorypath.replace("\\","/");
-        let form = new FormData();
-        console.log(categorypath);
+        let form1 = new FormData();
         /*
         options.map(obj => {
 
@@ -244,19 +252,18 @@ function uploadFolder(inKey, inSourcepath, inMediadbUrl, inRedirectUrl, options)
         */
         if(options["moduleid"] != null && options["entityid"] != null) 
         {
-            form.append('moduleid', options["moduleid"]);
-            form.append('entityid', options["entityid"]);
+            form1.append('moduleid', options["moduleid"]);
+            form1.append('entityid', options["entityid"]);
         }
-        form.append('sourcepath', categorypath);
+        form1.append('sourcepath', categorypath);
         //form.append('totalfilesize', totalsize); Todo: loop over files first
         //console.log(form);
-        console.log("calling SubmitForm");
-        submitForm(form, inMediadbUrl+"/services/module/userupload/uploadstart", function(){
+        submitForm(form1, inMediadbUrl + "/services/module/userupload/uploadstart.json", function(){
             console.log("submitForm called at UploadFolder");
             let savingPath = inSourcepath + "/" + computerName;
             loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl);
             runJavaScript('$("#sidebarUserUploads").trigger("click");');
-            runJavaScript('refreshEntiyDialog();');
+            runJavaScript('$(window).trigger("ajaxautoreload");');
         });
 
         
@@ -264,7 +271,7 @@ function uploadFolder(inKey, inSourcepath, inMediadbUrl, inRedirectUrl, options)
 
         //mainWindow.loadURL(inRedirectUrl);
   
-    });    
+  
       
 }
 
@@ -315,7 +322,7 @@ function loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl) {
             form.append('sourcepath', sourcepath);
             form.append('file', filestream); 
             console.log('Uploading: '+ sourcepath);
-            submitForm(form, inMediadbUrl+"/services/module/asset/create", function() {});
+            submitForm(form, inMediadbUrl+"/services/module/asset/create", function(){});
             form.on('progress', (bytesReceived, bytesExpected)  => {
                 console.log('progress bytesReceived: ', bytesReceived);
                 console.log('progress bytesExpected: ', bytesExpected);
@@ -409,6 +416,59 @@ function downloadfile(fileurl, savepath) {
 
 
 
+function submitForm(form, inPostUrl, formCompleted){
+    const q = url.parse(inPostUrl, true);
+    //entermediakey = "cristobalmd542602d7e0ba09a4e08c0a6234578650c08d0ba08d";
+    console.log("submitForm Sending Form: "+ inPostUrl);
+
+    fetch(inPostUrl, { method: 'POST', body: form })
+        .then(function(res) {
+            console.log("submitForm: complete ");
+            if(typeof formCompleted === 'function') {
+                formCompleted();
+            }
+            
+        });
+
+    /*
+    form.submit({
+            host: q.hostname,
+            port: q.port,
+            path: q.path,
+            headers: {"X-tokentype": 'entermedia', "X-token": entermediakey}
+        }, function(err, res) {
+            if(res!= null && res.statusCode === 200) {
+                console.log("submitForm: complete ");
+                if(typeof formCompleted === 'function') {
+                    formCompleted();
+                }
+                return true;
+            }
+            else {
+                //console.log(form);
+                console.log("submitForm Error: " + err);
+                if(res != null && res.statusCode === 302) {
+                    console.log("Verify Permissions");
+                }
+                return false;
+            }
+        });
+    */
+    /*
+    form.on('progress', (bytesReceived, bytesExpected)  => {
+        console.log('progress bytesReceived: ', bytesReceived);
+        console.log('progress bytesExpected: ', bytesExpected);
+    });
+*/
+}
+
+
+
+
+
+
+
+
 
 
 function downloadImagexxx2 (fileurl, savepath) {  
@@ -481,42 +541,6 @@ function progress({loaded, total}) {
 function openFile(destPath) {
     console.log("Opening: " +destPath);
     shell.openItem(destPath);
-}
-
-
-function submitForm(form, inPostUrl, formCompleted){
-    const q = url.parse(inPostUrl, true);
-    console.log(form);
-    console.log(q);
-    console.log(entermediakey);
-    form.submit({
-        host: q.hostname,
-        port: q.port,
-        path: q.path,
-        headers: {"X-tokentype": 'entermedia', "X-token": entermediakey}
-    }, function(err, res) {
-        console.log("submitForm: res");
-        if(res.statusCode === 200) {
-            console.log("submitForm: complete ");
-            /*
-            if(typeof formCompleted === 'function') {
-                formCompleted();
-            }*/
-            return true;
-        }
-        else {
-            console.log(res);
-            if(res.statusCode === 302) {
-                console.log("Verify Permissions");
-            }
-            return false;
-        }
-      });
-    form.on('progress', (bytesReceived, bytesExpected)  => {
-        console.log('progress bytesReceived: ', bytesReceived);
-        console.log('progress bytesExpected: ', bytesExpected);
-    });
-
 }
 
 
@@ -771,8 +795,8 @@ function UpdateTray(mainWin, workspaces) {
 }
 
 function checkSession(win) {
-   // session = win.webContents.session;
-   // console.log(session.defaultSession);
+   session = win.webContents.session;
+   //console.log(session.defaultSession);
 }
 
 function getMediaBoat(workspaceURL, username, key, mainWin) {

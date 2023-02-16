@@ -52,13 +52,16 @@
     </target>
     <target name="electron-installers" depends="electron-dependencies">
         <exec dir="${electron}" executable="npm">
-            <arg line="run distlin" />
-        </exec>
-        <exec dir="${electron}" executable="npm">
             <arg line="run distwin" />
         </exec>
+
+        <!--
+        <exec dir="${electron}" executable="npm">
+            <arg line="run distlin" />
+        </exec>
+        
         <exec dir="${electron}" executable="npm">
             <arg line="run distmac" />
-        </exec>
+        </exec>-->
     </target>
 </project>

@@ -31,7 +31,7 @@ const store = new Store();
 
 // env
 const isDev = false;
-const currentVersion = '0.5.7';
+const currentVersion = '0.5.9';
 const selectWorkspaceForm = `file://${__dirname}/selectHome.html`;
 // url
 //const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";

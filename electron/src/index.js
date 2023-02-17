@@ -30,8 +30,8 @@ const store = new Store();
 
 
 // env
-const isDev = false;
-const currentVersion = '0.5.6';
+const isDev = true;
+const currentVersion = '0.5.7';
 const selectWorkspaceForm = `file://${__dirname}/selectHome.html`;
 // url
 //const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";
@@ -78,19 +78,26 @@ const createWindow = () => {
         webPreferences: {
             nodeIntegration: true,
             nodeIntegrationInWorker: false,
+            contextIsolation: false,
             devTools: isDev,
         },
     });
 
 
     var homeUrl = store.get("homeUrl");
-    //console.log("Searched " + homeUrl)
+
+    openWorkspace("https://taedev.entermediadb.net/finder/find/index.html?desktop=true");
+
+    /*
     if(!homeUrl) {
         openWorkspace(selectWorkspaceForm);
     }
     else {
         openWorkspace(homeUrl);
     }
+    */
+
+
     // Open the DevTools.
     if (isDev) { mainWindow.webContents.openDevTools(); }
 
@@ -143,12 +150,15 @@ function openWorkspace(homeUrl) {
         var url = req.url.replace('entermedia', 'http');
         mainWindow.loadURL(url);
     });
-
+/*
     var parsedUrl = url.parse(homeUrl, true);
     var qs_ = querystring.stringify(parsedUrl.query)+"&desktop=true"
-    var finalUrl = homeUrl.split("?").shift()+'?'+qs_
+    var finalUrl = homeUrl.split("?").shift();
+    finalUrl= finalUrl.trim()+'?'+qs_
     console.log('Loading... ', finalUrl);
-    mainWindow.loadURL(finalUrl);
+    */
+
+    mainWindow.loadURL(homeUrl);
 
     checkSession(mainWindow);
 }

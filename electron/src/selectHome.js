@@ -1,6 +1,6 @@
 'use strict'
 
-const { ipcRenderer } = require('electron');
+import { send } from "electron";
 
 
 document.getElementById('selectHomeUrlForm').addEventListener('submit', (event) =>  {
@@ -8,7 +8,7 @@ document.getElementById('selectHomeUrlForm').addEventListener('submit', (event) 
     console.log(event);
     const input = event.target[0];
 
-    ipcRenderer.send('setHomeUrl', input.value);
+    send('setHomeUrl', input.value);
 
     input.value="";
 });

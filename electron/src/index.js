@@ -30,7 +30,7 @@ const store = new Store();
 
 
 // env
-const isDev = true;
+const isDev = false;
 const currentVersion = '0.5.7';
 const selectWorkspaceForm = `file://${__dirname}/selectHome.html`;
 // url
@@ -256,7 +256,7 @@ function startFolderUpload(directory, entermediakey, inSourcepath, inMediadbUrl,
         categorypath = categorypath.replace(":","");
         categorypath = categorypath.split(path.sep).join(path.posix.sep);
         //--
-        
+
         form1.append('sourcepath', categorypath);
         //form.append('totalfilesize', totalsize); Todo: loop over files first
         //console.log(form);

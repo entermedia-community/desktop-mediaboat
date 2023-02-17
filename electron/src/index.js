@@ -85,19 +85,13 @@ const createWindow = () => {
 
 
     var homeUrl = store.get("homeUrl");
-
-    openWorkspace("https://taedev.entermediadb.net/finder/find/index.html?desktop=true");
-
-    /*
+    //console.log("Searched " + homeUrl)
     if(!homeUrl) {
         openWorkspace(selectWorkspaceForm);
     }
     else {
         openWorkspace(homeUrl);
     }
-    */
-
-
     // Open the DevTools.
     if (isDev) { mainWindow.webContents.openDevTools(); }
 
@@ -139,10 +133,6 @@ const createWindow = () => {
     });
 };
 
-
-
-
-
 function openWorkspace(homeUrl) {
 
     // internal protocol Scheme ?
@@ -150,15 +140,13 @@ function openWorkspace(homeUrl) {
         var url = req.url.replace('entermedia', 'http');
         mainWindow.loadURL(url);
     });
-/*
+
     var parsedUrl = url.parse(homeUrl, true);
     var qs_ = querystring.stringify(parsedUrl.query)+"&desktop=true"
     var finalUrl = homeUrl.split("?").shift();
-    finalUrl= finalUrl.trim()+'?'+qs_
+    finalUrl = finalUrl.trim()+'?'+qs_
     console.log('Loading... ', finalUrl);
-    */
-
-    mainWindow.loadURL(homeUrl);
+    mainWindow.loadURL(finalUrl);
 
     checkSession(mainWindow);
 }
@@ -246,10 +234,11 @@ function uploadFolder(entermediakey, inSourcepath, inMediadbUrl, inRedirectUrl, 
 }
 
 function startFolderUpload(directory, entermediakey, inSourcepath, inMediadbUrl, inRedirectUrl, options) {
-        let directoryfinal = directory.replace(userHomePath, ''); //remove user home
-        let categorypath = directoryfinal; //ToDo: get top level folder 
-        categorypath = categorypath.replace("\\","/");
-        let form1 = new FormData();
+    //console.log(`UserHomepath: ${userHomePath}`)   ;
+    let directoryfinal = directory.replace(userHomePath, ''); //remove user home
+    let categorypath = directoryfinal; //ToDo: get top level folder 
+    categorypath = categorypath.replace("\\","/");
+    let form1 = new FormData();
         /*
         options.map(obj => {
 
@@ -268,7 +257,6 @@ function startFolderUpload(directory, entermediakey, inSourcepath, inMediadbUrl,
         //form.append('totalfilesize', totalsize); Todo: loop over files first
         //console.log(form);
         submitForm(form1, inMediadbUrl + "/services/module/userupload/uploadstart.json", function(){
-            console.log("submitForm called at UploadFolder");
             let savingPath = inSourcepath + "/" + computerName;
             loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl);
             runJavaScript('$("#sidebarUserUploads").trigger("click");');
@@ -297,7 +285,8 @@ function loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl) {
     fs.readdir(directory, (err, files) => {
         
         files.forEach(file => {
-            let filepath = directory+'/'+file;
+
+            let filepath = path.join(directory,file);
             let stats = fs.statSync(filepath);
             if(stats.isDirectory()) {
                 console.log('Subdirectory found: ' + filepath);
@@ -316,21 +305,25 @@ function loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl) {
 
     fs.readdir(directory, (err, files) => {
         files.forEach(file => {
-            let filepath = directory+'/'+file;
+            let filepath = path.join(directory,file);
             let stats = fs.statSync(filepath);
             if(stats.isDirectory()) {
                 return;
             }
             let filestream = fs.createReadStream(filepath);
-            //console.log('Procesing: '+filepath);
+            //console.log(filestream);
+
+            filepath = filepath.replace("\\","/");
+            filepath = filepath.replace(":","");
             let filenamefinal = filepath.replace(userHomePath, ''); //remove user home
-            let sourcepath = savingPath+filenamefinal; 
-            
+            let sourcepath = path.join(savingPath,filenamefinal); 
+            sourcepath = path.normalize(sourcepath); 
 
             let form = new FormData();
             form.append('sourcepath', sourcepath);
             form.append('file', filestream); 
             console.log('Uploading: '+ sourcepath);
+            console.log(form);
             submitForm(form, inMediadbUrl+"/services/module/asset/create", function(){});
             form.on('progress', (bytesReceived, bytesExpected)  => {
                 console.log('progress bytesReceived: ', bytesReceived);
@@ -432,7 +425,7 @@ function submitForm(form, inPostUrl, formCompleted){
 
     fetch(inPostUrl, { method: 'POST', body: form })
         .then(function(res) {
-            console.log("submitForm: complete ");
+            //console.log("submitForm: complete ");
             if(typeof formCompleted === 'function') {
                 formCompleted();
             }

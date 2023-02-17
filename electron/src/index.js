@@ -237,7 +237,6 @@ function startFolderUpload(directory, entermediakey, inSourcepath, inMediadbUrl,
     //console.log(`UserHomepath: ${userHomePath}`)   ;
     let directoryfinal = directory.replace(userHomePath, ''); //remove user home
     let categorypath = directoryfinal; //ToDo: get top level folder 
-    categorypath = categorypath.replace("\\","/");
     let form1 = new FormData();
         /*
         options.map(obj => {
@@ -253,6 +252,11 @@ function startFolderUpload(directory, entermediakey, inSourcepath, inMediadbUrl,
             form1.append('moduleid', options["moduleid"]);
             form1.append('entityid', options["entityid"]);
         }
+        //May need stronger path cleanup
+        categorypath = categorypath.replace(":","");
+        categorypath = categorypath.split(path.sep).join(path.posix.sep);
+        //--
+        
         form1.append('sourcepath', categorypath);
         //form.append('totalfilesize', totalsize); Todo: loop over files first
         //console.log(form);
@@ -313,17 +317,17 @@ function loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl) {
             let filestream = fs.createReadStream(filepath);
             //console.log(filestream);
 
-            filepath = filepath.replace("\\","/");
+            // filepath = filepath.replace("\\","/");
             filepath = filepath.replace(":","");
+
             let filenamefinal = filepath.replace(userHomePath, ''); //remove user home
             let sourcepath = path.join(savingPath,filenamefinal); 
-            sourcepath = path.normalize(sourcepath); 
+            sourcepath = sourcepath.split(path.sep).join(path.posix.sep);
 
             let form = new FormData();
             form.append('sourcepath', sourcepath);
             form.append('file', filestream); 
             console.log('Uploading: '+ sourcepath);
-            console.log(form);
             submitForm(form, inMediadbUrl+"/services/module/asset/create", function(){});
             form.on('progress', (bytesReceived, bytesExpected)  => {
                 console.log('progress bytesReceived: ', bytesReceived);

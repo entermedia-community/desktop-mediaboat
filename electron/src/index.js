@@ -15,8 +15,7 @@ const PROTOCOL_SCHEME = "entermedia";
 
 const findProcess = require('find-process');
 const protocol = electron.protocol;
-const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell, dialog, net, ipcMain } = require("electron");
-
+const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell, dialog, ipcMain } = require("electron");
 const fetch = require('electron-fetch').default;
 
 //const ProgressBar = require('progress')
@@ -56,7 +55,7 @@ exports.selectFolder = selectFolder;
 
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require("electron-squirrel-startup")) { app.quit(); }
+//if (require("electron-squirrel-startup")) { app.quit(); }
 
 // electron components
 let mainWindow;
@@ -78,8 +77,7 @@ const createWindow = () => {
         webPreferences: {
             nodeIntegration: true,
             nodeIntegrationInWorker: false,
-            contextIsolation: false,
-            devTools: isDev,
+            contextIsolation: false
         },
     });
 
@@ -97,10 +95,6 @@ const createWindow = () => {
 
     //const ses = session.fromPartition('persist:name')
     
-    // No longer onstart
-    // getMediaBoat();
-
-
     // Main Menu
     setMainMenu(mainWindow);
 
@@ -134,13 +128,6 @@ const createWindow = () => {
 };
 
 function openWorkspace(homeUrl) {
-
-    // internal protocol Scheme ?
-    protocol.registerHttpProtocol(PROTOCOL_SCHEME, (req, cb) => {
-        var url = req.url.replace('entermedia', 'http');
-        mainWindow.loadURL(url);
-    });
-
     var parsedUrl = url.parse(homeUrl, true);
     var qs_ = querystring.stringify(parsedUrl.query)+"&desktop=true"
     var finalUrl = homeUrl.split("?").shift();
@@ -160,8 +147,6 @@ ipcMain.on('setHomeUrl', (event, url) => {
 function updateWorkSpaces(workspaces) {
     UpdateTray(mainWindow, workspaces);
 }
-
-
 
 function uploadFiles(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
     entermediakey = inKey;
@@ -267,22 +252,14 @@ function startFolderUpload(directory, entermediakey, inSourcepath, inMediadbUrl,
             runJavaScript('$(window).trigger("ajaxautoreload");');
         });
 
-        
-        
-
-        //mainWindow.loadURL(inRedirectUrl);
-  
-  
-      
+        //mainWindow.loadURL(inRedirectUrl); 
 }
 
 function runJavaScript(code) {
     mainWindow.webContents.executeJavaScript(code);
 }
 
-
 function loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl) {
-
     let filecount = 0;
     let totalsize = 0;
     
@@ -342,8 +319,6 @@ function loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl) {
 
 
 //Download
-
-
 function selectFolder(inKey, downloadpaths) {
     entermediakey = inKey;
     //console.log("Download paths ", downloadpaths);
@@ -437,30 +412,6 @@ function submitForm(form, inPostUrl, formCompleted){
         });
 
     /*
-    form.submit({
-            host: q.hostname,
-            port: q.port,
-            path: q.path,
-            headers: {"X-tokentype": 'entermedia', "X-token": entermediakey}
-        }, function(err, res) {
-            if(res!= null && res.statusCode === 200) {
-                console.log("submitForm: complete ");
-                if(typeof formCompleted === 'function') {
-                    formCompleted();
-                }
-                return true;
-            }
-            else {
-                //console.log(form);
-                console.log("submitForm Error: " + err);
-                if(res != null && res.statusCode === 302) {
-                    console.log("Verify Permissions");
-                }
-                return false;
-            }
-        });
-    */
-    /*
     form.on('progress', (bytesReceived, bytesExpected)  => {
         console.log('progress bytesReceived: ', bytesReceived);
         console.log('progress bytesExpected: ', bytesExpected);
@@ -476,84 +427,13 @@ function submitForm(form, inPostUrl, formCompleted){
 
 
 
-
-function downloadImagexxx2 (fileurl, savepath) {  
-    const url = 'https://unsplash.com/photos/AaEQmoufHLk/download?force=true'
-    //const writer = fs.createWriteStream(savepath);
-    const options = {
-        "headers": {"X-tokentype": "entermedia", "X-token": entermediakey}
-    };
-  
-    const response = axios({
-        fileurl,
-      method: 'GET',
-      responseType: 'stream'
-    }, options)
-
-    console.log(response);
-
-    let dirpath = path.dirname(savepath);
-    if (!fs.existsSync(dirpath)) {
-        //console.log("Creating path: " + dirpath);
-        mkdirp.sync(dirpath);
-    }
-    var out = fs.createWriteStream(savepath);
-    response.data.pipe(out);
-
-    out.on('finish', () => {
-        out.close();
-        console.log('File downloaded:' + savepath);
-    });
-  
-    return new Promise((resolve, reject) => {
-        out.on('finish', resolve)
-        out.on('error', reject)
-    })
-  }
-
-
-
-function downloadfilexxx1(fileurl, savepath) {
-    downloadImage (fileurl, savepath);
-return;
-    const options = {
-        "headers": {"X-tokentype": "entermedia", "X-token": entermediakey}
-    };
-
-  console.log('Connecting');
-  axios({
-    method: 'GET',
-    url: fileurl,
-    responseType: 'stream'
-    }, options).then(response => {
-        console.log(response.data);
-
-    }).catch((error) => {
-        //event.sender.send('downloadError', error)
-        console.log(error);
-    })
-}
-
-
-
-
-
-
-function progress({loaded, total}) {
-    let progress = Math.round(loaded/total*100)+'%';
-    console.log(progress);
-  }
-
 function openFile(destPath) {
     console.log("Opening: " +destPath);
     shell.openItem(destPath);
 }
 
 
-
-
 //JSON Requests
-
 function postRequest(inUrl, inBody) {
     console.log("Making request to " + inUrl)
     const request = http.request(inUrl, {
@@ -598,48 +478,6 @@ function postRequest(inUrl, inBody) {
     request.end();
 }
 
-
-function postRequest2(inUrl, inBody) {
-    console.log("Making request to " + inUrl)
-    const request = net.request({
-        method: 'POST',
-        url: inUrl,
-        redirect: 'follow'
-    });
-    request.on('response', (response) => {
-        console.log(`STATUS: ${response.statusCode}`);
-        console.log(`HEADERS: ${JSON.stringify(response.headers)}`);
- 
-        response.on('data', (chunk) => {
-            console.log(`BODY: ${chunk}`)
-        });
-    });
-    request.on('finish', () => {
-        console.log('Request is Finished')
-    });
-    request.on('abort', () => {
-        console.log('Request is Aborted')
-    });
-    request.on('error', (error) => {
-        console.log(`ERROR: ${JSON.stringify(error)}`)
-    });
-    request.on('close', (error) => {
-        console.log('Last Transaction has occurred')
-    });
-    //request.setHeader('Content-Type', 'application/json');
-    request.setHeader('Content-Type', 'multipart/form-data');
-    
-    
-    request.setHeader("X-tokentype", "entermedia");
-    request.setHeader("X-token", entermediakey);
-
-    request.write("formData", inBody)
-    //request.write(inBody, 'utf-8');
-    request.end();
-}
-
-
-
 function setMainMenu(mainWindow) {
     const template = [{
         label: "eMedia Finder",
@@ -662,8 +500,6 @@ function setMainMenu(mainWindow) {
             }
         },
         {
-            label: "Refresh", accelerator: "F5", click() { mainWindow.reload(); },
-        }, {
             label: "Minimize To Tray", click() { mainWindow.hide(); },
         }, {
             label: "Exit", click() {
@@ -673,7 +509,16 @@ function setMainMenu(mainWindow) {
         }]
     }, {
         label: 'Browser', submenu: [
-            { label: "Back", click() { mainWindow.webContents.goBack(); }, }]
+            { 
+                label: "Back", click() { mainWindow.webContents.goBack(); }, 
+            },
+            {
+                label: "Refresh", accelerator: "F5", click() { mainWindow.reload(); },
+            },
+            { 
+                label: "Code Inspector", click() { mainWindow.webContents.openDevTools(); }, 
+            }
+        ]
     }, {
         label: "Edit",
         submenu: [
@@ -715,19 +560,6 @@ function setMainMenu(mainWindow) {
 }
 
 
-
-
-
-// Start MediaBoat
-function startMediaBoat(workspaceURL, username, key) {
-    console.log('starting mediaboat: '+workspaceURL)
-    var req = getMediaBoat(workspaceURL, username, key, mainWindow);
-    req.on('pipe', resp => {
-        console.log('resp', resp);
-    });
-    console.log('started mediaboat')
-    return req;
-}
 
 // open Browser
 function openLocalBrowser(url) {
@@ -805,60 +637,6 @@ function checkSession(win) {
    //console.log(session.defaultSession);
 }
 
-function getMediaBoat(workspaceURL, username, key, mainWin) {
-    //console.log('getmediaboat workspace', workspaceURL, username, key);
-    var dest = `${__dirname}/jars`;
-    console.log(process.platform);
-    if (process.platform === 'win32') { // windows do not like it. even if we change permissions
-        return spawnMediaBoat(workspaceURL, username, key, mainWin);
-    } else {
-        return downloadFile(workspaceURL + '/finder/install/MediaBoatClient.jar', dest + '/MediaBoatClient.jar', workspaceURL, username, key, mainWin);
-    }
-    // leaving this here, in case they are needed in the future
-    // downloadFile(url + '/lib/commons-codec-1.9.jar', dest + '/lib/commons-codec-1.9.jar');
-    // downloadFile(url + '/lib/commons-logging-1.2.jar', dest + '/lib/commons-logging-1.2.jar');
-    // downloadFile(url + '/lib/httpclient-4.5.2.jar', dest + '/lib/httpclient-4.5.2.jar');
-    // downloadFile(url + '/lib/httpcore-4.4.4.jar', dest + '/lib/httpcore-4.4.4.jar');
-    // downloadFile(url + '/lib/httpmime-4.5.2.jar', dest + '/lib/httpmime-4.5.2.jar');
-    // downloadFile(url + '/lib/json-simple-1.1.1.jar', dest + '/lib/json-simple-1.1.1.jar');
-    // downloadFile(url + '/lib/nv-websocket-client.jar', dest + '/lib/nv-websocket-client.jar');
-}
-
-function downloadFile(url, destPath, workspaceURL, username, key, mainWin) {
-    var received_bytes = 0;
-    var total_bytes = 0;
-    //var req = request({ method: 'GET', uri: url });
-    var req = https.get(url, (res) => {
-
-        var out = fs.createWriteStream(destPath);
-        res.pipe(out);
-    /*  
-        req.on('response', data => {
-            // Change the total bytes value to get progress later.
-            total_bytes = parseInt(data.headers['content-length']);
-            console.log('total bytes', total_bytes);
-        });
-
-        req.on('data', chunk => {
-            // Update the received bytes
-            received_bytes += chunk.length;
-            showProgress(received_bytes, total_bytes, workspaceURL, username, key, mainWin);
-        });
-    */
-        out.on('finish', () => {
-            out.close();
-            console.log('File downloaded');
-        });
-
-    }).on('error', (err) => {
-        // handle error
-        console.log(err);
-    });
-
-    return req;
-}
-
-
 // temp
 function showProgress(received, total, workspaceURL, username, key, mainWin) {
     var percentage = (received * 100) / total;
@@ -868,41 +646,6 @@ function showProgress(received, total, workspaceURL, username, key, mainWin) {
             if (this.mediaBoatClient && mediaPID) { KillAllMediaBoatProcesses(); }
             //spawnMediaBoat(workspaceURL, username, key, mainWin);
         }, 200);
-    }
-}
-
-function spawnMediaBoat(workspaceURL, username, key, mainWin) {
-    const child_process = require("child_process");
-    console.log("exec: java -jar MediaBoatClient.jar ", workspaceURL, username, key);
-    let jMediaBoat = child_process.spawn("java", ["-jar", "MediaBoatClient.jar", workspaceURL, username, key], {
-        stdio: ['pipe', 'pipe', 'pipe'], shell: true, cwd: `${__dirname}/jars`
-    });
-    mediaPID = jMediaBoat.pid;
-    jMediaBoat.stdout.on('data', data => {
-        console.log(data.toString());
-        if (data.toString() !== 'undefined') { LogMediaBoat(data.toString()); }
-        if (data.toString().indexOf('Login complete') >= 0) {
-            const newUrl = `${workspaceURL}/finder/find/index.html?entermedia.key=${key}`;
-            console.log('Loading index: ', newUrl)
-            mainWin.loadURL(newUrl);
-        }
-    });
-
-    jMediaBoat.on('close', () => {
-        console.log('MediaBoat closed pid:' + jMediaBoat.pid);
-    });
-    FindProcess();
-    return jMediaBoat;
-}
-
-function LogMediaBoat(msg) {
-    if (!this.mediaBoatLog) { this.mediaBoatLog = '' }
-    if (msg) {
-        const timeElapsed = Date.now();
-        const today = new Date(timeElapsed);
-        msg = `${today.toISOString()} ${msg} \n`;
-        this.mediaBoatLog += msg;
-        console.log(msg)
     }
 }
 

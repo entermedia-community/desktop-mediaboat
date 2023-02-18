@@ -47,7 +47,7 @@ exports.updateWorkSpaces = updateWorkSpaces;
 exports.openLocalBrowser = openLocalBrowser;
 
 //Upload Files
-exports.uploadFolder = uploadFolder; 
+//exports.uploadFolder = uploadFolder; 
 exports.uploadFiles = uploadFiles; 
 
 //Select Folder for Download
@@ -201,24 +201,31 @@ function uploadFiles(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
       });
 }
 
-function uploadFolder(entermediakey, inSourcepath, inMediadbUrl, inRedirectUrl, options) {
-    let defaultpath = store.get("uploaddefaultpath");
-    dialog.showOpenDialog(mainWindow, {
-        defaultPath: defaultpath,
-        properties: ['openDirectory']
-    }, result => {
-        if(result===undefined) return;
 
-        var directory = result[0];
-        store.set("uploaddefaultpath", directory);
-        console.log("Directory selected:" + directory);
-        startFolderUpload(directory, entermediakey, inSourcepath, inMediadbUrl, inRedirectUrl, options);
+ipcMain.on('uploadFolder', (event, options) => {
+    //function uploadFolder(entermediakey, inSourcepath, inMediadbUrl, inRedirectUrl, options) {
+        let inSourcepath = options["sourcepath"];
+        let inMediadbUrl = options["mediadburl"];
+        let defaultpath = store.get("uploaddefaultpath");
+        dialog.showOpenDialog(mainWindow, {
+            defaultPath: defaultpath,
+            properties: ['openDirectory']
+        }, result => {
+            if(result===undefined) return;
+    
+            var directory = result[0];
+            store.set("uploaddefaultpath", directory);
+            console.log("Directory selected:" + directory);
+            startFolderUpload(directory, inSourcepath, inMediadbUrl, options);
+    
+        });  
+    
+    //}
+});  
 
-    });  
 
-}
 
-function startFolderUpload(directory, entermediakey, inSourcepath, inMediadbUrl, inRedirectUrl, options) {
+function startFolderUpload(directory, inSourcepath, inMediadbUrl, options) {
     //console.log(`UserHomepath: ${userHomePath}`)   ;
     let directoryfinal = directory.replace(userHomePath, ''); //remove user home
     let categorypath = directoryfinal; //ToDo: get top level folder 

@@ -226,7 +226,6 @@ ipcMain.on('uploadFolder', (event, options) => {
 
 
 function startFolderUpload(directory, inSourcepath, inMediadbUrl, options) {
-    //console.log(`UserHomepath: ${userHomePath}`)   ;
     let directoryfinal = directory.replace(userHomePath, ''); //remove user home
     let categorypath = directoryfinal; //ToDo: get top level folder 
     let form1 = new FormData();
@@ -254,7 +253,7 @@ function startFolderUpload(directory, inSourcepath, inMediadbUrl, options) {
         //console.log(form);
         submitForm(form1, inMediadbUrl + "/services/module/userupload/uploadstart.json", function(){
             let savingPath = inSourcepath + "/" + computerName;
-            loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl);
+            loopDirectory(directory, savingPath, inMediadbUrl);
             runJavaScript('$("#sidebarUserUploads").trigger("click");');
             runJavaScript('$(window).trigger("ajaxautoreload");');
         });
@@ -262,14 +261,40 @@ function startFolderUpload(directory, inSourcepath, inMediadbUrl, options) {
         //mainWindow.loadURL(inRedirectUrl); 
 }
 
+
+//ipcMain.on('submitForm', (event, form, formurl) => {
+    function submitForm(form, formurl, formCompleted){
+        const q = url.parse(formurl, true);
+        //entermediakey = "cristobalmd542602d7e0ba09a4e08c0a6234578650c08d0ba08d";
+        console.log("submitForm Sending Form: "+ formurl);
+    
+        fetch(formurl, { method: 'POST', body: form })
+            .then(function(res) {
+                //console.log("submitForm: complete ");
+                if(typeof formCompleted === 'function') {
+                    formCompleted();
+                }
+                
+            });
+    
+        /*
+        form.on('progress', (bytesReceived, bytesExpected)  => {
+            console.log('progress bytesReceived: ', bytesReceived);
+            console.log('progress bytesExpected: ', bytesExpected);
+        });
+        */
+    }
+//});
+
+
 function runJavaScript(code) {
     mainWindow.webContents.executeJavaScript(code);
 }
 
-function loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl) {
+function loopDirectory(directory, savingPath, inMediadbUrl) {
     let filecount = 0;
     let totalsize = 0;
-    
+    console.log("Looping......");
     fs.readdir(directory, (err, files) => {
         
         files.forEach(file => {
@@ -279,7 +304,7 @@ function loopDirectory(directory, savingPath, inMediadbUrl, inRedirectUrl) {
             if(stats.isDirectory()) {
                 console.log('Subdirectory found: ' + filepath);
                 let filenamefinal = filepath.replace(userHomePath, ''); //remove user home
-                loopDirectory(filepath, savingPath, inMediadbUrl, inRedirectUrl);
+                loopDirectory(filepath, savingPath, inMediadbUrl);
             }
             else {
                 let fileSizeInBytes = stats.size;
@@ -401,37 +426,6 @@ function downloadfile(fileurl, savepath) {
       })
  
 }
-
-
-
-function submitForm(form, inPostUrl, formCompleted){
-    const q = url.parse(inPostUrl, true);
-    //entermediakey = "cristobalmd542602d7e0ba09a4e08c0a6234578650c08d0ba08d";
-    console.log("submitForm Sending Form: "+ inPostUrl);
-
-    fetch(inPostUrl, { method: 'POST', body: form })
-        .then(function(res) {
-            //console.log("submitForm: complete ");
-            if(typeof formCompleted === 'function') {
-                formCompleted();
-            }
-            
-        });
-
-    /*
-    form.on('progress', (bytesReceived, bytesExpected)  => {
-        console.log('progress bytesReceived: ', bytesReceived);
-        console.log('progress bytesExpected: ', bytesExpected);
-    });
-*/
-}
-
-
-
-
-
-
-
 
 
 function openFile(destPath) {

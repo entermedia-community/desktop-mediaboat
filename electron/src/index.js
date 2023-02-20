@@ -28,9 +28,12 @@ const Store = require('electron-store');
 const store = new Store();
 
 
+const log = require("electron-log");
+console.log = log.log;
+
 // env
 const isDev = false;
-const currentVersion = '0.5.9';
+const currentVersion = '0.5.10';
 const selectWorkspaceForm = `file://${__dirname}/selectHome.html`;
 // url
 //const homeUrl = "https://emediafinder.com/app/workspaces/gotoapp.html";
@@ -214,7 +217,7 @@ ipcMain.on('uploadFolder', (event, options) => {
             properties: ['openDirectory']
         },result => {
           if (result === undefined) {
-            console.log("No file selected");
+            console.log("No folder selected");
           } else {
             var directory = result[0];
             store.set("uploaddefaultpath", directory);

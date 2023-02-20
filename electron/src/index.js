@@ -15,7 +15,7 @@ const PROTOCOL_SCHEME = "entermedia";
 
 const findProcess = require('find-process');
 const protocol = electron.protocol;
-const { app, BrowserWindow, Menu, getCurrentWindow, Tray, shell, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, Menu, Tray, shell, dialog, ipcMain } = require("electron");
 const fetch = require('electron-fetch').default;
 
 //const ProgressBar = require('progress')
@@ -203,26 +203,27 @@ function uploadFiles(inKey, inSourcepath, inMediadbUrl, inRedirectUrl) {
 
 
 ipcMain.on('uploadFolder', (event, options) => {
-    //function uploadFolder(entermediakey, inSourcepath, inMediadbUrl, inRedirectUrl, options) {
-        let inSourcepath = options["sourcepath"];
-        let inMediadbUrl = options["mediadburl"];
-        let defaultpath = store.get("uploaddefaultpath");
-        dialog.showOpenDialog(mainWindow, {
+    //uploadFolder(options);
+    let inSourcepath = options["sourcepath"];
+    let inMediadbUrl = options["mediadburl"];
+    let defaultpath = store.get("uploaddefaultpath");
+
+    dialog.showOpenDialog(
+        mainWindow, {
             defaultPath: defaultpath,
             properties: ['openDirectory']
-        }, result => {
-            if(result===undefined) return;
-    
+        },result => {
+          if (result === undefined) {
+            console.log("No file selected");
+          } else {
             var directory = result[0];
             store.set("uploaddefaultpath", directory);
             console.log("Directory selected:" + directory);
             startFolderUpload(directory, inSourcepath, inMediadbUrl, options);
-    
-        });  
-    
-    //}
+          }
 });  
 
+});
 
 
 function startFolderUpload(directory, inSourcepath, inMediadbUrl, options) {
@@ -230,7 +231,7 @@ function startFolderUpload(directory, inSourcepath, inMediadbUrl, options) {
     let categorypath = directoryfinal; //ToDo: get top level folder 
     let form1 = new FormData();
         /*
-        options.map(obj => {
+        options.map(obj => {no
 
             for (const key in obj) {
                 const value= obj[key];

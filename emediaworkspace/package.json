@@ -1,0 +1,65 @@
+{
+  "name": "folderpicker",
+  "productName": "folderpicker",
+  "version": "1.0.0",
+  "description": "My Electron application description",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "distwin": "electron-builder --win zip"
+  },
+  "keywords": [],
+  "author": {
+    "name": "Cristobal Mejia",
+    "email": "cristobal.mejia@gmail.com"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "electron-fetch": "^1.9.1",
+    "electron-log": "4.4.1",
+    "electron-squirrel-startup": "^1.0.0",
+    "electron-store": "^1.3.0",
+    "form-data": "^4.0.0",
+    "mkdirp": "^0.5.6",
+    "querystring": "^0.2.1",
+    "url": "^0.11.0"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^6.0.5",
+    "@electron-forge/maker-deb": "^6.0.5",
+    "@electron-forge/maker-rpm": "^6.0.5",
+    "@electron-forge/maker-squirrel": "^6.0.5",
+    "@electron-forge/maker-zip": "^6.0.5",
+    "electron": "23.1.1",
+    "electron-builder": "^23.6.0",
+    "electron-installer-squirrel-windows": "^1.3.0",
+    "electron-installer-windows": "^3.0.0"
+  },
+  "build": {
+    "appId": "org.entermedia.app",
+    "productName": "eMedia Finder",
+    "asar": false,
+    "files": [
+      "src/**/*"
+    ],
+    "protocols": [
+      {
+        "name": "entermedia",
+        "role": "Viewer",
+        "schemes": [
+          "entermedia"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/emrlogo256.png"
+    },
+    "nsis": {
+      "perMachine": true
+    }
+  }
+}

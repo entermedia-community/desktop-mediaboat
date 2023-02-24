@@ -274,7 +274,7 @@ function startFolderUpload(directory, inSourcepath, inMediadbUrl, options) {
     
         fetch(formurl, { method: 'POST', body: form })
             .then(function(res) {
-                //console.log("submitForm: complete ");
+                console.log(res);
                 if(typeof formCompleted === 'function') {
                     formCompleted();
                 }

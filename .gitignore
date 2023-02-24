@@ -3,10 +3,12 @@
 /dist/
 /installer/dist/
 /installer/bin/
-/electron/node_modules
-/electron/out
-/electron/src/jars
-/electron/package-lock.json
-/electron/dist
+/ver.0.5/electron/node_modules
+/ver.0.5/electron/out
+/ver.0.5/electron/src/jars
+/ver.0.5/electron/package-lock.json
+/ver.0.5/electron/dist
+/emediaworkspace/node_modules
+/emediaworkspace/dist
 .project
 .vscode

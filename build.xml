@@ -1,9 +1,9 @@
 <project default="all" name="MediaBoat" basedir="." >
-    <target name="all" depends="clean,jar,copy,electron-installers" />
+    <target name="all" depends="electron-installers" />
     <property name="build" location="${basedir}/build"/>
     <property name="dist" location="${basedir}/dist"/>
     <property name="installer" location="${basedir}/installer"/>
-    <property name="electron" location="${basedir}/electron" />
+    <property name="electron" location="${basedir}/emediaworkspace" />
     <target name="compile">
         <mkdir dir="${build}/classes" />
         <javac includeantruntime="false" debug="on" srcdir="${basedir}/src" destdir="${build}/classes" target="1.6" source="1.6" encoding="utf-8">
@@ -45,7 +45,7 @@
         </copy>
         <copydir src="${dist}/lib" dest="${electron}/src/jars/lib" />
     </target>
-    <target name="electron-dependencies" depends="electron-mediaboat">
+    <target name="electron-dependencies" depends="">
         <exec dir="${electron}" executable="npm">
             <arg line="install"/>
         </exec>

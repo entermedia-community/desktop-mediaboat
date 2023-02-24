@@ -512,3 +512,98 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
   });
 
 }
+
+
+//Download
+
+ipcMain.on('selectFolder', (event, options) => {
+//function selectFolder(inKey, downloadpaths) {
+  entermediakey = options["entermediakey"];
+  downloadpaths = options["downloadpaths"];
+  //console.log("Download paths ", downloadpaths);
+  let defaultpath = store.get("downloaddefaultpath");
+  
+  dialog.showOpenDialog(mainWindow, {
+      defaultPath: defaultpath,
+      properties: ['openDirectory']
+  }).then(result => {
+      if(result===undefined) return;
+      //console.log(result);
+      let initialPath = result.filePaths[0];
+      if(initialPath) {
+        store.set("downloaddefaultpath", initialPath);
+
+        downloadpaths.forEach(function (downloadpath) {
+          var selectedPath = initialPath;
+          if(downloadpath.savetopath != '') {
+              selectedPath = selectedPath + downloadpath.savetopath;
+          }
+
+          //download method
+          downloadfile(downloadpath.url, selectedPath);
+        
+        });
+    }
+      //openFile(initialPath);
+      
+  }).catch(err => {
+    console.log(err)
+  });
+});
+
+
+
+function downloadfile(fileurl, savepath) {
+  /*
+  //uses electron's session
+  const options = {
+      "headers": {"X-tokentype": "entermedia", "X-token": entermediakey}
+  };
+  */
+
+
+  fetch(fileurl, { 
+    method: 'GET', 
+    useSessionCookie: true,  
+    headers: {"X-tokentype": 'entermedia', "X-token": entermediakey} 
+  }).then(function(res) {
+      //console.log(res);  //EnterMedia always return 200, need to check for error on body: ToDo: Catch EM real error.
+      if (res.ok) {
+        const reader = res.body;
+        console.log(reader);
+
+        const contentLength = res.headers.get('content-length');
+        // ensure contentLength is available
+        if (!contentLength) {
+        //throw Error('Content-Length response header unavailable');
+        }
+        // parse the integer into a base-10 number
+        const total = parseInt(contentLength, 10);
+        let loaded = 0;
+        console.log(contentLength);
+
+        //console.log(response);
+        //Create Path
+        let dirpath = path.dirname(savepath);
+        if (!fs.existsSync(dirpath)) {
+            console.log("Creating path: " + dirpath);
+            mkdirp.sync(dirpath);
+        }
+        var out = fs.createWriteStream(savepath);
+        res.body.pipe(out);
+
+        out.on('finish', () => {
+            out.close();
+            console.log('File downloaded:' + savepath);
+        });
+    }
+  }).catch(err => console.error(err));
+
+}
+
+
+function openFile(destPath) {
+  console.log("Opening: " +destPath);
+  shell.openItem(destPath);
+}
+

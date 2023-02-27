@@ -318,7 +318,7 @@ ipcMain.on('uploadFiles', (event, options) => {
         var directory = filePaths[0];
         store.set("uploaddefaultpath", path.dirname(directory));
 
-        startFilesUpload(filePaths,inSourcepath, inMediadbUrl, options)
+        startFilesUpload(filePaths, inSourcepath, inMediadbUrl, options)
 
         
       }
@@ -340,7 +340,7 @@ function startFilesUpload(filePaths, inSourcepath, inMediadbUrl, options) {
     let sourcepath = inSourcepath+'/'+computerName+filenamefinal;
     let categorypath = path.dirname(sourcepath);
     let form1 = new FormData();
-
+    
     if(options["moduleid"] != null && options["entityid"] != null) 
     {
         form1.append('moduleid', options["moduleid"]);
@@ -350,7 +350,7 @@ function startFilesUpload(filePaths, inSourcepath, inMediadbUrl, options) {
     categorypath = categorypath.replace(":","");
     categorypath = categorypath.split(path.sep).join(path.posix.sep);
     //--
-
+    console.log("Category: "+categorypath);
     form1.append('sourcepath', categorypath);
     submitForm(form1, inMediadbUrl + "/services/module/userupload/uploadstart.json", function(){
       let savingPath = inSourcepath + "/" + computerName;
@@ -395,7 +395,7 @@ ipcMain.on('uploadFolder', (event, options) => {
     var directory = result.filePaths[0];
     if(directory != undefined) {
       store.set("uploaddefaultpath", directory);
-      console.log("Directory selected:" + directory);
+      //console.log("Directory selected:" + directory);
       startFolderUpload(directory, inSourcepath, inMediadbUrl, options);
     }
   }).catch(err => {
@@ -420,12 +420,13 @@ function startFolderUpload(directory, inSourcepath, inMediadbUrl, options) {
     categorypath = categorypath.replace(":","");
     categorypath = categorypath.split(path.sep).join(path.posix.sep);
     //--
-
+    categorypath = inSourcepath + "/" + computerName + categorypath;
+    let savingPath = inSourcepath + "/" + computerName;
+    console.log("Upload start to category:" + categorypath);
     form1.append('sourcepath', categorypath);
     //form.append('totalfilesize', totalsize); Todo: loop over files first
     //console.log(form);
     submitForm(form1, inMediadbUrl + "/services/module/userupload/uploadstart.json", function(){
-        let savingPath = inSourcepath + "/" + computerName;
         loopDirectory(directory, savingPath, inMediadbUrl);
         runJavaScript('$("#sidebarUserUploads").trigger("click");');
         runJavaScript('$(window).trigger("ajaxautoreload");');
@@ -446,7 +447,7 @@ function startFolderUpload(directory, inSourcepath, inMediadbUrl, options) {
           headers: {"X-tokentype": 'entermedia', "X-token": entermediakey} 
         }).then(function(res) {
             //console.log(res);  //EnterMedia always return 200, need to check for error on body: ToDo: Catch EM real error.
-            console.log("submitForm: complete ");
+            console.log("submitForm: ok");
             if(typeof formCompleted === 'function') {
                   formCompleted();
             }
@@ -544,7 +545,11 @@ ipcMain.on('selectFolder', (event, options) => {
         
         });
     }
-      //openFile(initialPath);
+
+    //Todo: Close Emdialog
+
+
+    //openFile(initialPath);
       
   }).catch(err => {
     console.log(err)

@@ -34,3 +34,15 @@ npm run makemac
 ```
 npm run makewin
 ```
+
+
+### Build Installers
+Use m39's mediadb docker instance 
+/home/entermedia/enlectron-installer/
+
+
+Current build requires
+node 14.x
+npm 9.x
+
+

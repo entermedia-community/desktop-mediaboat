@@ -429,7 +429,7 @@ function startFolderUpload(directory, inSourcepath, inMediadbUrl, options) {
     submitForm(form1, inMediadbUrl + "/services/module/userupload/uploadstart.json", function(){
         loopDirectory(directory, savingPath, inMediadbUrl);
         runJavaScript('$("#sidebarUserUploads").trigger("click");');
-        runJavaScript('$(window).trigger("ajaxautoreload");');
+        runJavaScript('refreshEntiyDialog();');
     });
 }
 

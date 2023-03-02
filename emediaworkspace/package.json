@@ -40,7 +40,7 @@
   },
   "build": {
     "appId": "org.entermedia.app",
-    "productName": "eMedia Workspace",
+    "productName": "eMediaWorkspace",
     "asar": false,
     "files": [
       "src/**/*"

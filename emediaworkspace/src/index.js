@@ -529,8 +529,9 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
           //console.log(filestream);
 
           // filepath = filepath.replace("\\","/");
-          filepath = filepath.replace(":","");
+          filepath = path.basename(filepath);
 
+          filepath = filepath.replace(":","");
           let filenamefinal = filepath.replace(userHomePath, ''); //remove user home
           let sourcepath = path.join(savingPath,filenamefinal); 
           sourcepath = sourcepath.split(path.sep).join(path.posix.sep);

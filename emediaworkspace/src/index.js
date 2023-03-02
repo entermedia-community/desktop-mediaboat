@@ -425,7 +425,7 @@ ipcMain.on('uploadFolder', (event, options) => {
     var directory = result.filePaths[0];
     if(directory != undefined) {
       store.set("uploaddefaultpath", directory);
-      //console.log("Directory selected:" + directory);
+      console.log("Directory selected:" + directory);
       startFolderUpload(directory, inSourcepath, inMediadbUrl, options);
     }
   }).catch(err => {
@@ -436,9 +436,12 @@ ipcMain.on('uploadFolder', (event, options) => {
 
 
 
-function startFolderUpload(directory, inSourcepath, inMediadbUrl, options) {
-    let directoryfinal = directory.replace(userHomePath, ''); //remove user home
-    let categorypath = directoryfinal; //ToDo: get top level folder 
+function startFolderUpload(startingdirectory, inSourcepath, inMediadbUrl, options) {
+    //let directoryfinal = directory.replace(userHomePath, ''); //remove user home
+    let dirname = path.basename(startingdirectory);
+    console.log(dirname);
+    
+    
     let form1 = new FormData();
 
     if(options["moduleid"] != null && options["entityid"] != null) 
@@ -447,17 +450,17 @@ function startFolderUpload(directory, inSourcepath, inMediadbUrl, options) {
         form1.append('entityid', options["entityid"]);
     }
     //May need stronger path cleanup
-    categorypath = categorypath.replace(":","");
-    categorypath = categorypath.split(path.sep).join(path.posix.sep);
+    //categorypath = categorypath.replace(":","");
+    //categorypath = categorypath.split(path.sep).join(path.posix.sep);
     //--
-    categorypath = inSourcepath + "/" + computerName + categorypath;
-    let savingPath = inSourcepath + "/" + computerName;
-    console.log("Upload start to category:" + categorypath);
-    form1.append('sourcepath', categorypath);
+    //categorypath = inSourcepath + "/" + dirname;
+    let savingPath = inSourcepath + "/" + dirname;
+    console.log("Upload start to category:" + savingPath);
+    form1.append('sourcepath', savingPath);
     //form.append('totalfilesize', totalsize); Todo: loop over files first
     //console.log(form);
     submitForm(form1, inMediadbUrl + "/services/module/userupload/uploadstart.json", function(){
-        loopDirectory(directory, savingPath, inMediadbUrl);
+        loopDirectory(startingdirectory, savingPath, inMediadbUrl);
         runJavaScript('$("#sidebarUserUploads").trigger("click");');
         runJavaScript('refreshEntiyDialog();');
     });

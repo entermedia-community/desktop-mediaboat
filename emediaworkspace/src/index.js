@@ -19,7 +19,6 @@ let session = require("electron");
 let mainWindow;
 let tray;
 let trayMenu = [];
-let workSpaces = [];
 var mediaPID;
 let entermediakey;
 
@@ -28,6 +27,9 @@ const isDev = false;
 const appLogo = "/assets/images/emrlogo.png";
 const trayLogo = "/assets/images/em20.png";
 const selectWorkspaceForm = `file://${__dirname}/selectHome.html`;
+
+const currentVersion = '2.0.2';
+
 
 //Handle logs with electron-logs
 console.log = log.log;
@@ -98,10 +100,37 @@ const createWindow = () => {
   
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.on('ready', createWindow);
+
+
+if (!isDev) {
+  const gotTheLock = app.getVersion()
+  // .requestSingleInstanceLock();
+  if (!gotTheLock) {
+      app.quit();
+  } else {
+      app.on('second-instance', (event, commandLine, workingDirectory) => {
+          if (mainWindow) {
+              mainWindow.show()
+          }
+          console.log('length:', commandLine.length);
+          if (commandLine.length >= 2) {
+              commandLine.forEach(c => {
+                  if (c.indexOf(PROTOCOL_SCHEME) !== -1) {
+                      mainWindow.loadURL(c.replace(PROTOCOL_SCHEME, 'http'));
+                  }
+              });
+          }
+      });
+      app.on("ready", createWindow);
+      app.on("open-url", (event, url) => {
+          if (mainWindow)
+              mainWindow.loadURL(url.replace(PROTOCOL_SCHEME, 'http'));
+          event.preventDefault();
+      });
+  }
+} else {
+  app.on("ready", createWindow);
+}
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
@@ -146,7 +175,7 @@ ipcMain.on('setHomeUrl', (event, url) => {
 
 function setMainMenu(mainWindow) {
   const template = [{
-      label: "eMedia Finder",
+      label: "eMedia Workspace",
       submenu: [
           /*{ 
           label: "Logout",
@@ -215,7 +244,7 @@ function setMainMenu(mainWindow) {
                   defaultId: 2,
                   title: 'Version',
                   message: 'Current version',
-                  detail: 'eMediaFinder Desktop Version: ' + currentVersion
+                  detail: 'eMedia Workspace Version: ' + currentVersion
               };
               dialog.showMessageBox(null, options);
           },
@@ -245,6 +274,7 @@ function CreateTray(workSpaces, mainWin) {
       setTimeout(() => { click = 0; }, 1000);
       if (click >= 2) mainWin.show();
   });
+  
 }
 
 function DrawTray(mainWin) {
@@ -267,7 +297,7 @@ function DrawTray(mainWin) {
           app.quit();
       },
   });
-  this.tray.setToolTip("eMedia Finder");
+  this.tray.setToolTip("eMedia Workspace");
   var contextMenu = Menu.buildFromTemplate(this.trayMenu);
   this.tray.setContextMenu(contextMenu);
 }
@@ -596,6 +626,8 @@ function downloadfile(fileurl, savepath) {
         }
         var out = fs.createWriteStream(savepath);
         res.body.pipe(out);
+
+        out.
 
         out.on('finish', () => {
             out.close();

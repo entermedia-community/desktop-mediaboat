@@ -1,8 +1,8 @@
 {
-  "name": "folderpicker",
-  "productName": "folderpicker",
-  "version": "1.0.0",
-  "description": "My Electron application description",
+  "name": "emediaworkspace",
+  "productName": "eMedia Workspace",
+  "version": "2.0.2",
+  "description": "eMedia Workspace",
   "main": "src/index.js",
   "scripts": {
     "start": "electron-forge start",
@@ -13,8 +13,8 @@
   },
   "keywords": [],
   "author": {
-    "name": "Cristobal Mejia",
-    "email": "cristobal.mejia@gmail.com"
+    "name": "EnterMedia",
+    "email": "info@entermediadb.org"
   },
   "license": "MIT",
   "dependencies": {
@@ -40,7 +40,7 @@
   },
   "build": {
     "appId": "org.entermedia.app",
-    "productName": "eMedia Finder",
+    "productName": "eMedia Workspace",
     "asar": false,
     "files": [
       "src/**/*"

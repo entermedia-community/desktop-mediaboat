@@ -18,7 +18,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "electron-dl": "https://github.com/harshit-appfoster/electron-dl-w-header.git#dev",
+    "electron-dl": "https://github.com/harshit-appfoster/electron-dl-w-header.git",
     "electron-fetch": "^1.9.1",
     "electron-log": "5.0.3",
     "electron-squirrel-startup": "^1.0.0",
@@ -43,16 +43,12 @@
     "appId": "org.entermedia.app",
     "productName": "eMediaWorkspace",
     "asar": false,
-    "files": [
-      "src/**/*"
-    ],
+    "files": ["src/**/*"],
     "protocols": [
       {
         "name": "entermedia",
         "role": "Viewer",
-        "schemes": [
-          "entermedia"
-        ]
+        "schemes": ["entermedia"]
       }
     ],
     "win": {

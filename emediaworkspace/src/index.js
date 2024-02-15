@@ -1,11 +1,11 @@
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 
 const { app, BrowserWindow, ipcMain, dialog, Menu, Tray } = require("electron");
+const { shell } = require("electron");
+const { addDownload } = require("electron-dl");
 const path = require("path");
 const log = require("electron-log");
-const mkdirp = require("mkdirp");
 const FormData = require("form-data");
-const { download } = require("electron-dl");
 const fetch = require("electron-fetch").default;
 const os = require("os");
 const computerName = os.hostname();
@@ -17,10 +17,8 @@ var querystring = require("querystring");
 var fs = require("fs");
 
 let session = require("electron");
+const { Console } = require("console");
 let mainWindow;
-let tray;
-let trayMenu = [];
-var mediaPID;
 let entermediakey;
 
 const store = new Store();
@@ -430,7 +428,7 @@ function loopFiles(filePaths, savingPath, inMediadbUrl) {
     submitForm(
       form,
       inMediadbUrl + "/services/module/asset/create",
-      function () { },
+      function () {},
     );
     //Todo if false Exeption
     //filecount++;
@@ -574,7 +572,7 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
       submitForm(
         form,
         inMediadbUrl + "/services/module/asset/create",
-        function () { },
+        function () {},
       );
       filecount++;
       //postRequest(inPostUrl, form)
@@ -586,7 +584,6 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
 
 ipcMain.on("selectFolder", (event, options) => {
   console.log("selectFolder called", options);
-
   //function selectFolder(inKey, downloadpaths) {
   entermediakey = options["entermediakey"];
   downloadpaths = options["downloadpaths"];
@@ -597,33 +594,100 @@ ipcMain.on("selectFolder", (event, options) => {
   });
 });
 
-async function downloadfile(fileurl, onCompleted) {
-  let info = {};
-  info.saveAs = false;
-  info.onProgress = (progress) => {
-    // TODO: Progress
-  };
-  info.onTotalProgress = (progress) => {
-       // TODO: Progress
-  };
-  info.onCancel = (item) => {
-      // TODO: Cancel
-  };
-  info.onCompleted =  onCompleted;
-  info.headers = {"X-tokentype": "entermedia", "X-token": "adminmd5421c0af185908a6c0c40d50fd5e3f16760d5580bc" };
-  return download(mainWindow, fileurl, info);
-}
-
-function openFile(destPath) {
-  console.log("Opening: " + destPath);
-  shell.openItem(destPath);
-}
-
 ipcMain.on("onDownload", (event, options) => {
   checkOrders();
 });
 
-const chunk = (arr, size) => arr.reduce((carry, _, index, orig) => !(index % size) ? carry.concat([orig.slice(index,index+size)]) : carry, []);
+ipcMain.on("onOpenFolder", (event, options) => {
+  openFolder(options["path"]);
+});
+
+ipcMain.on("onOpenFile", (event, options) => {
+  openFile(options["path"]);
+});
+
+// ------------- Open file -----------------
+
+function openFile(path) {
+  shell.openPath(path).then((error) => {
+    console.log(error);
+  });
+}
+
+function openFolder(path) {
+  shell.showItemInFolder(path);
+}
+
+// ----------------------- Download --------------------
+
+function downloadFile(downloadItem) {
+  const path = "https://em11.entermediadb.org" + downloadItem.preset.path;
+  return new Promise((resolve, reject) => {
+    let finalFile;
+    let info = {};
+    info.saveAs = false;
+    info.onStarted = () => {
+      console.log("stared");
+    };
+    info.onProgress = (progress) => {
+      console.log(progress);
+      // TODO: Progress
+    };
+    info.onTotalProgress = (progress) => {
+      console.log(progress);
+      // TODO: Progress
+    };
+    info.onCancel = (item) => {
+      console.log(item);
+
+      reject();
+    };
+    info.onCompleted = (file) => {
+      console.log(file);
+      finalFile = file;
+      onCompleteDownlaod(downloadItem, file);
+    };
+    info.headers = {
+      "X-tokentype": "entermedia",
+      "X-token": "adminmd5421c0af185908a6c0c40d50fd5e3f16760d5580bc",
+    };
+    addDownload(mainWindow, path, info);
+  });
+}
+
+function onCompleteDownlaod(downloadItem, file) {
+  updateServerAboutDownlaod(
+    downloadItem.id,
+    "complete",
+    file.fileSize,
+    file.path,
+  );
+}
+
+function updateServerAboutDownlaod(orderitemid, progress, filesize, filepath) {
+  let headers = {
+    "X-tokentype": "entermedia",
+    "X-token": "adminmd5421c0af185908a6c0c40d50fd5e3f16760d5580bc",
+    "content-type": "application/json",
+  };
+  var body = {
+    orderitemid: orderitemid,
+    downloaditemstatus: progress,
+    downloaditemdownloadedfilesize: filesize,
+  };
+  fetch(
+    "https://em11.entermediadb.org/finder/mediadb/services/module/order/updateorderitemstatus",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: headers,
+    },
+  ).then((res) => {
+    res.json().then((obj) => {
+      console.log(obj);
+    });
+  });
+}
 
 function checkOrders() {
   let bodyObject = {
@@ -651,18 +715,15 @@ function checkOrders() {
       body: JSON.stringify(bodyObject),
       headers: headers,
     },
-  ).then((res) => {
+  )
+    .then((res) => {
       res.json().then((obj) => {
         const listOrders = obj.results;
         listOrders.forEach((order) => {
-            downloadOrderList = (order.orderitems)
-            console.log(downloadOrderList.length)
-              downloadOrderList.forEach( async (dItem) => {
-                const response =  await downloadfile("https://em11.entermediadb.org" + dItem.preset.path,(file) => {
-                  dItem;
-                });
-              })
-        })
+          order.orderitems.forEach((items) => {
+            downloadFile(items);
+          });
+        });
       });
     })
     .then((body) => console.log(body))

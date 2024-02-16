@@ -2,22 +2,21 @@ process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 
 const { app, BrowserWindow, ipcMain, dialog, Menu, Tray } = require("electron");
 const { shell } = require("electron");
-const { download } = require("electron-dl");
 const path = require("path");
 const log = require("electron-log");
 const FormData = require("form-data");
-const fetch = require("electron-fetch").default;
 const os = require("os");
 const computerName = os.hostname();
 const userHomePath = app.getPath("home");
 const Store = require("electron-store");
-const mkdirp = require("mkdirp");
 var url = require("url");
 var querystring = require("querystring");
 var fs = require("fs");
+const { EventEmitter } = require("events");
+const axios = require("axios");
+const extName = require("ext-name");
 
 let session = require("electron");
-const { Console } = require("console");
 let mainWindow;
 let entermediakey;
 
@@ -632,6 +631,9 @@ function openFolder(path) {
 
 let xToken = "adminmd5421c0af185908a6c0c40d50fd5e3f16760d5580bc";
 
+// TODO: Handle the case where file path is exist in store but not in the folder
+// TODO:
+
 class DownloadManager {
   constructor(token, maxConcurrentDownloads = 4) {
     this.downloads = new Map();
@@ -645,7 +647,7 @@ class DownloadManager {
     this.isPaused = false;
   }
 
-  downloadFile(onlineDownloadableItem) {
+  async downloadFile(onlineDownloadableItem) {
     const downloadPath =
       "https://em11.entermediadb.org" + onlineDownloadableItem.preset.path;
     const fileDownloadedPath = path.join(
@@ -655,17 +657,16 @@ class DownloadManager {
     );
     const info = {
       directory: path.dirname(fileDownloadedPath),
-      saveAs: false,
+      url: downloadPath,
       headers: this.headers,
       onStarted: (item) => {
         this.downloads.set(onlineDownloadableItem.id, item);
         console.log("Download started");
       },
       onProgress: (progress) => {
+        console.log(progress);
+
         // TODO: Update UI with progress
-      },
-      onTotalProgress: (progress) => {
-        // TODO: Update UI with total progress
       },
       onCancel: (item) => {
         this.downloads.delete(onlineDownloadableItem.id);
@@ -678,11 +679,11 @@ class DownloadManager {
       },
     };
 
-    const downloadPromise = () => download(mainWindow, downloadPath, info);
+    const downloadPromise = new DownloadHelper(info);
 
     if (this.currentDownloads < this.maxConcurrentDownloads) {
       this.currentDownloads++;
-      return downloadPromise().finally(() => {
+      await downloadPromise.start().finally(() => {
         this.currentDownloads--;
         this.processQueue();
       });
@@ -699,7 +700,7 @@ class DownloadManager {
     ) {
       const nextDownload = this.downloadQueue.shift();
       this.currentDownloads++;
-      nextDownload().finally(() => {
+      nextDownload.start().finally(() => {
         this.currentDownloads--;
         this.processQueue();
       });
@@ -707,13 +708,13 @@ class DownloadManager {
   }
 
   onCompleteDownload(onlineDownloadableItem, file) {
-    const { fileSize, path } = file;
-    this.updateServerAboutDownload(
-      onlineDownloadableItem.id,
-      "complete",
-      fileSize,
-      path,
-    );
+    // const { fileSize, path } = file;
+    // this.updateServerAboutDownload(
+    //   onlineDownloadableItem.id,
+    //   "complete",
+    //   fileSize,
+    //   path,
+    // );
   }
 
   updateServerAboutDownload(orderItemId, progress, fileSize, filePath) {
@@ -794,9 +795,7 @@ class DownloadManager {
   resumeDownload(onlineDownloadableItemId) {
     const download = this.downloads.get(onlineDownloadableItemId);
     if (download) {
-      if (download.canResume()) {
-        download.resume();
-      }
+      download.resume();
     }
   }
 
@@ -810,12 +809,192 @@ class DownloadManager {
   resumeAllDownloads() {
     this.isPaused = false;
     this.downloads.forEach((download) => {
-      if (download.canResume()) {
-        download.resume();
-      }
+      download.resume();
     });
     this.processQueue();
   }
 }
+
+class DownloadHelper extends EventEmitter {
+  constructor({
+    url,
+    fileName,
+    directory,
+    headers,
+    onStarted,
+    onProgress,
+    onCancel,
+    onCompleted,
+    downloadData,
+  }) {
+    super();
+    this.url = url;
+    this.fileName = fileName;
+    this.directory = directory || this.getDefaultDownloadDirectory();
+    this.headers = headers || {};
+    this.onStartedCallback = onStarted;
+    this.onProgressCallback = onProgress;
+    this.onCancelCallback = onCancel;
+    this.onCompletedCallback = onCompleted;
+    this.filePath = this.fileName
+      ? path.join(this.directory, this.fileName)
+      : null;
+    this.store = new Store();
+    this.totalBytes = 0;
+    this.progress = 0;
+    this.status = "idle";
+    this.cancelTokenSource = null;
+    this.downloadData = downloadData ||
+      this.store.get(this.url) || { bytesDownloaded: 0 };
+  }
+
+  detectFileName(url, headers) {
+    let fileName = path.basename(url);
+    if (!fileName.includes(".")) {
+      const contentType = headers["content-type"];
+      if (contentType) {
+        const extension = getFilenameFromMime("", contentType);
+        fileName += extension ? extension : ".txt"; // Default to .txt if extension not found
+      } else {
+        fileName += ".txt"; // Default to .txt if content-type header not found
+      }
+    }
+    return fileName;
+  }
+
+  getDefaultDownloadDirectory() {
+    return "downloads"; // Default download directory
+  }
+
+  async start() {
+    if (this.status === "downloading") return;
+    console.log("Started");
+
+    this.status = "downloading";
+    let headers = { ...this.headers };
+
+    let filePathExists = false;
+    if (this.filePath) {
+      filePathExists = fs.existsSync(this.filePath);
+    }
+
+    if (!filePathExists && !this.filePath) {
+      // Check if the file name already exists in the store's downloadData
+      const storedData = this.store.get(this.url);
+      if (storedData && storedData.filePath) {
+        this.filePath = storedData.filePath;
+        this.downloadData = storedData;
+        filePathExists = fs.existsSync(this.filePath);
+      }
+    }
+
+    if (filePathExists) {
+      this.downloadData.bytesDownloaded = fs.statSync(this.filePath).size;
+      headers["Range"] = `bytes=${this.downloadData.bytesDownloaded}-`;
+    }
+
+    this.cancelTokenSource = axios.CancelToken.source();
+
+    let response = await axios.get(this.url, {
+      headers,
+      responseType: "stream",
+      cancelToken: this.cancelTokenSource.token,
+      onDownloadProgress: (progressEvent) => {
+        console.log(progressEvent);
+        this.totalBytes = progressEvent.total;
+        this.progress = Math.round(
+          ((this.downloadData.bytesDownloaded + progressEvent.loaded) /
+            this.totalBytes) *
+            100,
+        );
+        this.emit("progress", progressEvent);
+        if (typeof this.onProgressCallback === "function") {
+          this.onProgressCallback(progressEvent);
+        }
+      },
+    });
+
+    if (!filePathExists && !this.filePath) {
+      // Use detectFileName to get the file name based on response headers
+      const fileName = this.detectFileName(this.url, response.headers);
+      this.filePath = path.join(this.directory, fileName);
+    }
+
+    if (!filePathExists) {
+      fs.mkdirSync(path.dirname(this.filePath), { recursive: true }, (err) => {
+        if (err) throw err;
+        console.log("Directory created successfully!");
+      });
+    }
+
+    this.downloadData.filePath = this.filePath; // Save file path in downloadData
+    this.store.set(this.url, this.downloadData); // Update store with downloadData
+
+    let writer = fs.createWriteStream(this.filePath, {
+      flags: this.downloadData.bytesDownloaded == 0 ? "w" : "a",
+    });
+    response.data.pipe(writer);
+
+    if (typeof this.onStartedCallback === "function") {
+      this.onStartedCallback(this);
+    }
+
+    return new Promise((resolve, reject) => {
+      writer.on("finish", () => {
+        this.store.delete(this.url); // Delete downloadData from store if download is complete
+        this.status = "completed";
+        this.emit("progress", 100);
+        if (typeof this.onProgressCallback === "function") {
+          this.onProgressCallback(100);
+        }
+        if (typeof this.onCompletedCallback === "function") {
+          this.onCompletedCallback(this.filePath);
+        }
+        resolve();
+      });
+
+      writer.on("error", (err) => {
+        this.status = "failed";
+        this.store.set(this.url, this.downloadData); // Save downloadData to store if download fails
+        reject(err);
+      });
+    });
+  }
+
+  pause() {
+    if (this.status === "downloading") {
+      this.status = "paused";
+      this.cancelTokenSource.cancel("Download paused");
+      this.store.set(this.url, this.downloadData); // Save downloadData to store on pause
+    }
+  }
+
+  resume() {
+    if (this.status === "paused") {
+      this.status = "downloading";
+      this.start();
+    }
+  }
+
+  cancel() {
+    if (this.status === "downloading" || this.status === "paused") {
+      this.cancelTokenSource.cancel("Download cancelled");
+      this.status = "cancelled";
+      if (typeof this.onCancelCallback === "function") {
+        this.onCancelCallback(this.filePath);
+      }
+    }
+  }
+}
+
+const getFilenameFromMime = (name, mime) => {
+  const extensions = extName.mime(mime);
+
+  if (extensions.length !== 1) {
+    return name;
+  }
+
+  return `${name}.${extensions[0].ext}`;
+};
 
 const downloadManager = new DownloadManager(xToken);

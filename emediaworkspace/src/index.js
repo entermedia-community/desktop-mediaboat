@@ -11,7 +11,7 @@ const os = require("os");
 const computerName = os.hostname();
 const userHomePath = app.getPath("home");
 const Store = require("electron-store");
-
+const mkdirp = require("mkdirp");
 var url = require("url");
 var querystring = require("querystring");
 var fs = require("fs");
@@ -595,7 +595,17 @@ ipcMain.on("selectFolder", (event, options) => {
 });
 
 ipcMain.on("onDownload", (event, options) => {
-  downloadManager.checkOrders();
+  downloadManager.startDownloadsFromServerOrderAPI();
+});
+
+ipcMain.on("onResume", (event, options) => {
+  console.log("resumed");
+  downloadManager.resumeAllDownloads();
+});
+
+ipcMain.on("onPause", (event, options) => {
+  console.log("paused");
+  downloadManager.pauseAllDownloads();
 });
 
 ipcMain.on("onOpenFolder", (event, options) => {
@@ -606,7 +616,7 @@ ipcMain.on("onOpenFile", (event, options) => {
   openFile(options["path"]);
 });
 
-// ------------- Open file -----------------
+// ---------------------- Open file ---------------------
 
 function openFile(path) {
   shell.openPath(path).then((error) => {
@@ -623,7 +633,7 @@ function openFolder(path) {
 let xToken = "adminmd5421c0af185908a6c0c40d50fd5e3f16760d5580bc";
 
 class DownloadManager {
-  constructor(token, maxConcurrentDownloads = 5) {
+  constructor(token, maxConcurrentDownloads = 4) {
     this.downloads = new Map();
     this.headers = {
       "X-tokentype": "entermedia",
@@ -632,12 +642,19 @@ class DownloadManager {
     this.downloadQueue = [];
     this.maxConcurrentDownloads = maxConcurrentDownloads;
     this.currentDownloads = 0;
+    this.isPaused = false;
   }
 
   downloadFile(onlineDownloadableItem) {
-    const path =
+    const downloadPath =
       "https://em11.entermediadb.org" + onlineDownloadableItem.preset.path;
+    const fileDownloadedPath = path.join(
+      app.getPath("downloads"),
+      "em11",
+      onlineDownloadableItem.assetsourcepath,
+    );
     const info = {
+      directory: path.dirname(fileDownloadedPath),
       saveAs: false,
       headers: this.headers,
       onStarted: (item) => {
@@ -645,26 +662,23 @@ class DownloadManager {
         console.log("Download started");
       },
       onProgress: (progress) => {
-        console.log(progress);
         // TODO: Update UI with progress
       },
       onTotalProgress: (progress) => {
-        console.log(progress);
         // TODO: Update UI with total progress
       },
       onCancel: (item) => {
-        console.log("Download canceled:", item);
         this.downloads.delete(onlineDownloadableItem.id);
         this.processQueue();
       },
       onCompleted: (file) => {
-        console.log("Download completed:", file);
+        this.downloads.delete(onlineDownloadableItem.id);
         this.onCompleteDownload(onlineDownloadableItem, file);
         this.processQueue();
       },
     };
 
-    const downloadPromise = () => download(mainWindow, path, info);
+    const downloadPromise = () => download(mainWindow, downloadPath, info);
 
     if (this.currentDownloads < this.maxConcurrentDownloads) {
       this.currentDownloads++;
@@ -680,7 +694,8 @@ class DownloadManager {
   processQueue() {
     if (
       this.currentDownloads < this.maxConcurrentDownloads &&
-      this.downloadQueue.length > 0
+      this.downloadQueue.length > 0 &&
+      !this.isPaused
     ) {
       const nextDownload = this.downloadQueue.shift();
       this.currentDownloads++;
@@ -719,11 +734,11 @@ class DownloadManager {
       },
     )
       .then((res) => res.json())
-      .then((obj) => console.log(obj))
+      .then((obj) => {})
       .catch((err) => console.error(err));
   }
 
-  checkOrders() {
+  startDownloadsFromServerOrderAPI() {
     const bodyObject = {
       page: "1",
       hitsperpage: "20",
@@ -779,9 +794,27 @@ class DownloadManager {
   resumeDownload(onlineDownloadableItemId) {
     const download = this.downloads.get(onlineDownloadableItemId);
     if (download) {
-      download.resume();
-      // Update server or local storage to indicate resumed status
+      if (download.canResume()) {
+        download.resume();
+      }
     }
+  }
+
+  pauseAllDownloads() {
+    this.downloads.forEach((download) => {
+      download.pause();
+      this.isPaused = true;
+    });
+  }
+
+  resumeAllDownloads() {
+    this.isPaused = false;
+    this.downloads.forEach((download) => {
+      if (download.canResume()) {
+        download.resume();
+      }
+    });
+    this.processQueue();
   }
 }
 

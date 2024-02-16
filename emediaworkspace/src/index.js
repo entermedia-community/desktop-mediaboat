@@ -2,7 +2,7 @@ process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 
 const { app, BrowserWindow, ipcMain, dialog, Menu, Tray } = require("electron");
 const { shell } = require("electron");
-const { addDownload } = require("electron-dl");
+const { download } = require("electron-dl");
 const path = require("path");
 const log = require("electron-log");
 const FormData = require("form-data");
@@ -595,7 +595,7 @@ ipcMain.on("selectFolder", (event, options) => {
 });
 
 ipcMain.on("onDownload", (event, options) => {
-  checkOrders();
+  downloadManager.checkOrders();
 });
 
 ipcMain.on("onOpenFolder", (event, options) => {
@@ -620,112 +620,169 @@ function openFolder(path) {
 
 // ----------------------- Download --------------------
 
-function downloadFile(downloadItem) {
-  const path = "https://em11.entermediadb.org" + downloadItem.preset.path;
-  return new Promise((resolve, reject) => {
-    let finalFile;
-    let info = {};
-    info.saveAs = false;
-    info.onStarted = () => {
-      console.log("stared");
-    };
-    info.onProgress = (progress) => {
-      console.log(progress);
-      // TODO: Progress
-    };
-    info.onTotalProgress = (progress) => {
-      console.log(progress);
-      // TODO: Progress
-    };
-    info.onCancel = (item) => {
-      console.log(item);
+let xToken = "adminmd5421c0af185908a6c0c40d50fd5e3f16760d5580bc";
 
-      reject();
-    };
-    info.onCompleted = (file) => {
-      console.log(file);
-      finalFile = file;
-      onCompleteDownlaod(downloadItem, file);
-    };
-    info.headers = {
+class DownloadManager {
+  constructor(token, maxConcurrentDownloads = 5) {
+    this.downloads = new Map();
+    this.headers = {
       "X-tokentype": "entermedia",
-      "X-token": "adminmd5421c0af185908a6c0c40d50fd5e3f16760d5580bc",
+      "X-token": token,
     };
-    addDownload(mainWindow, path, info);
-  });
-}
+    this.downloadQueue = [];
+    this.maxConcurrentDownloads = maxConcurrentDownloads;
+    this.currentDownloads = 0;
+  }
 
-function onCompleteDownlaod(downloadItem, file) {
-  updateServerAboutDownlaod(
-    downloadItem.id,
-    "complete",
-    file.fileSize,
-    file.path,
-  );
-}
+  downloadFile(onlineDownloadableItem) {
+    const path =
+      "https://em11.entermediadb.org" + onlineDownloadableItem.preset.path;
+    const info = {
+      saveAs: false,
+      headers: this.headers,
+      onStarted: (item) => {
+        this.downloads.set(onlineDownloadableItem.id, item);
+        console.log("Download started");
+      },
+      onProgress: (progress) => {
+        console.log(progress);
+        // TODO: Update UI with progress
+      },
+      onTotalProgress: (progress) => {
+        console.log(progress);
+        // TODO: Update UI with total progress
+      },
+      onCancel: (item) => {
+        console.log("Download canceled:", item);
+        this.downloads.delete(onlineDownloadableItem.id);
+        this.processQueue();
+      },
+      onCompleted: (file) => {
+        console.log("Download completed:", file);
+        this.onCompleteDownload(onlineDownloadableItem, file);
+        this.processQueue();
+      },
+    };
 
-function updateServerAboutDownlaod(orderitemid, progress, filesize, filepath) {
-  let headers = {
-    "X-tokentype": "entermedia",
-    "X-token": "adminmd5421c0af185908a6c0c40d50fd5e3f16760d5580bc",
-    "content-type": "application/json",
-  };
-  var body = {
-    orderitemid: orderitemid,
-    downloaditemstatus: progress,
-    downloaditemdownloadedfilesize: filesize,
-  };
-  fetch(
-    "https://em11.entermediadb.org/finder/mediadb/services/module/order/updateorderitemstatus",
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-      headers: headers,
-    },
-  ).then((res) => {
-    res.json().then((obj) => {
-      console.log(obj);
-    });
-  });
-}
+    const downloadPromise = () => download(mainWindow, path, info);
 
-function checkOrders() {
-  let bodyObject = {
-    page: "1",
-    hitsperpage: "20",
-    query: {
-      terms: [
-        {
-          field: "ordertype",
-          operator: "exact",
-          value: "download",
+    if (this.currentDownloads < this.maxConcurrentDownloads) {
+      this.currentDownloads++;
+      return downloadPromise().finally(() => {
+        this.currentDownloads--;
+        this.processQueue();
+      });
+    } else {
+      this.downloadQueue.push(downloadPromise);
+    }
+  }
+
+  processQueue() {
+    if (
+      this.currentDownloads < this.maxConcurrentDownloads &&
+      this.downloadQueue.length > 0
+    ) {
+      const nextDownload = this.downloadQueue.shift();
+      this.currentDownloads++;
+      nextDownload().finally(() => {
+        this.currentDownloads--;
+        this.processQueue();
+      });
+    }
+  }
+
+  onCompleteDownload(onlineDownloadableItem, file) {
+    const { fileSize, path } = file;
+    this.updateServerAboutDownload(
+      onlineDownloadableItem.id,
+      "complete",
+      fileSize,
+      path,
+    );
+  }
+
+  updateServerAboutDownload(orderItemId, progress, fileSize, filePath) {
+    const body = {
+      orderitemid: orderItemId,
+      downloaditemstatus: progress.toString(),
+      downloaditemdownloadedfilesize: fileSize.toString(),
+    };
+    fetch(
+      "https://em11.entermediadb.org/finder/mediadb/services/module/order/updateorderitemstatus",
+      {
+        method: "POST",
+        headers: {
+          ...this.headers,
+          "Content-Type": "application/json",
         },
-      ],
-    },
-  };
-  let headers = {
-    "X-tokentype": "entermedia",
-    "X-token": "adminmd5421c0af185908a6c0c40d50fd5e3f16760d5580bc",
-    "content-type": "application/json",
-  };
-  fetch(
-    "https://em11.entermediadb.org/finder/mediadb/services/module/order/recentorderitems",
-    {
-      method: "POST",
-      body: JSON.stringify(bodyObject),
-      headers: headers,
-    },
-  )
-    .then((res) => {
-      res.json().then((obj) => {
+        body: JSON.stringify(body),
+      },
+    )
+      .then((res) => res.json())
+      .then((obj) => console.log(obj))
+      .catch((err) => console.error(err));
+  }
+
+  checkOrders() {
+    const bodyObject = {
+      page: "1",
+      hitsperpage: "20",
+      query: {
+        terms: [
+          {
+            field: "ordertype",
+            operator: "exact",
+            value: "download",
+          },
+        ],
+      },
+    };
+    fetch(
+      "https://em11.entermediadb.org/finder/mediadb/services/module/order/recentorderitems",
+      {
+        method: "POST",
+        headers: {
+          ...this.headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(bodyObject),
+      },
+    )
+      .then((res) => res.json())
+      .then((obj) => {
         const listOrders = obj.results;
         listOrders.forEach((order) => {
           order.orderitems.forEach((items) => {
-            downloadFile(items);
+            this.downloadFile(items);
           });
         });
-      });
-    })
-    .then((body) => console.log(body))
-    .catch((err) => console.error(err));
+      })
+      .catch((err) => console.error(err));
+  }
+
+  cancelDownload(onlineDownloadableItemId) {
+    const download = this.downloads.get(onlineDownloadableItemId);
+    if (download) {
+      download.cancel();
+      this.downloads.delete(onlineDownloadableItemId);
+    }
+  }
+
+  pauseDownload(onlineDownloadableItemId) {
+    const download = this.downloads.get(onlineDownloadableItemId);
+    if (download) {
+      download.pause();
+      // Update server or local storage to indicate paused status
+    }
+  }
+
+  resumeDownload(onlineDownloadableItemId) {
+    const download = this.downloads.get(onlineDownloadableItemId);
+    if (download) {
+      download.resume();
+      // Update server or local storage to indicate resumed status
+    }
+  }
 }
+
+const downloadManager = new DownloadManager(xToken);

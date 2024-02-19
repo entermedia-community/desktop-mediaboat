@@ -631,9 +631,6 @@ function openFolder(path) {
 
 let xToken = "adminmd5421c0af185908a6c0c40d50fd5e3f16760d5580bc";
 
-// TODO: Handle the case where file path is exist in store but not in the folder
-// TODO:
-
 class DownloadManager {
   constructor(token, maxConcurrentDownloads = 4) {
     this.downloads = new Map();
@@ -698,7 +695,7 @@ class DownloadManager {
       },
     };
 
-    const downloadPromise = new DownloadHelper(info);
+    const downloadPromise = new DownloadItemHelper(info);
 
     if (this.currentDownloads < this.maxConcurrentDownloads) {
       this.currentDownloads++;
@@ -834,7 +831,7 @@ class DownloadManager {
   }
 }
 
-class DownloadHelper extends EventEmitter {
+class DownloadItemHelper extends EventEmitter {
   constructor({
     url,
     fileName,

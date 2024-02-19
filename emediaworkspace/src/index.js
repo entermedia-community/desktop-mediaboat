@@ -632,7 +632,7 @@ function openFolder(path) {
 let xToken = "adminmd5421c0af185908a6c0c40d50fd5e3f16760d5580bc";
 
 class DownloadManager {
-  constructor(token, maxConcurrentDownloads = 4) {
+  constructor(token, window_, maxConcurrentDownloads = 4) {
     this.downloads = new Map();
     this.headers = {
       "X-tokentype": "entermedia",
@@ -641,7 +641,28 @@ class DownloadManager {
     this.downloadQueue = [];
     this.maxConcurrentDownloads = maxConcurrentDownloads;
     this.currentDownloads = 0;
+    this.totalDownlaodsCounts = 0;
+    this.window = window_;
     this.isPaused = false;
+  }
+
+  updateDockProgress() {
+    // if (!window_.isDestroyed() && options.showProgressBar) {
+    // 	window_.setProgressBar(progressDownloadItems());
+    // }
+    // 	if (!window_.isDestroyed() && !activeDownloadItems()) {
+    // 	window_.setProgressBar(-1);
+    // 	receivedBytes = 0;
+    // 	completedBytes = 0;
+    // 	totalBytes = 0;
+    // }
+    //
+  }
+
+  updateDockCount() {
+    if (["darwin", "linux"].includes(process.platform)) {
+      app.badgeCount = this.totalDownlaodsCounts;
+    }
   }
 
   startDownloads() {
@@ -674,7 +695,6 @@ class DownloadManager {
         console.log("Download started");
       },
       onProgress: (progress, bytesLoaded, filePath) => {
-        console.log(progress);
         this.updateServerAboutDownload(
           onlineDownloadableItem.id,
           "progress",
@@ -687,11 +707,26 @@ class DownloadManager {
         store.set("downloadQueue", this.downloads);
         this.processQueue();
       },
+      onPause: () => {
+        this.currentDownloads--;
+      },
+      onResume: () => {
+        this.currentDownloads++;
+      },
       onCompleted: (file, totalBytes) => {
         this.downloads.delete(onlineDownloadableItem.id);
         store.set("downloadQueue", this.downloads);
+        if (process.platform === "darwin") {
+          app.dock.downloadFinished(file);
+        }
         this.onCompleteDownload(onlineDownloadableItem, totalBytes, file);
+        this.currentDownloads--;
+        this.totalDownlaodsCounts--;
+        this.updateDockCount();
         this.processQueue();
+        console.log(this.totalDownlaodsCounts);
+        console.log(this.currentDownloads);
+        console.log(this.downloads.size);
       },
     };
 
@@ -699,13 +734,12 @@ class DownloadManager {
 
     if (this.currentDownloads < this.maxConcurrentDownloads) {
       this.currentDownloads++;
-      await downloadPromise.start().finally(() => {
-        this.currentDownloads--;
-        this.processQueue();
-      });
+      downloadPromise.start();
     } else {
       this.downloadQueue.push(downloadPromise);
     }
+    this.totalDownlaodsCounts++;
+    this.updateDockCount();
   }
 
   processQueue() {
@@ -716,10 +750,7 @@ class DownloadManager {
     ) {
       const nextDownload = this.downloadQueue.shift();
       this.currentDownloads++;
-      nextDownload.start().finally(() => {
-        this.currentDownloads--;
-        this.processQueue();
-      });
+      nextDownload.start();
     }
   }
 
@@ -809,7 +840,6 @@ class DownloadManager {
 
   resumeDownload(onlineDownloadableItemId) {
     const download = this.downloads.get(onlineDownloadableItemId);
-
     if (download) {
       download.resume();
     }
@@ -820,6 +850,7 @@ class DownloadManager {
       download.pause();
       this.isPaused = true;
     });
+    console.log(this.downloads.size);
   }
 
   resumeAllDownloads() {
@@ -828,6 +859,7 @@ class DownloadManager {
       download.resume();
     });
     this.processQueue();
+    console.log(this.downloads.size);
   }
 }
 
@@ -841,6 +873,8 @@ class DownloadItemHelper extends EventEmitter {
     onProgress,
     onCancel,
     onCompleted,
+    onPause,
+    onResume,
     downloadData,
   }) {
     super();
@@ -855,6 +889,8 @@ class DownloadItemHelper extends EventEmitter {
     this.filePath = this.fileName
       ? path.join(this.directory, this.fileName)
       : null;
+    this.onPauseCallback = onPause;
+    this.onResume = onResume;
     this.store = new Store();
     this.totalBytes = 0;
     this.progress = 0;
@@ -933,7 +969,6 @@ class DownloadItemHelper extends EventEmitter {
       responseType: "stream",
       cancelToken: this.cancelTokenSource.token,
       onDownloadProgress: (progressEvent) => {
-        console.log(progressEvent);
         this.totalBytes = progressEvent.total;
         this.progress = Math.round(
           ((this.downloadData.bytesDownloaded + progressEvent.loaded) /
@@ -955,8 +990,8 @@ class DownloadItemHelper extends EventEmitter {
 
     if (!filePathExists && !this.filePath) {
       // Use detectFileName to get the file name based on response headers
-      const fileName = this.detectFileName(this.url, response.headers);
-      this.filePath = path.join(this.directory, fileName);
+      this.fileName = this.detectFileName(this.url, response.headers);
+      this.filePath = path.join(this.directory, this.fileName);
     }
 
     if (!filePathExists) {
@@ -1001,15 +1036,18 @@ class DownloadItemHelper extends EventEmitter {
 
   pause() {
     if (this.status === "downloading") {
+      console.log("paused + " + this.fileName);
       this.status = "paused";
       this.cancelTokenSource.cancel("Download paused");
+      this.onPauseCallback();
       this.store.set(this.url, this.downloadData); // Save downloadData to store on pause
     }
   }
 
   resume() {
     if (this.status === "paused") {
-      this.status = "downloading";
+      console.log("resumed + " + this.fileName);
+      this.onResume();
       this.start();
     }
   }
@@ -1035,4 +1073,4 @@ const getFilenameFromMime = (name, mime) => {
   return `${name}.${extensions[0].ext}`;
 };
 
-const downloadManager = new DownloadManager(xToken);
+const downloadManager = new DownloadManager(xToken, mainWindow);

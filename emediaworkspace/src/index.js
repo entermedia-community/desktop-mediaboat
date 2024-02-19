@@ -692,7 +692,6 @@ class DownloadManager {
           item.filePath,
         );
         store.set("downloadQueue", this.downloads);
-        console.log("Download started");
       },
       onProgress: (progress, bytesLoaded, filePath) => {
         this.updateServerAboutDownload(
@@ -724,9 +723,6 @@ class DownloadManager {
         this.totalDownlaodsCounts--;
         this.updateDockCount();
         this.processQueue();
-        console.log(this.totalDownlaodsCounts);
-        console.log(this.currentDownloads);
-        console.log(this.downloads.size);
       },
     };
 
@@ -850,7 +846,6 @@ class DownloadManager {
       download.pause();
       this.isPaused = true;
     });
-    console.log(this.downloads.size);
   }
 
   resumeAllDownloads() {
@@ -859,7 +854,6 @@ class DownloadManager {
       download.resume();
     });
     this.processQueue();
-    console.log(this.downloads.size);
   }
 }
 

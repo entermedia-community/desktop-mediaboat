@@ -593,20 +593,6 @@ ipcMain.on("selectFolder", (event, options) => {
   });
 });
 
-ipcMain.on("onDownload", (event, options) => {
-  downloadManager.startDownloadsFromServerOrderAPI();
-});
-
-ipcMain.on("onResume", (event, options) => {
-  console.log("resumed");
-  downloadManager.resumeAllDownloads();
-});
-
-ipcMain.on("onPause", (event, options) => {
-  console.log("paused");
-  downloadManager.pauseAllDownloads();
-});
-
 ipcMain.on("onOpenFolder", (event, options) => {
   openFolder(options["path"]);
 });
@@ -629,101 +615,94 @@ function openFolder(path) {
 
 // ----------------------- Download --------------------
 
-let xToken = "adminmd5421c0af185908a6c0c40d50fd5e3f16760d5580bc";
+// let xToken = "adminmd5421c0af185908a6c0c40d50fd5e3f16760d5580bc";
 
 class DownloadManager {
-  constructor(token, window_, maxConcurrentDownloads = 4) {
+  constructor(window_, maxConcurrentDownloads = 4) {
     this.downloads = new Map();
-    this.headers = {
-      "X-tokentype": "entermedia",
-      "X-token": token,
-    };
     this.downloadQueue = [];
     this.maxConcurrentDownloads = maxConcurrentDownloads;
     this.currentDownloads = 0;
-    this.totalDownlaodsCounts = 0;
+    this.totalDownloadsCounts = 0;
     this.window = window_;
     this.isPaused = false;
   }
 
   updateDockProgress() {
-    // if (!window_.isDestroyed() && options.showProgressBar) {
-    // 	window_.setProgressBar(progressDownloadItems());
-    // }
-    // 	if (!window_.isDestroyed() && !activeDownloadItems()) {
-    // 	window_.setProgressBar(-1);
-    // 	receivedBytes = 0;
-    // 	completedBytes = 0;
-    // 	totalBytes = 0;
-    // }
-    //
+    // TODO: show progress on the dock.
   }
 
   updateDockCount() {
     if (["darwin", "linux"].includes(process.platform)) {
-      app.badgeCount = this.totalDownlaodsCounts;
+      app.badgeCount = this.totalDownloadsCounts;
     }
   }
 
   startDownloads() {
     this.downloads = store.get("downloadQueue", new Map());
-    this.startDownloadsFromServerOrderAPI();
     this.processQueue();
   }
 
-  async downloadFile(onlineDownloadableItem) {
-    const downloadPath =
-      "https://em11.entermediadb.org" + onlineDownloadableItem.preset.path;
+  async downloadFile(
+    downloadItemId,
+    downloadPath,
+    header,
+    {
+      onStarted,
+      onCancel,
+      onResume,
+      onPause,
+      onProgress,
+      onCompleted,
+      onError,
+    },
+  ) {
+    // TODO: ask for the location per Order not per file
+    // and default to the pervious path
     const fileDownloadedPath = path.join(
       app.getPath("downloads"),
-      "em11",
-      onlineDownloadableItem.assetsourcepath,
+      "em11", // Not to use this path.
     );
     const info = {
       directory: path.dirname(fileDownloadedPath),
       url: downloadPath,
-      headers: this.headers,
+      headers: header,
       onStarted: (item) => {
-        this.downloads.set(onlineDownloadableItem.id, item);
-        this.updateServerAboutDownload(
-          onlineDownloadableItem.id,
-          "progress",
-          0,
-          item.filePath,
-        );
+        this.downloads.set(downloadItemId, item);
         store.set("downloadQueue", this.downloads);
+        onStarted();
       },
       onProgress: (progress, bytesLoaded, filePath) => {
-        this.updateServerAboutDownload(
-          onlineDownloadableItem.id,
-          "progress",
-          bytesLoaded,
-          filePath,
-        );
+        // TODO: update about the progress.
+        onProgress(progress, bytesLoaded, filePath);
       },
       onCancel: (item) => {
-        this.downloads.delete(onlineDownloadableItem.id);
+        this.downloads.delete(downloadItemId);
         store.set("downloadQueue", this.downloads);
         this.processQueue();
+        onCancel(item);
       },
       onPause: () => {
         this.currentDownloads--;
+        onPause();
       },
       onResume: () => {
         this.currentDownloads++;
+        onResume();
       },
       onCompleted: (file, totalBytes) => {
-        this.downloads.delete(onlineDownloadableItem.id);
+        onCompleted(file, totalBytes);
+        this.downloads.delete(downloadItemId);
         store.set("downloadQueue", this.downloads);
         if (process.platform === "darwin") {
           app.dock.downloadFinished(file);
         }
-        this.onCompleteDownload(onlineDownloadableItem, totalBytes, file);
         this.currentDownloads--;
-        this.totalDownlaodsCounts--;
+        this.totalDownloadsCounts--;
         this.updateDockCount();
         this.processQueue();
       },
+      onError: onError,
     };
 
     const downloadPromise = new DownloadItemHelper(info);
@@ -734,7 +713,7 @@ class DownloadManager {
     } else {
       this.downloadQueue.push(downloadPromise);
     }
-    this.totalDownlaodsCounts++;
+    this.totalDownloadsCounts++;
     this.updateDockCount();
   }
 
@@ -748,74 +727,6 @@ class DownloadManager {
       this.currentDownloads++;
       nextDownload.start();
     }
-  }
-
-  onCompleteDownload(onlineDownloadableItem, fileSize, filePath) {
-    this.updateServerAboutDownload(
-      onlineDownloadableItem.id,
-      "complete",
-      fileSize,
-      filePath,
-    );
-  }
-
-  updateServerAboutDownload(orderItemId, progress, fileSize, filePath) {
-    const body = {
-      orderitemid: orderItemId,
-      downloaditemstatus: progress.toString(),
-      downloaditemdownloadedfilesize: fileSize.toString(),
-    };
-    fetch(
-      "https://em11.entermediadb.org/finder/mediadb/services/module/order/updateorderitemstatus",
-      {
-        method: "POST",
-        headers: {
-          ...this.headers,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      },
-    )
-      .then((res) => res.json())
-      .then((obj) => {})
-      .catch((err) => console.error(err));
-  }
-
-  startDownloadsFromServerOrderAPI() {
-    const bodyObject = {
-      page: "1",
-      hitsperpage: "20",
-      query: {
-        terms: [
-          {
-            field: "ordertype",
-            operator: "exact",
-            value: "download",
-          },
-        ],
-      },
-    };
-    fetch(
-      "https://em11.entermediadb.org/finder/mediadb/services/module/order/recentorderitems",
-      {
-        method: "POST",
-        headers: {
-          ...this.headers,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(bodyObject),
-      },
-    )
-      .then((res) => res.json())
-      .then((obj) => {
-        const listOrders = obj.results;
-        listOrders.forEach((order) => {
-          order.orderitems.forEach((items) => {
-            this.downloadFile(items);
-          });
-        });
-      })
-      .catch((err) => console.error(err));
   }
 
   cancelDownload(onlineDownloadableItemId) {
@@ -869,6 +780,7 @@ class DownloadItemHelper extends EventEmitter {
     onCompleted,
     onPause,
     onResume,
+    onError,
     downloadData,
   }) {
     super();
@@ -892,17 +804,6 @@ class DownloadItemHelper extends EventEmitter {
     this.cancelTokenSource = null;
     this.downloadData = downloadData ||
       this.store.get(this.url) || { bytesDownloaded: 0 };
-    this.progressMap = new Map();
-  }
-
-  progressCallbackHelper(prog, callback) {
-    for (let i = 10; i < 100; i = i + 10) {
-      if ((prog >= i - 10 || prog <= i) && this.progressMap[i] == 0) {
-        this.progressMap[i] = 1;
-        callback();
-        break;
-      }
-    }
   }
 
   detectFileName(url, headers) {
@@ -924,11 +825,6 @@ class DownloadItemHelper extends EventEmitter {
   }
 
   async start() {
-    // Progress map.
-    for (let i = 10; i < 100; i = i + 10) {
-      this.progressMap[i] = 0;
-    }
-
     if (this.status === "downloading") return;
     console.log("Started");
 
@@ -938,7 +834,6 @@ class DownloadItemHelper extends EventEmitter {
     let filePathExists = false;
 
     if (!filePathExists && !this.filePath) {
-      // Check if the file name already exists in the store's downloadData
       const storedData = this.store.get(this.url);
       if (storedData && storedData.filePath) {
         this.filePath = storedData.filePath;
@@ -958,74 +853,76 @@ class DownloadItemHelper extends EventEmitter {
 
     this.cancelTokenSource = axios.CancelToken.source();
 
-    let response = await axios.get(this.url, {
-      headers,
-      responseType: "stream",
-      cancelToken: this.cancelTokenSource.token,
-      onDownloadProgress: (progressEvent) => {
-        this.totalBytes = progressEvent.total;
-        this.progress = Math.round(
-          ((this.downloadData.bytesDownloaded + progressEvent.loaded) /
-            this.totalBytes) *
-            100,
-        );
-        this.emit("progress", progressEvent);
-        if (typeof this.onProgressCallback === "function") {
-          this.progressCallbackHelper(this.progress, () =>
+    try {
+      let response = await axios.get(this.url, {
+        headers,
+        responseType: "stream",
+        cancelToken: this.cancelTokenSource.token,
+        onDownloadProgress: (progressEvent) => {
+          this.totalBytes = progressEvent.total;
+          this.progress = Math.round(
+            ((this.downloadData.bytesDownloaded + progressEvent.loaded) /
+              this.totalBytes) *
+              100,
+          );
+          this.emit("progress", progressEvent);
+          if (typeof this.onProgressCallback === "function") {
             this.onProgressCallback(
               progressEvent,
               this.downloadData.bytesDownloaded + progressEvent.loaded,
               this.filePath,
-            ),
-          );
-        }
-      },
-    });
-
-    if (!filePathExists && !this.filePath) {
-      // Use detectFileName to get the file name based on response headers
-      this.fileName = this.detectFileName(this.url, response.headers);
-      this.filePath = path.join(this.directory, this.fileName);
-    }
-
-    if (!filePathExists) {
-      fs.mkdirSync(path.dirname(this.filePath), { recursive: true }, (err) => {
-        if (err) throw err;
-      });
-    }
-
-    this.downloadData.filePath = this.filePath; // Save file path in downloadData
-    this.store.set(this.url, this.downloadData); // Update store with downloadData
-
-    let writer = fs.createWriteStream(this.filePath, {
-      flags: this.downloadData.bytesDownloaded == 0 ? "w" : "a",
-    });
-    response.data.pipe(writer);
-
-    if (typeof this.onStartedCallback === "function") {
-      this.onStartedCallback(this);
-    }
-
-    return new Promise((resolve, reject) => {
-      writer.on("finish", () => {
-        this.store.delete(this.url); // Delete downloadData from store if download is complete
-        this.status = "completed";
-        this.emit("progress", 100);
-        if (typeof this.onProgressCallback === "function") {
-          this.onProgressCallback(100, this.totalBytes, this.filePath);
-        }
-        if (typeof this.onCompletedCallback === "function") {
-          this.onCompletedCallback(this.filePath, this.totalBytes);
-        }
-        resolve();
+            );
+          }
+        },
       });
 
-      writer.on("error", (err) => {
-        this.status = "failed";
-        this.store.set(this.url, this.downloadData); // Save downloadData to store if download fails
-        reject(err);
+      if (!filePathExists && !this.filePath) {
+        this.fileName = this.detectFileName(this.url, response.headers);
+        this.filePath = path.join(this.directory, this.fileName);
+      }
+
+      if (!filePathExists) {
+        fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
+      }
+
+      this.downloadData.filePath = this.filePath;
+      this.store.set(this.url, this.downloadData);
+
+      let writer = fs.createWriteStream(this.filePath, {
+        flags: this.downloadData.bytesDownloaded == 0 ? "w" : "a",
       });
-    });
+      response.data.pipe(writer);
+
+      if (typeof this.onStartedCallback === "function") {
+        this.onStartedCallback(this);
+      }
+
+      await new Promise((resolve, reject) => {
+        writer.on("finish", () => {
+          this.store.delete(this.url);
+          this.status = "completed";
+          this.emit("progress", 100);
+          if (typeof this.onProgressCallback === "function") {
+            this.onProgressCallback(100, this.totalBytes, this.filePath);
+          }
+          if (typeof this.onCompletedCallback === "function") {
+            this.onCompletedCallback(this.filePath, this.totalBytes);
+          }
+          resolve();
+        });
+
+        writer.on("error", (err) => {
+          this.status = "failed";
+          this.store.set(this.url, this.downloadData);
+          reject(err);
+        });
+      });
+    } catch (err) {
+      this.onError(err);
+      this.status = "failed";
+      this.store.set(this.url, this.downloadData);
+      throw err;
+    }
   }
 
   pause() {
@@ -1067,4 +964,50 @@ const getFilenameFromMime = (name, mime) => {
   return `${name}.${extensions[0].ext}`;
 };
 
-const downloadManager = new DownloadManager(xToken, mainWindow);
+const downloadManager = new DownloadManager(mainWindow);
+
+ipcMain.on("pause-download", ({ orderitemid }) => {
+  downloadManager.pauseDownload(orderitemid);
+});
+
+ipcMain.on("retry-download", ({ orderitemid }) => {
+  // downloadManager.cancelDownload(orderitemid);
+});
+
+ipcMain.on("resume-download", ({ orderitemid }) => {
+  downloadManager.resumeDownload(orderitemid);
+});
+
+ipcMain.on("cancel-download", ({ orderitemid }) => {
+  downloadManager.cancelDownload(orderitemid);
+});
+
+ipcMain.on("start-download", async (event, { orderitemid, file }) => {
+  const items = {
+    onStarted: () => {
+      mainWindow.webContents.send(`download-started-${orderitemid}`);
+    },
+    onCancel: () => {
+      mainWindow.webContents.send(`download-abort-${orderitemid}`);
+    },
+    onResume: () => {
+      mainWindow.webContents.send(`download-resume-${orderitemid}`);
+    },
+    onPause: () => {
+      mainWindow.webContents.send(`download-pause-${orderitemid}`);
+    },
+    onProgress: (progress, bytesLoaded, filePath) => {
+      mainWindow.webContents.send(`download-progress-${orderitemid}`, {
+        loaded: bytesLoaded,
+        total: progress.total,
+      });
+    },
+    onCompleted: (filePath, totalBytes) => {
+      mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
+    },
+    onError: (err) => {
+      mainWindow.webContents.send(`download-error-${orderitemid}`);
+    },
+  };
+  downloadManager.downloadFile(orderitemid, file.itemdownloadurl, {}, items);
+});

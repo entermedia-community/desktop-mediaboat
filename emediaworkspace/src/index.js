@@ -663,6 +663,7 @@ class DownloadManager {
           properties: ["openDirectory"],
         })
         .then((result) => {
+          this.haveDefaultDownlaodPath = true;
           var directory = result.filePaths[0];
           if (directory != undefined) {
             store.set("downloadDefaultPath", directory);
@@ -960,7 +961,7 @@ class DownloadItemHelper extends EventEmitter {
   }
 
   cancel() {
-    if (this.status === "downloading" || this.status === "paused") {
+    if (this.status !== "cancelled") {
       this.cancelTokenSource.cancel("Download cancelled");
       this.status = "cancelled";
       if (typeof this.onCancelCallback === "function") {
@@ -987,7 +988,7 @@ ipcMain.on("pause-download", ({ orderitemid }) => {
 });
 
 ipcMain.on("retry-download", ({ orderitemid }) => {
-  // downloadManager.cancelDownload(orderitemid);
+  downloadManager.resumeDownload(orderitemid);
 });
 
 ipcMain.on("resume-download", ({ orderitemid }) => {

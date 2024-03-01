@@ -625,6 +625,7 @@ class DownloadManager {
     this.currentDownloads = 0;
     this.totalDownloadsCounts = 0;
     this.window = window_;
+    this.haveDefaultDownlaodPath = false;
     this.isPaused = false;
   }
 
@@ -643,26 +644,41 @@ class DownloadManager {
     this.processQueue();
   }
 
-  async downloadFile(
+  async downloadFile({
     downloadItemId,
     downloadPath,
+    donwloadFilePath,
     header,
-    {
-      onStarted,
-      onCancel,
-      onResume,
-      onPause,
-      onProgress,
-      onCompleted,
-      onError,
-    },
-  ) {
-    // TODO: ask for the location per Order not per file
-    // and default to the pervious path
-    const fileDownloadedPath = path.join(
-      app.getPath("downloads"),
-      "em11", // Not to use this path.
-    );
+    onStarted,
+    onCancel,
+    onResume,
+    onPause,
+    onProgress,
+    onCompleted,
+    onError,
+  }) {
+    if (!this.haveDefaultDownlaodPath && !donwloadFilePath) {
+      dialog
+        .showOpenDialog(mainWindow, {
+          properties: ["openDirectory"],
+        })
+        .then((result) => {
+          var directory = result.filePaths[0];
+          if (directory != undefined) {
+            store.set("downloadDefaultPath", directory);
+            console.log("Directory selected:" + directory);
+          }
+        })
+        .catch((err) => {
+          console.error(err);
+          return;
+        });
+    }
+
+    const fileDownloadedPath =
+      donwloadFilePath ??
+      store.get("downloadDefaultPath") ??
+      app.getPath("downloads");
     const info = {
       directory: path.dirname(fileDownloadedPath),
       url: downloadPath,
@@ -982,7 +998,7 @@ ipcMain.on("cancel-download", ({ orderitemid }) => {
   downloadManager.cancelDownload(orderitemid);
 });
 
-ipcMain.on("start-download", async (event, { orderitemid, file }) => {
+ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
   const items = {
     onStarted: () => {
       mainWindow.webContents.send(`download-started-${orderitemid}`);
@@ -1009,5 +1025,10 @@ ipcMain.on("start-download", async (event, { orderitemid, file }) => {
       mainWindow.webContents.send(`download-error-${orderitemid}`);
     },
   };
-  downloadManager.downloadFile(orderitemid, file.itemdownloadurl, {}, items);
+  downloadManager.downloadFile(
+    orderitemid,
+    file.itemdownloadurl,
+    headers,
+    items,
+  );
 });

@@ -615,8 +615,6 @@ function openFolder(path) {
 
 // ----------------------- Download --------------------
 
-// let xToken = "adminmd5421c0af185908a6c0c40d50fd5e3f16760d5580bc";
-
 class DownloadManager {
   constructor(window_, maxConcurrentDownloads = 4) {
     this.downloads = new Map();
@@ -625,7 +623,7 @@ class DownloadManager {
     this.currentDownloads = 0;
     this.totalDownloadsCounts = 0;
     this.window = window_;
-    this.haveDefaultDownlaodPath = false;
+    this.haveDefaultDownlaodPath = store.has("downloadDefaultPath");
     this.isPaused = false;
   }
 
@@ -657,7 +655,7 @@ class DownloadManager {
     onCompleted,
     onError,
   }) {
-    if (!this.haveDefaultDownlaodPath && !donwloadFilePath) {
+    if (!this.haveDefaultDownlaodPath) {
       try {
         const result = dialog.showOpenDialogSync(mainWindow, {
           properties: ["openDirectory"],
@@ -666,7 +664,6 @@ class DownloadManager {
         var directory = result[0];
         if (directory != undefined) {
           store.set("downloadDefaultPath", directory);
-          console.log("Directory selected:" + directory);
         }
       } catch (err) {
         onError(err);
@@ -748,7 +745,6 @@ class DownloadManager {
 
   cancelDownload(onlineDownloadableItemId) {
     const download = this.downloads.get(onlineDownloadableItemId);
-    console.log(onlineDownloadableItemId);
     if (download) {
       download.cancel();
       this.downloads.delete(onlineDownloadableItemId);
@@ -825,7 +821,7 @@ class DownloadItemHelper extends EventEmitter {
       this.store.get(this.url) || { bytesDownloaded: 0 };
   }
 
-  detectFileName(url, headers) {
+  detectFileName(url, extra, headers) {
     let fileName = path.basename(url);
     if (!fileName.includes(".")) {
       const contentType = headers["content-type"];
@@ -836,16 +832,26 @@ class DownloadItemHelper extends EventEmitter {
         fileName += ".txt"; // Default to .txt if content-type header not found
       }
     }
+
+    if (extra) {
+      let count = 1;
+      let baseName = fileName.replace(extension, "");
+
+      while (fs.existsSync(path.join(this.directory, fileName))) {
+        count++;
+        fileName = `${baseName}_${count}${extension}`;
+      }
+    }
+
     return fileName;
   }
 
   getDefaultDownloadDirectory() {
-    return "downloads"; // Default download directory
+    return app.getPath("downloads"); // Default download directory
   }
 
   async start() {
     if (this.status === "downloading") return;
-    console.log("Started");
 
     this.status = "downloading";
     let headers = { ...this.headers };
@@ -895,8 +901,16 @@ class DownloadItemHelper extends EventEmitter {
         },
       });
 
+      if (
+        filePathExists &&
+        this.downloadData.bytesDownloaded >= response.headers["content-length"]
+      ) {
+        this.fileName = this.detectFileName(this.url, true, response.headers);
+        this.filePath = path.join(this.directory, this.fileName);
+      }
+
       if (!filePathExists && !this.filePath) {
-        this.fileName = this.detectFileName(this.url, response.headers);
+        this.fileName = this.detectFileName(this.url, false, response.headers);
         this.filePath = path.join(this.directory, this.fileName);
       }
 
@@ -948,7 +962,6 @@ class DownloadItemHelper extends EventEmitter {
 
   pause() {
     if (this.status === "downloading") {
-      console.log("paused + " + this.fileName);
       this.status = "paused";
       this.cancelTokenSource.cancel("Download paused");
       this.onPauseCallback();
@@ -958,7 +971,6 @@ class DownloadItemHelper extends EventEmitter {
 
   resume() {
     if (this.status === "paused") {
-      console.log("resumed + " + this.fileName);
       this.onResume();
       this.start();
     }
@@ -967,6 +979,7 @@ class DownloadItemHelper extends EventEmitter {
   cancel() {
     if (this.status !== "cancelled") {
       this.cancelTokenSource.cancel("Download cancelled");
+      this.store.delete(this.url);
       this.status = "cancelled";
       if (typeof this.onCancelCallback === "function") {
         this.onCancelCallback(this.filePath);
@@ -1009,41 +1022,28 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
     downloadPath: "https://em11.entermediadb.org" + file.itemdownloadurl,
     header: headers,
     onStarted: () => {
-      console.log("Started");
       mainWindow.webContents.send(`download-started-${orderitemid}`);
     },
     onCancel: () => {
-      console.log("onCancel");
       mainWindow.webContents.send(`download-abort-${orderitemid}`);
     },
     onResume: () => {
-      console.log("onResume");
       mainWindow.webContents.send(`download-resume-${orderitemid}`);
     },
     onPause: () => {
-      console.log("onPause");
       mainWindow.webContents.send(`download-pause-${orderitemid}`);
     },
     onProgress: (progress, bytesLoaded, filePath) => {
-      console.log({
-        loaded: bytesLoaded,
-        total: progress.total,
-        file: filePath,
-      });
-
       mainWindow.webContents.send(`download-progress-${orderitemid}`, {
         loaded: bytesLoaded,
         total: progress.total,
       });
     },
     onCompleted: (filePath, totalBytes) => {
-      console.log("onCompleted");
-
       mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
     },
     onError: (err) => {
-      console.log(err);
-      mainWindow.webContents.send(`download-error-${orderitemid}`);
+      mainWindow.webContents.send(`download-error-${orderitemid}`, err);
     },
   };
   downloadManager.downloadFile(items);

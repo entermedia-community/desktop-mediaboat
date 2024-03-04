@@ -658,31 +658,31 @@ class DownloadManager {
     onError,
   }) {
     if (!this.haveDefaultDownlaodPath && !donwloadFilePath) {
-      dialog
-        .showOpenDialog(mainWindow, {
+      try {
+        const result = dialog.showOpenDialogSync(mainWindow, {
           properties: ["openDirectory"],
-        })
-        .then((result) => {
-          this.haveDefaultDownlaodPath = true;
-          var directory = result.filePaths[0];
-          if (directory != undefined) {
-            store.set("downloadDefaultPath", directory);
-            console.log("Directory selected:" + directory);
-          }
-        })
-        .catch((err) => {
-          console.error(err);
-          return;
         });
+        this.haveDefaultDownlaodPath = true;
+        var directory = result[0];
+        if (directory != undefined) {
+          store.set("downloadDefaultPath", directory);
+          console.log("Directory selected:" + directory);
+        }
+      } catch (err) {
+        onError(err);
+        onCancel();
+        console.error(err);
+        return;
+      }
     }
 
     const fileDownloadedPath =
-      donwloadFilePath ??
-      store.get("downloadDefaultPath") ??
-      app.getPath("downloads");
+      store.get("downloadDefaultPath") ?? app.getPath("downloads");
+
     const info = {
-      directory: path.dirname(fileDownloadedPath),
       url: downloadPath,
+      filePath: donwloadFilePath,
+      directory: fileDownloadedPath,
       headers: header,
       onStarted: (item) => {
         this.downloads.set(downloadItemId, item);
@@ -748,6 +748,7 @@ class DownloadManager {
 
   cancelDownload(onlineDownloadableItemId) {
     const download = this.downloads.get(onlineDownloadableItemId);
+    console.log(onlineDownloadableItemId);
     if (download) {
       download.cancel();
       this.downloads.delete(onlineDownloadableItemId);
@@ -814,6 +815,7 @@ class DownloadItemHelper extends EventEmitter {
       : null;
     this.onPauseCallback = onPause;
     this.onResume = onResume;
+    this.onError = onError;
     this.store = new Store();
     this.totalBytes = 0;
     this.progress = 0;
@@ -935,7 +937,9 @@ class DownloadItemHelper extends EventEmitter {
         });
       });
     } catch (err) {
-      this.onError(err);
+      if (typeof this.onError === "function") {
+        this.onError(err);
+      }
       this.status = "failed";
       this.store.set(this.url, this.downloadData);
       throw err;
@@ -983,53 +987,64 @@ const getFilenameFromMime = (name, mime) => {
 
 const downloadManager = new DownloadManager(mainWindow);
 
-ipcMain.on("pause-download", ({ orderitemid }) => {
+ipcMain.on("pause-download", (event, { orderitemid }) => {
   downloadManager.pauseDownload(orderitemid);
 });
 
-ipcMain.on("retry-download", ({ orderitemid }) => {
+ipcMain.on("retry-download", (event, { orderitemid }) => {
   downloadManager.resumeDownload(orderitemid);
 });
 
-ipcMain.on("resume-download", ({ orderitemid }) => {
+ipcMain.on("resume-download", (event, { orderitemid }) => {
   downloadManager.resumeDownload(orderitemid);
 });
 
-ipcMain.on("cancel-download", ({ orderitemid }) => {
+ipcMain.on("cancel-download", (event, { orderitemid }) => {
   downloadManager.cancelDownload(orderitemid);
 });
 
 ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
   const items = {
+    downloadItemId: orderitemid,
+    downloadPath: "https://em11.entermediadb.org" + file.itemdownloadurl,
+    header: headers,
     onStarted: () => {
+      console.log("Started");
       mainWindow.webContents.send(`download-started-${orderitemid}`);
     },
     onCancel: () => {
+      console.log("onCancel");
       mainWindow.webContents.send(`download-abort-${orderitemid}`);
     },
     onResume: () => {
+      console.log("onResume");
       mainWindow.webContents.send(`download-resume-${orderitemid}`);
     },
     onPause: () => {
+      console.log("onPause");
       mainWindow.webContents.send(`download-pause-${orderitemid}`);
     },
     onProgress: (progress, bytesLoaded, filePath) => {
+      console.log({
+        loaded: bytesLoaded,
+        total: progress.total,
+        file: filePath,
+      });
+
       mainWindow.webContents.send(`download-progress-${orderitemid}`, {
         loaded: bytesLoaded,
         total: progress.total,
       });
     },
     onCompleted: (filePath, totalBytes) => {
+      console.log("onCompleted");
+
       mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
     },
     onError: (err) => {
+      console.log(err);
       mainWindow.webContents.send(`download-error-${orderitemid}`);
     },
   };
-  downloadManager.downloadFile(
-    orderitemid,
-    file.itemdownloadurl,
-    headers,
-    items,
-  );
+  downloadManager.downloadFile(items);
 });

@@ -144,6 +144,7 @@ app.on("activate", () => {
 
 function checkSession(win) {
   session = win.webContents.session;
+
   //console.log(session.defaultSession);
 }
 
@@ -658,7 +659,7 @@ class DownloadManager {
     if (!this.haveDefaultDownlaodPath) {
       try {
         const result = dialog.showOpenDialogSync(mainWindow, {
-          properties: ["openDirectory"],
+          properties: ["openDirectory", "createDirectory"],
         });
         this.haveDefaultDownlaodPath = true;
         var directory = result[0];
@@ -1017,9 +1018,11 @@ ipcMain.on("cancel-download", (event, { orderitemid }) => {
 });
 
 ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
+  var parsedUrl = url.parse(store.get("homeUrl"), true);
+
   const items = {
     downloadItemId: orderitemid,
-    downloadPath: "https://em11.entermediadb.org" + file.itemdownloadurl,
+    downloadPath: "https://" + parsedUrl.host + file.itemdownloadurl,
     header: headers,
     onStarted: () => {
       mainWindow.webContents.send(`download-started-${orderitemid}`);

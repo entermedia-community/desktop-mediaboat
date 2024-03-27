@@ -9,7 +9,9 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "distwin": "electron-builder --win zip"
+    "distwin": "electron-builder --win zip",
+    "distmacarm64": "electron-builder --arm64 --mac dmg",
+    "distmacx64": "electron-builder --x64 --mac dmg"
   },
   "keywords": [],
   "author": {
@@ -43,6 +45,7 @@
   "build": {
     "appId": "org.entermedia.app",
     "productName": "eMediaWorkspace",
+
     "asar": false,
     "files": ["src/**/*"],
     "protocols": [
@@ -58,6 +61,9 @@
     },
     "nsis": {
       "perMachine": true
+    },
+    "mac": {
+      "identity": "tech@entermediadb.org"
     }
   }
 }

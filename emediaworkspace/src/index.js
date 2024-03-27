@@ -21,7 +21,7 @@ let mainWindow;
 let entermediakey;
 
 const store = new Store();
-const isDev = true;
+const isDev = false;
 const appLogo = "/assets/images/emrlogo.png";
 const trayLogo = "/assets/images/em20.png";
 const selectWorkspaceForm = `file://${__dirname}/selectHome.html`;
@@ -824,10 +824,11 @@ class DownloadItemHelper extends EventEmitter {
 
   detectFileName(url, extra, headers) {
     let fileName = path.basename(url);
+    let extension = ".txt";
     if (!fileName.includes(".")) {
       const contentType = headers["content-type"];
       if (contentType) {
-        const extension = getFilenameFromMime("", contentType);
+        extension = getFilenameFromMime("", contentType);
         fileName += extension ? extension : ".txt"; // Default to .txt if extension not found
       } else {
         fileName += ".txt"; // Default to .txt if content-type header not found
@@ -911,7 +912,7 @@ class DownloadItemHelper extends EventEmitter {
       }
 
       if (!filePathExists && !this.filePath) {
-        this.fileName = this.detectFileName(this.url, false, response.headers);
+        this.fileName = this.detectFileName(this.url, true, response.headers);
         this.filePath = path.join(this.directory, this.fileName);
       }
 
@@ -1044,6 +1045,7 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
     },
     onCompleted: (filePath, totalBytes) => {
       mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
+      console.log(filePath);
     },
     onError: (err) => {
       mainWindow.webContents.send(`download-error-${orderitemid}`, err);

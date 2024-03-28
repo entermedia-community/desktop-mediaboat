@@ -1,19 +1,23 @@
 {
   "name": "emediaworkspace",
   "productName": "eMedia Workspace",
-  "version": "2.0.2",
+  "version": "2.1.4",
   "description": "eMedia Workspace",
   "main": "src/index.js",
+  "homepage": "https://github.com/entermedia-community/desktop-mediaboat",
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "build": "electron-builder build",
     "publish": "electron-forge publish",
     "distwin": "electron-builder --win zip",
+    "distlinux": "electron-builder --linux deb tar.xz ",
     "distmacarm64": "electron-builder --arm64 --mac dmg",
     "distmacx64": "electron-builder --x64 --mac dmg"
+    
   },
-  "keywords": [],
+  "keywords": ["DAM", "Workspace", "EnterMediaDB"],
   "author": {
     "name": "EnterMedia",
     "email": "info@entermediadb.org"
@@ -25,11 +29,12 @@
     "electron-squirrel-startup": "^1.0.0",
     "electron-store": "^8.1.0",
     "ext-name": "^5.0.0",
-    "unused-filename": "^2.1.0",
     "form-data": "^4.0.0",
     "mkdirp": "^3.0.1",
     "querystring": "^0.2.1",
-    "url": "^0.11.3"
+    "unused-filename": "^2.1.0",
+    "url": "^0.11.3",
+    "wine": "^0.9.13"
   },
   "devDependencies": {
     "@electron-forge/cli": "^7.2.0",
@@ -47,17 +52,25 @@
     "productName": "eMediaWorkspace",
 
     "asar": false,
-    "files": ["src/**/*"],
+    "icon": "build/icons",
+    "files": [
+      "src/**/*"
+    ],
     "protocols": [
       {
         "name": "entermedia",
         "role": "Viewer",
-        "schemes": ["entermedia"]
+        "schemes": [
+          "entermedia"
+        ]
       }
     ],
+    "linux": {
+      "icon": "build/icons"
+    },
     "win": {
       "target": "nsis",
-      "icon": "build/emrlogo256.png"
+      "icon": "build/icons"
     },
     "nsis": {
       "perMachine": true

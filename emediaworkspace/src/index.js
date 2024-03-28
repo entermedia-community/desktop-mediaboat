@@ -15,7 +15,7 @@ var fs = require("fs");
 const { EventEmitter } = require("events");
 const axios = require("axios");
 const extName = require("ext-name");
-
+const { exec } = require("child_process");
 let session = require("electron");
 let mainWindow;
 let entermediakey;
@@ -26,7 +26,8 @@ const appLogo = "/assets/images/emrlogo.png";
 const trayLogo = "/assets/images/em20.png";
 const selectWorkspaceForm = `file://${__dirname}/selectHome.html`;
 
-const currentVersion = "2.0.2";
+//const currentVersion = "2.1.2";
+const currentVersion = process.env.npm_package_version;
 
 //Handle logs with electron-logs
 log.initialize();
@@ -150,7 +151,7 @@ function checkSession(win) {
 
 function openWorkspace(homeUrl) {
   var parsedUrl = url.parse(homeUrl, true);
-  var qs_ = querystring.stringify(parsedUrl.query) + "&desktop=true";
+  var qs_ = querystring.stringify(parsedUrl.query) + "desktop=true";
   var finalUrl = homeUrl.split("?").shift();
   finalUrl = finalUrl.trim() + "?" + qs_;
   console.log("Loading... ", finalUrl);
@@ -168,7 +169,7 @@ ipcMain.on("setHomeUrl", (event, url) => {
 function setMainMenu(mainWindow) {
   const template = [
     {
-      label: "eMedia Workspace",
+      label: "Workspace",
       submenu: [
         /*{
           label: "Logout",
@@ -259,14 +260,14 @@ function setMainMenu(mainWindow) {
           },
         },
         {
-          label: "version",
+          label: "About",
           click() {
             const options = {
               buttons: ["Close"],
               defaultId: 2,
               title: "Version",
               message: "Current version",
-              detail: "eMedia Workspace Version: " + currentVersion,
+              detail: process.env.npm_package_name + " Version: " + currentVersion,
             };
             dialog.showMessageBox(null, options);
           },
@@ -598,13 +599,33 @@ ipcMain.on("onOpenFolder", (event, options) => {
   openFolder(options["path"]);
 });
 
-ipcMain.on("onOpenFile", (event, options) => {
-  openFile(options["path"]);
+ipcMain.on("onOpenFile", (event, file) => {
+  let downloadpath = app.getPath("downloads");
+  //options["path"]
+  
+  openFile(downloadpath+"/"+file.itemexportname);
+
 });
 
 // ---------------------- Open file ---------------------
 
 function openFile(path) {
+  console.log("Opening: " + path );
+  /*
+  exec("open", [path] , (error, stdout, stderr) => {
+    if (error) {
+        console.log(`error: ${error.message}`);
+        return;
+    }
+    if (stderr) {
+        console.log(`stderr: ${stderr}`);
+        return;
+    }
+    console.log(`stdout: ${stdout}`);
+});
+
+
+   */
   shell.openPath(path).then((error) => {
     console.log(error);
   });
@@ -823,8 +844,8 @@ class DownloadItemHelper extends EventEmitter {
   }
 
   detectFileName(url, extra, headers) {
-    let fileName = path.basename(url);
-    let extension = ".txt";
+    let fileName = decodeURI(path.basename(url));
+    let extension = path.extname(url);
     if (!fileName.includes(".")) {
       const contentType = headers["content-type"];
       if (contentType) {
@@ -1020,10 +1041,9 @@ ipcMain.on("cancel-download", (event, { orderitemid }) => {
 
 ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
   var parsedUrl = url.parse(store.get("homeUrl"), true);
-
   const items = {
     downloadItemId: orderitemid,
-    downloadPath: "https://" + parsedUrl.host + file.itemdownloadurl,
+    downloadPath: parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
     header: headers,
     onStarted: () => {
       mainWindow.webContents.send(`download-started-${orderitemid}`);
@@ -1045,7 +1065,7 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
     },
     onCompleted: (filePath, totalBytes) => {
       mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
-      console.log(filePath);
+      console.log("Download Complete: " +filePath);
     },
     onError: (err) => {
       mainWindow.webContents.send(`download-error-${orderitemid}`, err);

@@ -54,6 +54,7 @@ const createWindow = () => {
   });
 
   var homeUrl = store.get("homeUrl");
+  app.allowRendererProcessReuse = false;
   //console.log("Searched " + homeUrl)
   if (!homeUrl) {
     openWorkspace(selectWorkspaceForm);
@@ -602,9 +603,11 @@ ipcMain.on("onOpenFolder", (event, options) => {
 ipcMain.on("onOpenFile", (event, file) => {
   let downloadpath = app.getPath("downloads");
   //options["path"]
-  
   openFile(downloadpath+"/"+file.itemexportname);
+});
 
+ipcMain.on("readDir", (event, options) => {
+  readDirectory(options["path"]);
 });
 
 // ---------------------- Open file ---------------------
@@ -633,6 +636,30 @@ function openFile(path) {
 
 function openFolder(path) {
   shell.showItemInFolder(path);
+}
+
+// Read folders of the files. 
+
+function getFilesizeInBytes(filename) {
+  var stats = fs.statSync(filename);
+  var fileSizeInBytes = stats.size;
+  return fileSizeInBytes;
+}
+
+function readDirectory(directory) {
+  var paths  = []; 
+  var files = fs.readdirSync(directory)
+  files.forEach((file) => {
+  let filepath = path.join(directory, file);
+  let stats = fs.statSync(filepath);
+  if (stats.isDirectory()) {
+    paths.concat(readDirectory(filepath)); 
+  }
+  paths.push({
+       path: filepath, 
+       size: stats.size,  
+  })});
+  return paths; 
 }
 
 // ----------------------- Download --------------------
@@ -1044,6 +1071,7 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
   const items = {
     downloadItemId: orderitemid,
     downloadPath: parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
+    donwloadFilePath:  file,
     header: headers,
     onStarted: () => {
       mainWindow.webContents.send(`download-started-${orderitemid}`);
@@ -1073,3 +1101,9 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
   };
   downloadManager.downloadFile(items);
 });
+
+// Harshit, 3 JS API
+// 1. List contents of a local folder with file sizes and sub folders names
+// 2. Open a folder path (done?)
+// 3. Download to any local path (done?) (with progress bar) no pop ups
+// 4. Upload API that sends a file to serverhttps://em11.entermediadb.org/finder/mediadb/docs/sh

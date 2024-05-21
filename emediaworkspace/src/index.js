@@ -1102,8 +1102,151 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
   downloadManager.downloadFile(items);
 });
 
-// Harshit, 3 JS API
-// 1. List contents of a local folder with file sizes and sub folders names
-// 2. Open a folder path (done?)
-// 3. Download to any local path (done?) (with progress bar) no pop ups
-// 4. Upload API that sends a file to serverhttps://em11.entermediadb.org/finder/mediadb/docs/sh
+
+// -------- Upload -------
+
+class UploadManager {
+  constructor(window_, maxConcurrentUploads = 4) {
+    this.uploads = new Map();
+    this.uploadQueue = [];
+    this.maxConcurrentUploads = maxConcurrentUploads;
+    this.currentUploads = 0;
+    this.totalUploadsCount = 0;
+    this.window = window_;
+  }
+
+  async uploadFile({
+    uploadItemId,
+    headers, 
+    jsonData, 
+    filePath,
+    onStarted,
+    onCancel,
+    onProgress,
+    onCompleted,
+    onError
+  }) {
+    const formData = new FormData();
+    formData.append('jsonrequest', JSON.stringify(jsonData));
+    formData.append('file', fs.createReadStream(filePath));
+
+    const uploadPromise = this.createUploadPromise(uploadItemId, headers ,formData, {
+      onStarted,
+      onProgress,
+      onCancel,
+      onCompleted,
+      onError
+    });
+
+    if (this.currentUploads < this.maxConcurrentUploads) {
+      this.currentUploads++;
+      uploadPromise.start();
+    } else {
+      this.uploadQueue.push(uploadPromise);
+    }
+    this.totalUploadsCount++;
+  }
+
+  createUploadPromise(uploadItemId, headers, formData, callbacks) {
+    return {
+      start: async () => {
+        try {
+          if (typeof callbacks.onStarted === 'function') {
+            callbacks.onStarted();
+          }
+
+          var parsedUrl = url.parse(store.get("homeUrl"), true);
+
+          const response = await axios.post( parsedUrl.protocol + "//" + parsedUrl.host + "/finder/mediadb/services/module/asset/create", formData, {
+            headers: headers,
+            onUploadProgress: (progressEvent) => {
+              const progress = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+              if (typeof callbacks.onProgress === 'function') {
+                callbacks.onProgress(progress);
+              }
+            }
+          });
+
+          if (typeof callbacks.onCompleted === 'function') {
+            callbacks.onCompleted(response.data);
+          }
+        } catch (error) {
+          if (axios.isCancel(error)) {
+            if (typeof callbacks.onCancel === 'function') {
+              callbacks.onCancel();
+            }
+          } else {
+            if (typeof callbacks.onError === 'function') {
+              callbacks.onError(error);
+            }
+          }
+        } finally {
+          this.currentUploads--;
+          this.totalUploadsCount--;
+          this.processQueue();
+        }
+      },
+      cancel: () => {
+        this.currentUploads--;
+        this.uploads.delete(uploadItemId);
+        if (typeof callbacks.onCancel === 'function') {
+          callbacks.onCancel();
+        }
+      }
+    };
+  }
+
+  processQueue() {
+    if (this.currentUploads < this.maxConcurrentUploads && this.uploadQueue.length > 0) {
+      const nextUpload = this.uploadQueue.shift();
+      this.currentUploads++;
+      nextUpload.start();
+    }
+  }
+
+  cancelUpload(uploadItemId) {
+    const upload = this.uploads.get(uploadItemId);
+    if (upload) {
+      upload.cancel();
+      this.uploads.delete(uploadItemId);
+    }
+  }
+}
+
+
+const uploadManager = new UploadManager(mainWindow);
+  
+ipcMain.on('start-upload', async (event, {
+  uploadItemId,
+  headers,
+  jsonData,
+  filePath
+}) => {
+  uploadManager.uploadFile({
+    uploadItemId,
+    headers,
+    jsonData, 
+    filePath,
+    onStarted: () => {
+      mainWindow.webContents.send(`upload-started-${uploadItemId}`);
+    },
+    onCancel: () => {
+      mainWindow.webContents.send(`upload-cancelled-${uploadItemId}`);
+    },
+    onProgress: (progress) => {
+      mainWindow.webContents.send(`upload-progress-${uploadItemId}`, {
+        progress
+      });
+    },
+    onCompleted: (data) => {
+      mainWindow.webContents.send(`upload-completed-${uploadItemId}`, data);
+    },
+    onError: (err) => {
+      mainWindow.webContents.send(`upload-error-${uploadItemId}`, err);
+    }
+  });
+});
+
+ipcMain.on('cancel-upload', (event, { uploadItemId }) => {
+  uploadManager.cancelUpload(uploadItemId);
+});

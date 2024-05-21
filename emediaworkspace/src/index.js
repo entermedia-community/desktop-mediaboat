@@ -596,18 +596,18 @@ ipcMain.on("selectFolder", (event, options) => {
   });
 });
 
-ipcMain.on("onOpenFolder", (event, options) => {
-  openFolder(options["path"]);
+ipcMain.on("onOpenFolder", (event, {path}) => {
+  openFolder(path);
 });
 
-ipcMain.on("onOpenFile", (event, file) => {
+ipcMain.on("onOpenFile", (event, {file}) => {
   let downloadpath = app.getPath("downloads");
   //options["path"]
   openFile(downloadpath+"/"+file.itemexportname);
 });
 
-ipcMain.on("readDir", (event, options) => {
-  readDirectory(options["path"]);
+ipcMain.on("readDir", (event, {path}) => {
+  mainWindow.webContents.send(`readDir-sync`,  readDirectory(path));
 });
 
 // ---------------------- Open file ---------------------

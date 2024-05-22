@@ -634,19 +634,21 @@ function getFilesizeInBytes(filename) {
 }
 
 function readDirectory(directory) {
-  var paths  = []; 
+  var filePaths  = []; 
+  var folderPaths = []; 
   var files = fs.readdirSync(directory)
   files.forEach((file) => {
   let filepath = path.join(directory, file);
   let stats = fs.statSync(filepath);
   if (stats.isDirectory()) {
-    paths.concat(readDirectory(filepath)); 
-  }
-  paths.push({
-       path: filepath, 
-       size: stats.size,  
-  })});
-  return paths; 
+    folderPaths.push({path: filepath}); 
+  } else {
+  filePaths.push({path: filepath, size: stats.size});}
+ });
+  return {
+    files: filePaths, 
+    folders: folderPaths
+  }; 
 }
 
 // ----------------------- Download --------------------
@@ -1397,6 +1399,7 @@ ipcMain.on("onOpenFolder", (event, {path}) => {
 /**
  *  ipcRenderer.send('onOpenFile', {path});
  */
+
 ipcMain.on("onOpenFile", (event, {path}) => {
   openFile(path);
 });
@@ -1405,8 +1408,9 @@ ipcMain.on("onOpenFile", (event, {path}) => {
  * // Send an IPC message to the main process requesting to read a directory
  * 
  * const sendReadDirRequest = (path) => {
- *   ipcRenderer.send('readDir', { path, onScan: (files) => {
- *     console.log('Received files from main process:', files);
+ *   ipcRenderer.send('readDir', { path, onScan: (fileList) => {
+ *     console.log('Received files from main process:', fileList.files);
+ *     console.log('Received folder from main process:', fileList.folders);
  *     // Handle the directory listing data here (e.g., display in a UI element)
  *   }});
  * };

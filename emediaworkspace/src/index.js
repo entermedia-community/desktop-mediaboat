@@ -268,7 +268,8 @@ function setMainMenu(mainWindow) {
               defaultId: 2,
               title: "Version",
               message: "Current version",
-              detail: process.env.npm_package_name + " Version: " + currentVersion,
+              detail:
+                process.env.npm_package_name + " Version: " + currentVersion,
             };
             dialog.showMessageBox(null, options);
           },
@@ -414,7 +415,7 @@ function startFilesUpload(filePaths, inSourcepath, inMediadbUrl, options) {
       loopFiles(filePaths, savingPath, inMediadbUrl);
       runJavaScript('$("#sidebarUserUploads").trigger("click");');
       runJavaScript('$(window).trigger("ajaxautoreload");');
-    },
+    }
   );
 }
 
@@ -430,7 +431,7 @@ function loopFiles(filePaths, savingPath, inMediadbUrl) {
     submitForm(
       form,
       inMediadbUrl + "/services/module/asset/create",
-      function () {},
+      function () {}
     );
     //Todo if false Exeption
     //filecount++;
@@ -470,7 +471,7 @@ function startFolderUpload(
   startingdirectory,
   inSourcepath,
   inMediadbUrl,
-  options,
+  options
 ) {
   //let directoryfinal = directory.replace(userHomePath, ''); //remove user home
   let dirname = path.basename(startingdirectory);
@@ -499,7 +500,7 @@ function startFolderUpload(
       loopDirectory(startingdirectory, savingPath, inMediadbUrl);
       runJavaScript('$("#sidebarUserUploads").trigger("click");');
       runJavaScript("refreshEntiyDialog();");
-    },
+    }
   );
 }
 
@@ -574,7 +575,7 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
       submitForm(
         form,
         inMediadbUrl + "/services/module/asset/create",
-        function () {},
+        function () {}
       );
       filecount++;
       //postRequest(inPostUrl, form)
@@ -603,7 +604,7 @@ ipcMain.on("onOpenFolder", (event, options) => {
 ipcMain.on("onOpenFile", (event, file) => {
   let downloadpath = app.getPath("downloads");
   //options["path"]
-  openFile(downloadpath+"/"+file.itemexportname);
+  openFile(downloadpath + "/" + file.itemexportname);
 });
 
 ipcMain.on("readDir", (event, options) => {
@@ -613,7 +614,7 @@ ipcMain.on("readDir", (event, options) => {
 // ---------------------- Open file ---------------------
 
 function openFile(path) {
-  console.log("Opening: " + path );
+  console.log("Opening: " + path);
   /*
   exec("open", [path] , (error, stdout, stderr) => {
     if (error) {
@@ -638,7 +639,7 @@ function openFolder(path) {
   shell.showItemInFolder(path);
 }
 
-// Read folders of the files. 
+// Read folders of the files.
 
 function getFilesizeInBytes(filename) {
   var stats = fs.statSync(filename);
@@ -647,19 +648,20 @@ function getFilesizeInBytes(filename) {
 }
 
 function readDirectory(directory) {
-  var paths  = []; 
-  var files = fs.readdirSync(directory)
+  var paths = [];
+  var files = fs.readdirSync(directory);
   files.forEach((file) => {
-  let filepath = path.join(directory, file);
-  let stats = fs.statSync(filepath);
-  if (stats.isDirectory()) {
-    paths.concat(readDirectory(filepath)); 
-  }
-  paths.push({
-       path: filepath, 
-       size: stats.size,  
-  })});
-  return paths; 
+    let filepath = path.join(directory, file);
+    let stats = fs.statSync(filepath);
+    if (stats.isDirectory()) {
+      paths.concat(readDirectory(filepath));
+    }
+    paths.push({
+      path: filepath,
+      size: stats.size,
+    });
+  });
+  return paths;
 }
 
 // ----------------------- Download --------------------
@@ -938,14 +940,14 @@ class DownloadItemHelper extends EventEmitter {
           this.progress = Math.round(
             ((this.downloadData.bytesDownloaded + progressEvent.loaded) /
               this.totalBytes) *
-              100,
+              100
           );
           this.emit("progress", progressEvent);
           if (typeof this.onProgressCallback === "function") {
             this.onProgressCallback(
               progressEvent,
               this.downloadData.bytesDownloaded + progressEvent.loaded,
-              this.filePath,
+              this.filePath
             );
           }
         },
@@ -1070,8 +1072,9 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
   var parsedUrl = url.parse(store.get("homeUrl"), true);
   const items = {
     downloadItemId: orderitemid,
-    downloadPath: parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
-    donwloadFilePath:  file,
+    downloadPath:
+      parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
+    donwloadFilePath: file,
     header: headers,
     onStarted: () => {
       mainWindow.webContents.send(`download-started-${orderitemid}`);
@@ -1093,7 +1096,7 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
     },
     onCompleted: (filePath, totalBytes) => {
       mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
-      console.log("Download Complete: " +filePath);
+      console.log("Download Complete: " + filePath);
     },
     onError: (err) => {
       mainWindow.webContents.send(`download-error-${orderitemid}`, err);

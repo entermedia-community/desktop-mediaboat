@@ -15,9 +15,12 @@
     "distlinux": "electron-builder --linux deb tar.xz ",
     "distmacarm64": "electron-builder --arm64 --mac dmg",
     "distmacx64": "electron-builder --x64 --mac dmg"
-    
   },
-  "keywords": ["DAM", "Workspace", "EnterMediaDB"],
+  "keywords": [
+    "DAM",
+    "Workspace",
+    "EnterMediaDB"
+  ],
   "author": {
     "name": "EnterMedia",
     "email": "info@entermediadb.org"
@@ -50,7 +53,6 @@
   "build": {
     "appId": "org.entermedia.app",
     "productName": "eMediaWorkspace",
-
     "asar": false,
     "icon": "build/icons",
     "files": [

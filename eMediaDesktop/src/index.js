@@ -633,23 +633,38 @@ function getFilesizeInBytes(filename) {
   return fileSizeInBytes;
 }
 
-function readDirectory(directory) {
-  var filePaths  = []; 
-  var folderPaths = []; 
-  var files = fs.readdirSync(directory)
+function readDirectory(directory, append = false) {
+  var filePaths = [];
+  var folderPaths = [];
+  var files = fs.readdirSync(directory);
   files.forEach((file) => {
-  let filepath = path.join(directory, file);
-  let stats = fs.statSync(filepath);
-  if (stats.isDirectory()) {
-    folderPaths.push({path: filepath}); 
-  } else {
-  filePaths.push({path: filepath, size: stats.size});}
- });
+    if (file.startsWith(".")) return;
+    let filepath = path.join(directory, file);
+    let stats = fs.statSync(filepath);
+    if (stats.isDirectory()) {
+      folderPaths.push({ path: file });
+    } else {
+      filePaths.push({ path: file, size: stats.size });
+    }
+  });
   return {
-    files: filePaths, 
-    folders: folderPaths
-  }; 
+    files: filePaths,
+    folders: folderPaths,
+  };
 }
+
+ipcMain.on("fetchFiles", (_, options) => {
+  var data = readDirectory(options["rootpath"]);
+  // entityid, moduleid, rootpath;
+  mainWindow.webContents.send("files-fetched", {
+    ...options,
+    ...data,
+  });
+});
+
+ipcMain.on("openFolder", (_, options) => {
+  openFolder(options["path"]);
+});
 
 // ----------------------- Download --------------------
 
@@ -1120,7 +1135,7 @@ const downloadManager = new DownloadManager(mainWindow);
  *   function cancelDownload(orderitemid) {
  *     mainWindow.webContents.send('cancel-download', { orderitemid });
  *   }
- * 
+ *
  */
 
 ipcMain.on("pause-download", (event, { orderitemid }) => {
@@ -1176,7 +1191,6 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
   downloadManager.downloadFile(items);
 });
 
-
 // -------- Upload -------
 
 class UploadManager {
@@ -1191,26 +1205,31 @@ class UploadManager {
 
   async uploadFile({
     uploadItemId,
-    headers, 
-    jsonData, 
+    headers,
+    jsonData,
     filePath,
     onStarted,
     onCancel,
     onProgress,
     onCompleted,
-    onError
+    onError,
   }) {
     const formData = new FormData();
-    formData.append('jsonrequest', JSON.stringify(jsonData));
-    formData.append('file', fs.readFileSync(filePath));
+    formData.append("jsonrequest", JSON.stringify(jsonData));
+    formData.append("file", fs.readFileSync(filePath));
 
-    const uploadPromise = this.createUploadPromise(uploadItemId, headers ,formData, {
-      onStarted,
-      onProgress,
-      onCancel,
-      onCompleted,
-      onError
-    });
+    const uploadPromise = this.createUploadPromise(
+      uploadItemId,
+      headers,
+      formData,
+      {
+        onStarted,
+        onProgress,
+        onCancel,
+        onCompleted,
+        onError,
+      }
+    );
 
     if (this.currentUploads < this.maxConcurrentUploads) {
       this.currentUploads++;
@@ -1225,32 +1244,41 @@ class UploadManager {
     return {
       start: async () => {
         try {
-          if (typeof callbacks.onStarted === 'function') {
+          if (typeof callbacks.onStarted === "function") {
             callbacks.onStarted();
           }
 
           var parsedUrl = url.parse(store.get("homeUrl"), true);
 
-          const response = await axios.post( parsedUrl.protocol + "//" + parsedUrl.host + "/finder/mediadb/services/module/asset/create", formData, {
-            headers: headers,
-            onUploadProgress: (progressEvent) => {
-              const progress = Math.round((progressEvent.loaded / progressEvent.total) * 100);
-              if (typeof callbacks.onProgress === 'function') {
-                callbacks.onProgress(progress);
-              }
+          const response = await axios.post(
+            parsedUrl.protocol +
+              "//" +
+              parsedUrl.host +
+              "/finder/mediadb/services/module/asset/create",
+            formData,
+            {
+              headers: headers,
+              onUploadProgress: (progressEvent) => {
+                const progress = Math.round(
+                  (progressEvent.loaded / progressEvent.total) * 100
+                );
+                if (typeof callbacks.onProgress === "function") {
+                  callbacks.onProgress(progress);
+                }
+              },
             }
-          });
+          );
 
-          if (typeof callbacks.onCompleted === 'function') {
+          if (typeof callbacks.onCompleted === "function") {
             callbacks.onCompleted(response.data);
           }
         } catch (error) {
           if (axios.isCancel(error)) {
-            if (typeof callbacks.onCancel === 'function') {
+            if (typeof callbacks.onCancel === "function") {
               callbacks.onCancel();
             }
           } else {
-            if (typeof callbacks.onError === 'function') {
+            if (typeof callbacks.onError === "function") {
               callbacks.onError(error);
             }
           }
@@ -1263,15 +1291,18 @@ class UploadManager {
       cancel: () => {
         this.currentUploads--;
         this.uploads.delete(uploadItemId);
-        if (typeof callbacks.onCancel === 'function') {
+        if (typeof callbacks.onCancel === "function") {
           callbacks.onCancel();
         }
-      }
+      },
     };
   }
 
   processQueue() {
-    if (this.currentUploads < this.maxConcurrentUploads && this.uploadQueue.length > 0) {
+    if (
+      this.currentUploads < this.maxConcurrentUploads &&
+      this.uploadQueue.length > 0
+    ) {
       const nextUpload = this.uploadQueue.shift();
       this.currentUploads++;
       nextUpload.start();
@@ -1287,10 +1318,9 @@ class UploadManager {
   }
 }
 
-
 const uploadManager = new UploadManager(mainWindow);
 /**
- * 
+ *
  *  // Function to initiate an upload from the renderer process
  *   function initiateUpload(uploadItemId, headers, jsonData, filePath) {
  *     // Send an IPC event to the main process with upload details
@@ -1340,62 +1370,63 @@ const uploadManager = new UploadManager(mainWindow);
  *   ipcRenderer.on('upload-completed-${uploadItemId}', handleUploadCompleted);
  *   ipcRenderer.on('upload-cancelled-${uploadItemId}', handleUploadCancelled);
  *   ipcRenderer.on('upload-error-${uploadItemId}', handleUploadError);
- * 
+ *
  */
 
-  // Listen for the "start-upload" event from the renderer process
-ipcMain.on('start-upload', async (event, { uploadItemId, headers, jsonData, filePath }) => {
-  try {
-    // Initiate the upload process using the upload manager
-    await uploadManager.uploadFile({
-      uploadItemId,
-      headers,
-      jsonData,
-      filePath,
-      onStarted: () => {
-        // Send an event to the renderer process indicating upload started
-        mainWindow.webContents.send(`upload-started-${uploadItemId}`);
-      },
-      onCancel: () => {
-        // Send an event to the renderer process indicating upload cancelled
-        mainWindow.webContents.send(`upload-cancelled-${uploadItemId}`);
-      },
-      onProgress: (progress) => {
-        // Send an event to the renderer process with upload progress information
-        mainWindow.webContents.send(`upload-progress-${uploadItemId}`, {
-          progress
-        });
-      },
-      onCompleted: (data) => {
-        // Send an event to the renderer process with upload completion data
-        mainWindow.webContents.send(`upload-completed-${uploadItemId}`, data);
-      },
-      onError: (err) => {
-        // Send an event to the renderer process with upload error information
-        mainWindow.webContents.send(`upload-error-${uploadItemId}`, err);
-      }
-    });
-  } catch (error) {
-    console.error('Error during upload:', error);
-    // Handle upload errors appropriately (e.g., send error message to renderer)
+// Listen for the "start-upload" event from the renderer process
+ipcMain.on(
+  "start-upload",
+  async (event, { uploadItemId, headers, jsonData, filePath }) => {
+    try {
+      // Initiate the upload process using the upload manager
+      await uploadManager.uploadFile({
+        uploadItemId,
+        headers,
+        jsonData,
+        filePath,
+        onStarted: () => {
+          // Send an event to the renderer process indicating upload started
+          mainWindow.webContents.send(`upload-started-${uploadItemId}`);
+        },
+        onCancel: () => {
+          // Send an event to the renderer process indicating upload cancelled
+          mainWindow.webContents.send(`upload-cancelled-${uploadItemId}`);
+        },
+        onProgress: (progress) => {
+          // Send an event to the renderer process with upload progress information
+          mainWindow.webContents.send(`upload-progress-${uploadItemId}`, {
+            progress,
+          });
+        },
+        onCompleted: (data) => {
+          // Send an event to the renderer process with upload completion data
+          mainWindow.webContents.send(`upload-completed-${uploadItemId}`, data);
+        },
+        onError: (err) => {
+          // Send an event to the renderer process with upload error information
+          mainWindow.webContents.send(`upload-error-${uploadItemId}`, err);
+        },
+      });
+    } catch (error) {
+      console.error("Error during upload:", error);
+      // Handle upload errors appropriately (e.g., send error message to renderer)
+    }
   }
-});
+);
 
 // Listen for the "cancel-upload" event from the renderer process
-ipcMain.on('cancel-upload', (event, { uploadItemId }) => {
+ipcMain.on("cancel-upload", (event, { uploadItemId }) => {
   // Attempt to cancel the upload using the upload manager
   uploadManager.cancelUpload(uploadItemId);
 });
-
 
 /**
  *  ipcRenderer.send('onOpenFolder', {path});
  */
 
-ipcMain.on("onOpenFolder", (event, {path}) => {
+ipcMain.on("onOpenFolder", (event, { path }) => {
   openFolder(path);
 });
-
 
 /**
  *  ipcRenderer.send('onOpenFile', {path});
@@ -1409,7 +1440,7 @@ ipcMain.on("onOpenFile", (event, path) => {
 
 /**
  * // Send an IPC message to the main process requesting to read a directory
- * 
+ *
  * const sendReadDirRequest = (path) => {
  *   ipcRenderer.send('readDir', { path, onScan: (fileList) => {
  *     console.log('Received files from main process:', fileList.files);
@@ -1419,24 +1450,23 @@ ipcMain.on("onOpenFile", (event, path) => {
  * };
  *
  * // Example usage (assuming you have a button to trigger the read directory)
- * 
+ *
  * const readDirButton = document.getElementById('read-dir-button');
  * readDirButton.addEventListener('click', () => {
  *   const directoryPath = '/path/to/your/directory';
  *   sendReadDirRequest(directoryPath);
  * });
- * 
+ *
  */
 
-ipcMain.on("readDir", (event, { path}) => {
+ipcMain.on("readDir", (event, { path }) => {
   const files = readDirectory(path); // Call the function to read the directory
-  
+
   //onScan(files)
-  console.log('Received files from main process:', files);
+  console.log("Received files from main process:", files);
 });
 
-
-ipcMain.on("readDirX", (event, { path, onScan}) => {
+ipcMain.on("readDirX", (event, { path, onScan }) => {
   const files = readDirectory(path); // Call the function to read the directory
-  onScan(files)
+  onScan(files);
 });

@@ -1401,8 +1401,10 @@ ipcMain.on("onOpenFolder", (event, {path}) => {
  *  ipcRenderer.send('onOpenFile', {path});
  */
 
-ipcMain.on("onOpenFile", (event, {path}) => {
-  openFile(path);
+ipcMain.on("onOpenFile", (event, path) => {
+  let downloadpath = app.getPath("downloads");
+  console.log(path);
+  openFile(downloadpath + "/" + path.itemexportname);
 });
 
 /**
@@ -1426,7 +1428,15 @@ ipcMain.on("onOpenFile", (event, {path}) => {
  * 
  */
 
-ipcMain.on("readDir", (event, { path, onScan}) => {
+ipcMain.on("readDir", (event, { path}) => {
+  const files = readDirectory(path); // Call the function to read the directory
+  
+  //onScan(files)
+  console.log('Received files from main process:', files);
+});
+
+
+ipcMain.on("readDirX", (event, { path, onScan}) => {
   const files = readDirectory(path); // Call the function to read the directory
   onScan(files)
 });

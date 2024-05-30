@@ -597,20 +597,6 @@ ipcMain.on("selectFolder", (event, options) => {
   });
 });
 
-ipcMain.on("onOpenFolder", (event, options) => {
-  openFolder(options["path"]);
-});
-
-ipcMain.on("onOpenFile", (event, file) => {
-  let downloadpath = app.getPath("downloads");
-  //options["path"]
-  openFile(downloadpath + "/" + file.itemexportname);
-});
-
-ipcMain.on("readDir", (event, options) => {
-  readDirectory(options["path"]);
-});
-
 // ---------------------- Open file ---------------------
 
 function openFile(path) {
@@ -648,20 +634,21 @@ function getFilesizeInBytes(filename) {
 }
 
 function readDirectory(directory) {
-  var paths = [];
-  var files = fs.readdirSync(directory);
+  var filePaths  = []; 
+  var folderPaths = []; 
+  var files = fs.readdirSync(directory)
   files.forEach((file) => {
-    let filepath = path.join(directory, file);
-    let stats = fs.statSync(filepath);
-    if (stats.isDirectory()) {
-      paths.concat(readDirectory(filepath));
-    }
-    paths.push({
-      path: filepath,
-      size: stats.size,
-    });
-  });
-  return paths;
+  let filepath = path.join(directory, file);
+  let stats = fs.statSync(filepath);
+  if (stats.isDirectory()) {
+    folderPaths.push({path: filepath}); 
+  } else {
+  filePaths.push({path: filepath, size: stats.size});}
+ });
+  return {
+    files: filePaths, 
+    folders: folderPaths
+  }; 
 }
 
 // ----------------------- Download --------------------
@@ -1052,6 +1039,90 @@ const getFilenameFromMime = (name, mime) => {
 
 const downloadManager = new DownloadManager(mainWindow);
 
+/**
+ * // Function to initiate a download from the renderer process
+ *   function initiateDownload(orderitemid, file, headers) {
+ *     // Send an IPC event to the main process with download details
+ *     mainWindow.webContents.send('start-download', {
+ *       orderitemid,
+ *       file,
+ *       headers,
+ *     });
+ *   }
+ *
+ *   // Function to handle download progress updates received from the main process
+ *   function handleDownloadProgress(event, { orderitemid, loaded, total }) {
+ *     // Update the UI element representing download progress for the specific orderitemid (e.g., progress bar)
+ *     console.log(`Download ${orderitemid} progress: ${loaded}/${total}`);
+ *     // Replace with your specific UI framework logic to update the progress bar
+ *     // document.getElementById(`download-progress-${orderitemid}`).value = loaded / total;
+ *   }
+ *
+ *   // Function to handle download completion received from the main process
+ *   function handleDownloadCompleted(event, filePath) {
+ *     console.log(`Download completed: ${filePath}`);
+ *     // Handle successful download completion (e.g., display success message)
+ *     // You might update UI or perform actions based on the downloaded file
+ *   }
+ *
+ *   // Function to handle download cancellation/abortion received from the main process
+ *   function handleDownloadCancelled(event, orderitemid) {
+ *     console.log(`Download ${orderitemid} cancelled/aborted`);
+ *     // Handle download cancellation (e.g., display cancellation message)
+ *     // You might reset UI elements related to the cancelled download
+ *   }
+ *
+ *   // Function to handle download errors received from the main process
+ *   function handleDownloadError(event, error) {
+ *     console.error('Download error:', error);
+ *     // Handle download errors (e.g., display error message to the user)
+ *   }
+ *
+ *   // Function to handle download pause received from the main process
+ *   function handleDownloadPaused(event, orderitemid) {
+ *     console.log(`Download ${orderitemid} paused`);
+ *     // Handle download pausing (e.g., update UI to indicate pause)
+ *   }
+ *
+ *   // Function to handle download resume received from the main process
+ *   function handleDownloadResumed(event, orderitemid) {
+ *     console.log(`Download ${orderitemid} resumed`);
+ *     // Handle download resuming (e.g., update UI to indicate resume)
+ *   }
+ *
+ *   // Register listeners for IPC events from the main process
+ *   ipcRenderer.on('download-started-${orderitemid}', () => {
+ *     console.log(`Download ${orderitemid} started`);
+ *     // You might update UI to indicate download has started (e.g., show a loading indicator)
+ *   });
+ *
+ *   ipcRenderer.on('download-progress-${orderitemid}', handleDownloadProgress);
+ *   ipcRenderer.on('download-finished-${orderitemid}', handleDownloadCompleted);
+ *   ipcRenderer.on('download-abort-${orderitemid}', handleDownloadCancelled);
+ *   ipcRenderer.on('download-error-${orderitemid}', handleDownloadError);
+ *   ipcRenderer.on('download-pause-${orderitemid}', handleDownloadPaused);
+ *   ipcRenderer.on('download-resume-${orderitemid}', handleDownloadResumed);
+ *
+ *   // Example usage: initiate a download with order ID, file information, and headers
+ *   const fileInfo = { itemdownloadurl: '/path/to/file.zip' };
+ *   const headers = { 'Authorization': 'Bearer your_auth_token' };
+ *   initiateDownload('download-123', fileInfo, headers);
+ *
+ *   // Example usage: pause/resume/cancel download by ID (replace with button clicks or user actions)
+ *   function pauseDownload(orderitemid) {
+ *     mainWindow.webContents.send('pause-download', { orderitemid });
+ *   }
+ *
+ *   function resumeDownload(orderitemid) {
+ *     mainWindow.webContents.send('resume-download', { orderitemid });
+ *   }
+ *
+ *   function cancelDownload(orderitemid) {
+ *     mainWindow.webContents.send('cancel-download', { orderitemid });
+ *   }
+ * 
+ */
+
 ipcMain.on("pause-download", (event, { orderitemid }) => {
   downloadManager.pauseDownload(orderitemid);
 });
@@ -1105,8 +1176,257 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
   downloadManager.downloadFile(items);
 });
 
-// Harshit, 3 JS API
-// 1. List contents of a local folder with file sizes and sub folders names
-// 2. Open a folder path (done?)
-// 3. Download to any local path (done?) (with progress bar) no pop ups
-// 4. Upload API that sends a file to serverhttps://em11.entermediadb.org/finder/mediadb/docs/sh
+
+// -------- Upload -------
+
+class UploadManager {
+  constructor(window_, maxConcurrentUploads = 4) {
+    this.uploads = new Map();
+    this.uploadQueue = [];
+    this.maxConcurrentUploads = maxConcurrentUploads;
+    this.currentUploads = 0;
+    this.totalUploadsCount = 0;
+    this.window = window_;
+  }
+
+  async uploadFile({
+    uploadItemId,
+    headers, 
+    jsonData, 
+    filePath,
+    onStarted,
+    onCancel,
+    onProgress,
+    onCompleted,
+    onError
+  }) {
+    const formData = new FormData();
+    formData.append('jsonrequest', JSON.stringify(jsonData));
+    formData.append('file', fs.readFileSync(filePath));
+
+    const uploadPromise = this.createUploadPromise(uploadItemId, headers ,formData, {
+      onStarted,
+      onProgress,
+      onCancel,
+      onCompleted,
+      onError
+    });
+
+    if (this.currentUploads < this.maxConcurrentUploads) {
+      this.currentUploads++;
+      uploadPromise.start();
+    } else {
+      this.uploadQueue.push(uploadPromise);
+    }
+    this.totalUploadsCount++;
+  }
+
+  createUploadPromise(uploadItemId, headers, formData, callbacks) {
+    return {
+      start: async () => {
+        try {
+          if (typeof callbacks.onStarted === 'function') {
+            callbacks.onStarted();
+          }
+
+          var parsedUrl = url.parse(store.get("homeUrl"), true);
+
+          const response = await axios.post( parsedUrl.protocol + "//" + parsedUrl.host + "/finder/mediadb/services/module/asset/create", formData, {
+            headers: headers,
+            onUploadProgress: (progressEvent) => {
+              const progress = Math.round((progressEvent.loaded / progressEvent.total) * 100);
+              if (typeof callbacks.onProgress === 'function') {
+                callbacks.onProgress(progress);
+              }
+            }
+          });
+
+          if (typeof callbacks.onCompleted === 'function') {
+            callbacks.onCompleted(response.data);
+          }
+        } catch (error) {
+          if (axios.isCancel(error)) {
+            if (typeof callbacks.onCancel === 'function') {
+              callbacks.onCancel();
+            }
+          } else {
+            if (typeof callbacks.onError === 'function') {
+              callbacks.onError(error);
+            }
+          }
+        } finally {
+          this.currentUploads--;
+          this.totalUploadsCount--;
+          this.processQueue();
+        }
+      },
+      cancel: () => {
+        this.currentUploads--;
+        this.uploads.delete(uploadItemId);
+        if (typeof callbacks.onCancel === 'function') {
+          callbacks.onCancel();
+        }
+      }
+    };
+  }
+
+  processQueue() {
+    if (this.currentUploads < this.maxConcurrentUploads && this.uploadQueue.length > 0) {
+      const nextUpload = this.uploadQueue.shift();
+      this.currentUploads++;
+      nextUpload.start();
+    }
+  }
+
+  cancelUpload(uploadItemId) {
+    const upload = this.uploads.get(uploadItemId);
+    if (upload) {
+      upload.cancel();
+      this.uploads.delete(uploadItemId);
+    }
+  }
+}
+
+
+const uploadManager = new UploadManager(mainWindow);
+/**
+ * 
+ *  // Function to initiate an upload from the renderer process
+ *   function initiateUpload(uploadItemId, headers, jsonData, filePath) {
+ *     // Send an IPC event to the main process with upload details
+ *     mainWindow.webContents.send('start-upload', {
+ *       uploadItemId,
+ *       headers,
+ *       jsonData,
+ *       filePath,
+ *     });
+ *   }
+ *
+ *   // Function to handle upload progress updates received from the main process
+ *   function handleUploadProgress(event, { uploadItemId, progress }) {
+ *     // Update the UI element representing upload progress for the specific uploadItemId (e.g., progress bar)
+ *     console.log(`Upload ${uploadItemId} progress: ${progress}`);
+ *     // Replace with your specific UI framework logic to update the progress bar
+ *     // document.getElementById(`upload-progress-${uploadItemId}`).value = progress;
+ *   }
+ *
+ *   // Function to handle upload completion received from the main process
+ *   function handleUploadCompleted(event, data) {
+ *     console.log(`Upload completed:`, data);
+ *     // Handle successful upload completion (e.g., display success message)
+ *     // You might update UI or perform actions based on the received data
+ *   }
+ *
+ *   // Function to handle upload cancellation received from the main process
+ *   function handleUploadCancelled(event, { uploadItemId }) {
+ *     console.log(`Upload ${uploadItemId} cancelled`);
+ *     // Handle upload cancellation (e.g., display cancellation message)
+ *     // You might reset UI elements related to the cancelled upload
+ *   }
+ *
+ *   // Function to handle upload errors received from the main process
+ *   function handleUploadError(event, error) {
+ *     console.error('Upload error:', error);
+ *     // Handle upload errors (e.g., display error message to the user)
+ *   }
+ *
+ *   // Register listeners for IPC events from the main process
+ *   ipcRenderer.on('upload-started-${uploadItemId}', () => {
+ *     console.log(`Upload ${uploadItemId} started`);
+ *     // You might update UI to indicate upload has started (e.g., show a loading indicator)
+ *   });
+ *
+ *   ipcRenderer.on('upload-progress-${uploadItemId}', handleUploadProgress);
+ *   ipcRenderer.on('upload-completed-${uploadItemId}', handleUploadCompleted);
+ *   ipcRenderer.on('upload-cancelled-${uploadItemId}', handleUploadCancelled);
+ *   ipcRenderer.on('upload-error-${uploadItemId}', handleUploadError);
+ * 
+ */
+
+  // Listen for the "start-upload" event from the renderer process
+ipcMain.on('start-upload', async (event, { uploadItemId, headers, jsonData, filePath }) => {
+  try {
+    // Initiate the upload process using the upload manager
+    await uploadManager.uploadFile({
+      uploadItemId,
+      headers,
+      jsonData,
+      filePath,
+      onStarted: () => {
+        // Send an event to the renderer process indicating upload started
+        mainWindow.webContents.send(`upload-started-${uploadItemId}`);
+      },
+      onCancel: () => {
+        // Send an event to the renderer process indicating upload cancelled
+        mainWindow.webContents.send(`upload-cancelled-${uploadItemId}`);
+      },
+      onProgress: (progress) => {
+        // Send an event to the renderer process with upload progress information
+        mainWindow.webContents.send(`upload-progress-${uploadItemId}`, {
+          progress
+        });
+      },
+      onCompleted: (data) => {
+        // Send an event to the renderer process with upload completion data
+        mainWindow.webContents.send(`upload-completed-${uploadItemId}`, data);
+      },
+      onError: (err) => {
+        // Send an event to the renderer process with upload error information
+        mainWindow.webContents.send(`upload-error-${uploadItemId}`, err);
+      }
+    });
+  } catch (error) {
+    console.error('Error during upload:', error);
+    // Handle upload errors appropriately (e.g., send error message to renderer)
+  }
+});
+
+// Listen for the "cancel-upload" event from the renderer process
+ipcMain.on('cancel-upload', (event, { uploadItemId }) => {
+  // Attempt to cancel the upload using the upload manager
+  uploadManager.cancelUpload(uploadItemId);
+});
+
+
+/**
+ *  ipcRenderer.send('onOpenFolder', {path});
+ */
+
+ipcMain.on("onOpenFolder", (event, {path}) => {
+  openFolder(path);
+});
+
+
+/**
+ *  ipcRenderer.send('onOpenFile', {path});
+ */
+
+ipcMain.on("onOpenFile", (event, {path}) => {
+  openFile(path);
+});
+
+/**
+ * // Send an IPC message to the main process requesting to read a directory
+ * 
+ * const sendReadDirRequest = (path) => {
+ *   ipcRenderer.send('readDir', { path, onScan: (fileList) => {
+ *     console.log('Received files from main process:', fileList.files);
+ *     console.log('Received folder from main process:', fileList.folders);
+ *     // Handle the directory listing data here (e.g., display in a UI element)
+ *   }});
+ * };
+ *
+ * // Example usage (assuming you have a button to trigger the read directory)
+ * 
+ * const readDirButton = document.getElementById('read-dir-button');
+ * readDirButton.addEventListener('click', () => {
+ *   const directoryPath = '/path/to/your/directory';
+ *   sendReadDirRequest(directoryPath);
+ * });
+ * 
+ */
+
+ipcMain.on("readDir", (event, { path, onScan}) => {
+  const files = readDirectory(path); // Call the function to read the directory
+  onScan(files)
+});

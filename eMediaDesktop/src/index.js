@@ -157,7 +157,7 @@ function openWorkspace(homeUrl) {
   finalUrl = finalUrl.trim() + "?" + qs_;
   console.log("Loading... ", finalUrl);
   mainWindow.loadURL(finalUrl);
-
+  
   checkSession(mainWindow);
 }
 
@@ -654,17 +654,66 @@ function readDirectory(directory, append = false) {
 }
 
 ipcMain.on("fetchFiles", (_, options) => {
-  var data = readDirectory(options["rootpath"]);
-  // entityid, moduleid, rootpath;
+  var fetchpath = userHomePath + '/eMedia/' + options["categorypath"];
+  var data = {};
+  if (fs.existsSync(fetchpath)) {
+     data = readDirectory(fetchpath);
+  }
+  data.filedownloadpath = fetchpath;
   mainWindow.webContents.send("files-fetched", {
     ...options,
     ...data,
   });
+  
 });
 
 ipcMain.on("openFolder", (_, options) => {
   openFolder(options["path"]);
 });
+
+
+
+
+ipcMain.on("fetchfilesdownload", async (event, { assetid, file,  headers }) => {
+  var parsedUrl = url.parse(store.get("homeUrl"), true);
+
+  const items = {
+    downloadItemId: assetid,
+    downloadPath: parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
+    donwloadFilePath: file,
+    localFolderPath : userHomePath + '/eMedia/' + file.categorypath ,
+    header: headers,
+    onStarted: () => {
+      //mainWindow.webContents.send(`download-started-${orderitemid}`);
+    },
+    onCancel: () => {
+      //mainWindow.webContents.send(`download-abort-${orderitemid}`);
+    },
+    onResume: () => {
+      //mainWindow.webContents.send(`download-resume-${orderitemid}`);
+    },
+    onPause: () => {
+      //mainWindow.webContents.send(`download-pause-${orderitemid}`);
+    },
+    onProgress: (progress, bytesLoaded, filePath) => {
+    /*  mainWindow.webContents.send(`download-progress-${orderitemid}`, {
+        loaded: bytesLoaded,
+        total: progress.total,
+      });*/
+    },
+    onCompleted: (filePath, totalBytes) => {
+      //mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
+      console.log("Download Complete: " + filePath);
+    },
+    onError: (err) => {
+      //mainWindow.webContents.send(`download-error-${orderitemid}`, err);
+      console.log(err);
+    },
+  };
+  downloadManager.downloadFile(items);
+});
+
+
 
 // ----------------------- Download --------------------
 
@@ -699,6 +748,7 @@ class DownloadManager {
     downloadItemId,
     downloadPath,
     donwloadFilePath,
+    localFolderPath,
     header,
     onStarted,
     onCancel,
@@ -726,8 +776,14 @@ class DownloadManager {
       }
     }
 
-    const fileDownloadedPath =
-      store.get("downloadDefaultPath") ?? app.getPath("downloads");
+    var fileDownloadedPath = "";
+
+    if(localFolderPath != null) {
+      fileDownloadedPath = localFolderPath;
+    }
+    else {
+      fileDownloadedPath = store.get("downloadDefaultPath") ?? app.getPath("downloads");
+    }
 
     const info = {
       url: downloadPath,
@@ -1434,7 +1490,6 @@ ipcMain.on("onOpenFolder", (event, { path }) => {
 
 ipcMain.on("onOpenFile", (event, path) => {
   let downloadpath = app.getPath("downloads");
-  console.log(path);
   openFile(downloadpath + "/" + path.itemexportname);
 });
 

@@ -157,7 +157,7 @@ function openWorkspace(homeUrl) {
   finalUrl = finalUrl.trim() + "?" + qs_;
   console.log("Loading... ", finalUrl);
   mainWindow.loadURL(finalUrl);
-  
+
   checkSession(mainWindow);
 }
 
@@ -654,34 +654,31 @@ function readDirectory(directory, append = false) {
 }
 
 ipcMain.on("fetchFiles", (_, options) => {
-  var fetchpath = userHomePath + '/eMedia/' + options["categorypath"];
+  var fetchpath = userHomePath + "/eMedia/" + options["categorypath"];
   var data = {};
   if (fs.existsSync(fetchpath)) {
-     data = readDirectory(fetchpath);
+    data = readDirectory(fetchpath);
   }
   data.filedownloadpath = fetchpath;
   mainWindow.webContents.send("files-fetched", {
     ...options,
     ...data,
   });
-  
 });
 
 ipcMain.on("openFolder", (_, options) => {
   openFolder(options["path"]);
 });
 
-
-
-
-ipcMain.on("fetchfilesdownload", async (event, { assetid, file,  headers }) => {
+ipcMain.on("fetchfilesdownload", async (event, { assetid, file, headers }) => {
   var parsedUrl = url.parse(store.get("homeUrl"), true);
 
   const items = {
     downloadItemId: assetid,
-    downloadPath: parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
+    downloadPath:
+      parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
     donwloadFilePath: file,
-    localFolderPath : userHomePath + '/eMedia/' + file.categorypath ,
+    localFolderPath: userHomePath + "/eMedia/" + file.categorypath,
     header: headers,
     onStarted: () => {
       //mainWindow.webContents.send(`download-started-${orderitemid}`);
@@ -696,14 +693,16 @@ ipcMain.on("fetchfilesdownload", async (event, { assetid, file,  headers }) => {
       //mainWindow.webContents.send(`download-pause-${orderitemid}`);
     },
     onProgress: (progress, bytesLoaded, filePath) => {
-    /*  mainWindow.webContents.send(`download-progress-${orderitemid}`, {
+      /*  mainWindow.webContents.send(`download-progress-${orderitemid}`, {
         loaded: bytesLoaded,
         total: progress.total,
       });*/
     },
     onCompleted: (filePath, totalBytes) => {
-      //mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
-      console.log("Download Complete: " + filePath);
+      // mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
+      mainWindow.webContents.send("refresh-sync", {
+        categorypath: file.categorypath,
+      });
     },
     onError: (err) => {
       //mainWindow.webContents.send(`download-error-${orderitemid}`, err);
@@ -712,8 +711,6 @@ ipcMain.on("fetchfilesdownload", async (event, { assetid, file,  headers }) => {
   };
   downloadManager.downloadFile(items);
 });
-
-
 
 // ----------------------- Download --------------------
 
@@ -778,11 +775,11 @@ class DownloadManager {
 
     var fileDownloadedPath = "";
 
-    if(localFolderPath != null) {
+    if (localFolderPath != null) {
       fileDownloadedPath = localFolderPath;
-    }
-    else {
-      fileDownloadedPath = store.get("downloadDefaultPath") ?? app.getPath("downloads");
+    } else {
+      fileDownloadedPath =
+        store.get("downloadDefaultPath") ?? app.getPath("downloads");
     }
 
     const info = {

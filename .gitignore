@@ -12,3 +12,5 @@
 /emediaworkspace/dist
 .project
 .vscode
+eMediaDesktop/dist
+**/*.DS_Store

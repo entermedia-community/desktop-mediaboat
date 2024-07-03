@@ -1,7 +1,7 @@
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 
-const { app, BrowserWindow, ipcMain, dialog, Menu, Tray } = require("electron");
-const { shell } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, Menu, Tray, shell } = require("electron");
+let { session } = require("electron");
 const path = require("path");
 const log = require("electron-log");
 const FormData = require("form-data");
@@ -16,17 +16,19 @@ const { EventEmitter } = require("events");
 const axios = require("axios");
 const extName = require("ext-name");
 const { exec } = require("child_process");
-let session = require("electron");
 let mainWindow;
 let entermediakey;
 
-const store = new Store();
+//Config
 const isDev = false;
 const appLogo = "/assets/images/emrlogo.png";
 const trayLogo = "/assets/images/em20.png";
+
+
+
+const store = new Store();
 const selectWorkspaceForm = `file://${__dirname}/selectHome.html`;
 
-//const currentVersion = "2.1.2";
 const currentVersion = process.env.npm_package_version;
 
 //Handle logs with electron-logs
@@ -68,35 +70,43 @@ const createWindow = () => {
 
   // Main Menu
   setMainMenu(mainWindow);
-
-  // and load the index.html of the app.
-  //mainWindow.loadFile(path.join(__dirname, 'index.html'));
-  //mainWindow.loadURL("http://192.168.100.4:8080/finder/find/index.html?desktop=true");
-  //mainWindow.loadURL("https://em10.entermediadb.org/finder/find/index.html?desktop=true");
-
+  
+  // Session
   checkSession(mainWindow);
 
   // tray
   CreateTray([], mainWindow);
 
-  //events
+  // Events
   mainWindow.on("minimize", (event) => {
-    if (!isDev) {
+    //if (!isDev) {
       event.preventDefault();
       mainWindow.hide();
-    }
+    //}
   });
 
   mainWindow.on("close", (event) => {
-    if (!isDev) {
-      if (!app.isQuiting) {
+    //if (!isDev) {
+      if (!app.isQuiting) {7
         event.preventDefault();
-        mainWindow.hide();
+        //mainWindow.hide();
+        mainWindow.removeAllListeners('close');
+        mainWindow = null
+        app.quit();
       }
       return false;
+    //}
+  });
+
+  mainWindow.on("window-all-closed", () => {
+    console.log("Closing Main Window... ");
+    if (process.platform !== "darwin") {
+      app.quit();
     }
   });
 };
+
+
 
 if (!isDev) {
   const gotTheLock = app.getVersion();
@@ -131,10 +141,19 @@ if (!isDev) {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on("window-all-closed", () => {
+  console.log("Closing App...");
   if (process.platform !== "darwin") {
     app.quit();
   }
 });
+
+app.on('before-quit', () => {
+  if(mainWindow) {
+    mainWindow.removeAllListeners('close');
+    mainWindow.close();  
+  }
+});
+
 
 app.on("activate", () => {
   // On OS X it's common to re-create a window in the app when the
@@ -199,6 +218,7 @@ function setMainMenu(mainWindow) {
           label: "Exit",
           click() {
             app.isQuiting = true;
+            mainWindow.close();
             app.quit();
           },
         },
@@ -327,7 +347,7 @@ function DrawTray(mainWin) {
       app.quit();
     },
   });
-  this.tray.setToolTip("eMedia Workspace");
+  this.tray.setToolTip("eMedia Library");
   var contextMenu = Menu.buildFromTemplate(this.trayMenu);
   this.tray.setContextMenu(contextMenu);
 }
@@ -354,7 +374,7 @@ function UpdateTray(mainWin, workspaces) {
 }
 
 //Include all Workspace Functions
-
+/*
 ipcMain.on("uploadFiles", (event, options) => {
   console.log("uploadFiles called", options);
   let inSourcepath = options["sourcepath"];
@@ -379,6 +399,7 @@ ipcMain.on("uploadFiles", (event, options) => {
       }
     });
 });
+
 
 function startFilesUpload(filePaths, inSourcepath, inMediadbUrl, options) {
   let filecount = 0;
@@ -418,7 +439,7 @@ function startFilesUpload(filePaths, inSourcepath, inMediadbUrl, options) {
     }
   );
 }
-
+*/
 function loopFiles(filePaths, savingPath, inMediadbUrl) {
   filePaths.forEach(function (filename) {
     const file = fs.createReadStream(filename);
@@ -622,7 +643,15 @@ function openFile(path) {
 }
 
 function openFolder(path) {
-  shell.showItemInFolder(path);
+  //shell.showItemInFolder(path);
+  fs.mkdir(path, {recursive: true}, 
+    (err) => {
+        if (err) {
+            return console.error(err);
+        }
+        console.log('Directory created successfully!');
+    });
+  shell.openPath(path);
 }
 
 // Read folders of the files.
@@ -644,7 +673,7 @@ function readDirectory(directory, append = false) {
     if (stats.isDirectory()) {
       folderPaths.push({ path: file });
     } else {
-      filePaths.push({ path: file, size: stats.size });
+      filePaths.push({ path: file, size: stats.size, abspath: filepath });
     }
   });
   return {
@@ -659,6 +688,7 @@ ipcMain.on("fetchFiles", (_, options) => {
   if (fs.existsSync(fetchpath)) {
     data = readDirectory(fetchpath);
   }
+  console.log(data);
   data.filedownloadpath = fetchpath;
   mainWindow.webContents.send("files-fetched", {
     ...options,
@@ -666,8 +696,78 @@ ipcMain.on("fetchFiles", (_, options) => {
   });
 });
 
+
+ipcMain.on("fetchFilesPush", (_, options) => {
+  var fetchpath = userHomePath + "/eMedia/" + options["categorypath"];
+  var data = {};
+  if (fs.existsSync(fetchpath)) {
+    data = readDirectory(fetchpath);
+  }
+  data.filedownloadpath = fetchpath;
+  console.log(data);
+  mainWindow.webContents.send("files-fetched-push", {
+    ...options,
+    ...data,
+  });
+});
+
 ipcMain.on("openFolder", (_, options) => {
   openFolder(options["path"]);
+});
+
+ipcMain.on("pickFolder", (_, options) => {
+  var fetchpath = pickFolder();
+  var data = {};
+  if (fs.existsSync(fetchpath)) {
+    data = readDirectory(fetchpath);
+  }
+  data.filedownloadpath = fetchpath;
+  mainWindow.webContents.send("files-fetched", {
+    ...fetchpath,
+    ...data,
+  });
+});
+
+ipcMain.on("fetchfilesupload", async (event, { assetid, file, headers }) => {
+  var parsedUrl = url.parse(store.get("homeUrl"), true);
+
+  const items = {
+    downloadItemId: assetid,
+    downloadPath:
+    parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
+    donwloadFilePath: file,
+    localFolderPath: userHomePath + "/eMedia/" + file.categorypath,
+    header: headers,
+    onStarted: () => {
+      //mainWindow.webContents.send(`download-started-${orderitemid}`);
+    },
+    onCancel: () => {
+      //mainWindow.webContents.send(`download-abort-${orderitemid}`);
+    },
+    onResume: () => {
+      //mainWindow.webContents.send(`download-resume-${orderitemid}`);
+    },
+    onPause: () => {
+      //mainWindow.webContents.send(`download-pause-${orderitemid}`);
+    },
+    onProgress: (progress, bytesLoaded, filePath) => {
+      /*  mainWindow.webContents.send(`download-progress-${orderitemid}`, {
+        loaded: bytesLoaded,
+        total: progress.total,
+      });*/
+    },
+    onCompleted: (filePath, totalBytes) => {
+      // mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
+      mainWindow.webContents.send("refresh-sync", {
+        categorypath: file.categorypath,
+      });
+    },
+    onError: (err) => {
+      //mainWindow.webContents.send(`download-error-${orderitemid}`, err);
+      console.log(err);
+    },
+  };
+  downloadManager.downloadFile(items);
 });
 
 ipcMain.on("fetchfilesdownload", async (event, { assetid, file, headers }) => {
@@ -1244,6 +1344,8 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
   downloadManager.downloadFile(items);
 });
 
+
+
 // -------- Upload -------
 
 class UploadManager {
@@ -1261,6 +1363,7 @@ class UploadManager {
     headers,
     jsonData,
     filePath,
+    mediadb,
     onStarted,
     onCancel,
     onProgress,
@@ -1268,13 +1371,15 @@ class UploadManager {
     onError,
   }) {
     const formData = new FormData();
+    
     formData.append("jsonrequest", JSON.stringify(jsonData));
-    formData.append("file", fs.readFileSync(filePath));
+    formData.append("file",  fs.createReadStream(filePath));
 
     const uploadPromise = this.createUploadPromise(
       uploadItemId,
       headers,
       formData,
+      mediadb,
       {
         onStarted,
         onProgress,
@@ -1293,21 +1398,20 @@ class UploadManager {
     this.totalUploadsCount++;
   }
 
-  createUploadPromise(uploadItemId, headers, formData, callbacks) {
+  createUploadPromise(uploadItemId, headers, formData, mediadb, callbacks) {
     return {
       start: async () => {
         try {
           if (typeof callbacks.onStarted === "function") {
             callbacks.onStarted();
           }
-
+          console.log("");
           var parsedUrl = url.parse(store.get("homeUrl"), true);
 
           const response = await axios.post(
             parsedUrl.protocol +
               "//" +
-              parsedUrl.host +
-              "/finder/mediadb/services/module/asset/create",
+              parsedUrl.host + "/"+ mediadb + "/services/module/asset/create",
             formData,
             {
               headers: headers,
@@ -1336,6 +1440,7 @@ class UploadManager {
             }
           }
         } finally {
+          console.log("Finally upload promise");
           this.currentUploads--;
           this.totalUploadsCount--;
           this.processQueue();
@@ -1427,16 +1532,16 @@ const uploadManager = new UploadManager(mainWindow);
  */
 
 // Listen for the "start-upload" event from the renderer process
-ipcMain.on(
-  "start-upload",
-  async (event, { uploadItemId, headers, jsonData, filePath }) => {
+ipcMain.on("start-upload",  async (event, options) => {
     try {
       // Initiate the upload process using the upload manager
-      await uploadManager.uploadFile({
-        uploadItemId,
-        headers,
-        jsonData,
-        filePath,
+      const uploadItemId = options["itemid"]
+      const item = {
+        uploadItemId: uploadItemId,
+        headers: options["headers"],
+        jsonData: options,
+        filePath: options["abspath"],
+        mediadb: options["mediadb"],
         onStarted: () => {
           // Send an event to the renderer process indicating upload started
           mainWindow.webContents.send(`upload-started-${uploadItemId}`);
@@ -1458,8 +1563,11 @@ ipcMain.on(
         onError: (err) => {
           // Send an event to the renderer process with upload error information
           mainWindow.webContents.send(`upload-error-${uploadItemId}`, err);
-        },
-      });
+        }
+      };
+      await uploadManager.uploadFile(item);
+        
+      
     } catch (error) {
       console.error("Error during upload:", error);
       // Handle upload errors appropriately (e.g., send error message to renderer)

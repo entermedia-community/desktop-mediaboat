@@ -1,8 +1,8 @@
 {
-  "name": "emediaworkspace",
-  "productName": "eMedia Workspace",
-  "version": "2.1.4",
-  "description": "eMedia Workspace",
+  "name": "emedialibrary",
+  "productName": "eMedia Library",
+  "version": "2.2.1",
+  "description": "eMedia Library",
   "main": "src/index.js",
   "homepage": "https://github.com/entermedia-community/desktop-mediaboat",
   "scripts": {
@@ -19,7 +19,8 @@
   "keywords": [
     "DAM",
     "Workspace",
-    "EnterMediaDB"
+    "EnterMediaDB",
+    "Media Library"
   ],
   "author": {
     "name": "EnterMedia",
@@ -52,7 +53,7 @@
   },
   "build": {
     "appId": "org.entermedia.app",
-    "productName": "eMediaWorkspace",
+    "productName": "emedialibrary",
     "asar": false,
     "icon": "build/icons",
     "files": [
@@ -68,7 +69,8 @@
       }
     ],
     "linux": {
-      "icon": "build/icons"
+      "icon": "build/icons",
+      "category": "AudioVideo"
     },
     "win": {
       "target": "nsis",

@@ -200,7 +200,7 @@ function setMainMenu(mainWindow) {
               KillAllMediaBoatProcesses();
           }
       }, */ {
-          label: "Open Worspace",
+          label: "Open Workspace",
           click() {
             //this.session.clearStorageData([], function (data) { });
             mainWindow.loadURL(selectWorkspaceForm);
@@ -671,7 +671,11 @@ function readDirectory(directory, append = false) {
     let filepath = path.join(directory, file);
     let stats = fs.statSync(filepath);
     if (stats.isDirectory()) {
-      folderPaths.push({ path: file });
+      var subfolderPaths = {};
+      if(append) {
+        subfolderPaths = readDirectory(filepath, true);
+      }
+      folderPaths.push({ path: file, subfolders :  subfolderPaths});
     } else {
       filePaths.push({ path: file, size: stats.size, abspath: filepath });
     }
@@ -682,12 +686,43 @@ function readDirectory(directory, append = false) {
   };
 }
 
+
+function readDirectories(directory) {
+  var filePaths = [];
+  var folderPaths = [];
+  var files = fs.readdirSync(directory);
+  files.forEach((file) => {
+    if (file.startsWith(".")) return;
+    let filepath = path.join(directory, file);
+    if (fs.isDirectory(filepath)) {
+      var subfolderPaths = {};
+      subfolderPaths = readDirectories(filepath);
+      folderPaths.push({ path: file, subfolders :  subfolderPaths});
+    } 
+  });
+  return {
+    folders: folderPaths,
+  };
+}
+
+/*
+readirectory recursibly 
+render indented list on Import screen
+initiate with root path
+have controls to lauch sync of the subfolders
+have status of current, missing and already synced
+Nice to haves:
+Downlad all, Cancel, run on the background?
+use orders as centarl manager?
+*/
+
 ipcMain.on("fetchFiles", (_, options) => {
   var fetchpath = userHomePath + "/eMedia/" + options["categorypath"];
   var data = {};
   if (fs.existsSync(fetchpath)) {
-    data = readDirectory(fetchpath);
+    data = readDirectory(fetchpath, true);
   }
+  console.log("fetchFiles:")
   console.log(data);
   data.filedownloadpath = fetchpath;
   mainWindow.webContents.send("files-fetched", {
@@ -701,15 +736,31 @@ ipcMain.on("fetchFilesPush", (_, options) => {
   var fetchpath = userHomePath + "/eMedia/" + options["categorypath"];
   var data = {};
   if (fs.existsSync(fetchpath)) {
-    data = readDirectory(fetchpath);
+    data = readDirectory(fetchpath, true);
   }
   data.filedownloadpath = fetchpath;
+  console.log("fetchFiles push:")
   console.log(data);
   mainWindow.webContents.send("files-fetched-push", {
     ...options,
     ...data,
   });
 });
+
+ipcMain.on("fetchFoldersPush", (_, options) => {
+  var fetchpath = userHomePath + "/eMedia/" + options["categorypath"];
+  var data = {};
+  if (fs.existsSync(fetchpath)) {
+    data = readDirectories(fetchpath);
+  }
+  data.filedownloadpath = fetchpath;
+  console.log(data);
+  mainWindow.webContents.send("folders-fetched-push", {
+    ...options,
+    ...data,
+  });
+});
+
 
 ipcMain.on("openFolder", (_, options) => {
   openFolder(options["path"]);

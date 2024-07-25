@@ -176,12 +176,13 @@ function openWorkspace(homeUrl) {
   finalUrl = finalUrl.trim() + "?" + qs_;
   console.log("Loading... ", finalUrl);
   mainWindow.loadURL(finalUrl);
-
+  store.set("mediadburl", ""); //reset on restart
   checkSession(mainWindow);
 }
 
 ipcMain.on("setHomeUrl", (event, url) => {
   store.set("homeUrl", url);
+  store.set("mediadburl", "");
   console.log("setHomeUrl called", url);
   openWorkspace(url);
 });
@@ -705,6 +706,109 @@ function readDirectories(directory) {
   };
 }
 
+ipcMain.on("downloadall", (_, options) => {
+  var mediadbUrl = getMediaDbUrl(options["mediadb"]);
+  var categorypath = options["categorypath"];
+  var downloadallurl = mediadbUrl + "/services/module/asset/entity/pullfolderlist.json";
+  const response =  axios.post(downloadallurl,   
+    {
+      categorypath: categorypath
+    },
+    {
+      headers: options["headers"],
+    }
+  ).then(function (res) {
+    if(res.data !== undefined) 
+    {
+      var category = res.data.tree;
+      downloadfolder(categorypath, category, options["headers"], category, options["mediadb"]);
+    }
+  })
+  .catch(function (error) {
+    console.log("Error loading: " + downloadallurl);
+    console.log(error);
+  });;
+});
+
+
+downloadfolder = async function(categorypath, category, headers, mediadb) {
+
+  var fetchpath = userHomePath + "/eMedia/" + categorypath;
+  var data = {};
+  
+  if (fs.existsSync(fetchpath)) {
+    data = readDirectory(fetchpath, true);
+  }
+  data.categorypath = categorypath;
+  
+  var mediadbUrl = getMediaDbUrl(mediadb);
+  var downloadfolderurl = mediadbUrl + "/services/module/asset/entity/pullpendingfiles.json";
+
+  const response = await axios.post(
+    downloadfolderurl,    
+    data,
+    {
+      headers: headers,
+    }
+  ).then(function (res) {
+    if(res.data !== undefined) 
+    {
+      var folderfiles = res.data.files;
+      if(folderfiles !== undefined) 
+      {
+        folderfiles.forEach(item => {
+            var file = {
+              itemexportname: categorypath + "/" + item.path,
+              itemdownloadurl: item.url,
+              categorypath: categorypath,
+            };
+            var assetid = item.id;
+            fetchfilesdownload( assetid, file, headers );
+
+          });
+        }
+    }
+    else {
+      console.log("No Data: " + categorypath + " - " +headers +" - "+ category)
+      //console.log(res);
+    }
+  })
+  .catch(function (error) {
+    console.log("Error on downloadfolder: " + categorypath + " - " +headers +" - "+ category)
+   // console.log(error);
+  });;
+
+  if(category.children !== undefined)  {
+    category.children.forEach(item => {
+      var childcategory = item;
+      console.log("Fetching folder: " + childcategory.path);
+      downloadfolder(childcategory.path, childcategory, headers, mediadb);
+    });
+  }
+  };
+
+
+
+
+  
+function getMediaDbUrl(mediadbappid) {
+  var mediadburl = store.get("mediadburl");
+  if (!mediadburl) {
+    const parsedUrl = url.parse(store.get("homeUrl"), true);
+    if(parsedUrl.protocol !== undefined && parsedUrl.host !== undefined)
+    {
+      mediadburl = parsedUrl.protocol + "//" + parsedUrl.host + "/" + mediadbappid;
+      console.log("mediadburl set to: " + mediadburl);
+      store.set("mediadburl", mediadburl);
+    }
+  }
+  return mediadburl;
+}
+  
+
+
+  
+
 /*
 readirectory recursibly 
 render indented list on Import screen
@@ -722,8 +826,6 @@ ipcMain.on("fetchFiles", (_, options) => {
   if (fs.existsSync(fetchpath)) {
     data = readDirectory(fetchpath, true);
   }
-  console.log("fetchFiles:")
-  console.log(data);
   data.filedownloadpath = fetchpath;
   mainWindow.webContents.send("files-fetched", {
     ...options,
@@ -754,7 +856,7 @@ ipcMain.on("fetchFoldersPush", (_, options) => {
     data = readDirectories(fetchpath);
   }
   data.filedownloadpath = fetchpath;
-  console.log(data);
+  //console.log(data);
   mainWindow.webContents.send("folders-fetched-push", {
     ...options,
     ...data,
@@ -822,6 +924,10 @@ ipcMain.on("fetchfilesupload", async (event, { assetid, file, headers }) => {
 });
 
 ipcMain.on("fetchfilesdownload", async (event, { assetid, file, headers }) => {
+  fetchfilesdownload(assetid, file, headers);
+});
+
+function fetchfilesdownload(assetid, file, headers) {
   var parsedUrl = url.parse(store.get("homeUrl"), true);
 
   const items = {
@@ -854,6 +960,7 @@ ipcMain.on("fetchfilesdownload", async (event, { assetid, file, headers }) => {
       mainWindow.webContents.send("refresh-sync", {
         categorypath: file.categorypath,
       });
+      console.log("Downloaded: " + filePath); 
     },
     onError: (err) => {
       //mainWindow.webContents.send(`download-error-${orderitemid}`, err);
@@ -861,7 +968,7 @@ ipcMain.on("fetchfilesdownload", async (event, { assetid, file, headers }) => {
     },
   };
   downloadManager.downloadFile(items);
-});
+}
 
 // ----------------------- Download --------------------
 
@@ -1456,13 +1563,12 @@ class UploadManager {
           if (typeof callbacks.onStarted === "function") {
             callbacks.onStarted();
           }
-          console.log("");
           var parsedUrl = url.parse(store.get("homeUrl"), true);
 
           const response = await axios.post(
             parsedUrl.protocol +
               "//" +
-              parsedUrl.host + "/"+ mediadb + "/services/module/asset/create",
+              parsedUrl.host + "/mediadb/services/module/asset/create",
             formData,
             {
               headers: headers,

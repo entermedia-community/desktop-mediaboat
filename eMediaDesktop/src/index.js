@@ -59,7 +59,7 @@ const createWindow = () => {
   app.allowRendererProcessReuse = false;
   //console.log("Searched " + homeUrl)
   if (!homeUrl) {
-    openWorkspace(selectWorkspaceForm);
+    openWorkspacePicker(selectWorkspaceForm);
   } else {
     openWorkspace(homeUrl);
   }
@@ -165,8 +165,22 @@ app.on("activate", () => {
 
 function checkSession(win) {
   session = win.webContents.session;
-
   //console.log(session.defaultSession);
+}
+
+
+function openWorkspacePicker(pickerURL) {
+  
+  mainWindow.loadURL(pickerURL);
+  checkSession(mainWindow);
+  mainWindow.once('ready-to-show', () => {
+    var workspaces = store.get('workspaces');
+    mainWindow.webContents.send("loadworkspaces", {
+      ...{},
+      ...workspaces,
+    });
+  });
+  
 }
 
 function openWorkspace(homeUrl) {
@@ -174,16 +188,27 @@ function openWorkspace(homeUrl) {
   var qs_ = querystring.stringify(parsedUrl.query) + "desktop=true";
   var finalUrl = homeUrl.split("?").shift();
   finalUrl = finalUrl.trim() + "?" + qs_;
-  console.log("Loading... ", finalUrl);
+  console.log("Loading: ", finalUrl);
   mainWindow.loadURL(finalUrl);
   store.set("mediadburl", ""); //reset on restart
   checkSession(mainWindow);
 }
 
 ipcMain.on("setHomeUrl", (event, url) => {
+  
+  var workspaces = store.get('workspaces');
+  if (workspaces) {
+    const exists = workspaces.includes(url);
+    if(!exists) {
+      workspaces.push(url);
+    }
+    store.set('workspaces', workspaces) ;
+  }
+  else {
+    store.set('workspaces', [url]);
+  }
   store.set("homeUrl", url);
   store.set("mediadburl", "");
-  console.log("setHomeUrl called", url);
   openWorkspace(url);
 });
 
@@ -204,7 +229,8 @@ function setMainMenu(mainWindow) {
           label: "Open Workspace",
           click() {
             //this.session.clearStorageData([], function (data) { });
-            mainWindow.loadURL(selectWorkspaceForm);
+            //mainWindow.loadURL(selectWorkspaceForm);
+            openWorkspacePicker(selectWorkspaceForm);
             //this.session.clearStorageData([], function (data) { });
             //KillAllMediaBoatProcesses();
           },
@@ -650,7 +676,7 @@ function openFolder(path) {
         if (err) {
             return console.error(err);
         }
-        console.log('Directory created successfully!');
+        console.log('Directory created successfully');
     });
   shell.openPath(path);
 }
@@ -957,9 +983,12 @@ function fetchfilesdownload(assetid, file, headers) {
     },
     onCompleted: (filePath, totalBytes) => {
       // mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
-      mainWindow.webContents.send("refresh-sync", {
+
+      mainWindow.webContents.send("download-asset-complete", {
         categorypath: file.categorypath,
+        assetid: file.assetid
       });
+
       console.log("Downloaded: " + filePath); 
     },
     onError: (err) => {

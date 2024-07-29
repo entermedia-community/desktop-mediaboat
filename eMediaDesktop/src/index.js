@@ -1125,6 +1125,7 @@ class DownloadManager {
   }
 
   processQueue() {
+    console.log(this.currentDownloads + " current downloadas of " + this.downloadQueue.length);
     if (
       this.currentDownloads < this.maxConcurrentDownloads &&
       this.downloadQueue.length > 0 &&

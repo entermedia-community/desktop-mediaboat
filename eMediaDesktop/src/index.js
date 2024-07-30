@@ -9,12 +9,12 @@ const {
   Tray,
   shell,
 } = require("electron");
-let { session } = require("electron");
+// let { session } = require("electron");
 const path = require("path");
 const log = require("electron-log");
 const FormData = require("form-data");
-const os = require("os");
-const computerName = os.hostname();
+// const os = require("os");
+// const computerName = os.hostname();
 const userHomePath = app.getPath("home");
 const Store = require("electron-store");
 var url = require("url");
@@ -23,7 +23,16 @@ var fs = require("fs");
 const { EventEmitter } = require("events");
 const axios = require("axios");
 const extName = require("ext-name");
-const { exec } = require("child_process");
+// const { exec } = require("child_process");
+
+if (process.env.NODE_ENV === "development") {
+  try {
+    require("electron-reloader")(module, {
+      ignore: ["dist", "Activity", "build", "asset"],
+    });
+  } catch {}
+}
+
 let mainWindow;
 let entermediakey;
 
@@ -734,7 +743,7 @@ ipcMain.on("downloadall", (_, options) => {
   var categorypath = options["categorypath"];
   var downloadallurl =
     mediadbUrl + "/services/module/asset/entity/pullfolderlist.json";
-  const response = axios
+  axios
     .post(
       downloadallurl,
       {
@@ -747,13 +756,16 @@ ipcMain.on("downloadall", (_, options) => {
     .then(function (res) {
       if (res.data !== undefined) {
         var category = res.data.tree;
-        downloadfolder(
-          categorypath,
-          category,
-          options["headers"],
-          category,
-          options["mediadb"]
-        );
+        async function initDownload() {
+          await downloadfolder(
+            categorypath,
+            category,
+            options["headers"],
+            category,
+            options["mediadb"]
+          );
+        }
+        initDownload();
       }
     })
     .catch(function (error) {
@@ -889,6 +901,9 @@ ipcMain.on("fetchFoldersPush", (_, options) => {
 });
 
 ipcMain.on("openFolder", (_, options) => {
+  if (!options["path"].startsWith(userHomePath)) {
+    options["path"] = userHomePath + "/" + options["path"];
+  }
   openFolder(options["path"]);
 });
 

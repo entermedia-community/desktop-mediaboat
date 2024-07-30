@@ -1,6 +1,14 @@
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 
-const { app, BrowserWindow, ipcMain, dialog, Menu, Tray, shell } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  Menu,
+  Tray,
+  shell,
+} = require("electron");
 let { session } = require("electron");
 const path = require("path");
 const log = require("electron-log");
@@ -23,8 +31,6 @@ let entermediakey;
 const isDev = false;
 const appLogo = "/assets/images/emrlogo.png";
 const trayLogo = "/assets/images/em20.png";
-
-
 
 const store = new Store();
 const selectWorkspaceForm = `file://${__dirname}/selectHome.html`;
@@ -70,7 +76,7 @@ const createWindow = () => {
 
   // Main Menu
   setMainMenu(mainWindow);
-  
+
   // Session
   checkSession(mainWindow);
 
@@ -80,21 +86,22 @@ const createWindow = () => {
   // Events
   mainWindow.on("minimize", (event) => {
     //if (!isDev) {
-      event.preventDefault();
-      mainWindow.hide();
+    event.preventDefault();
+    mainWindow.hide();
     //}
   });
 
   mainWindow.on("close", (event) => {
     //if (!isDev) {
-      if (!app.isQuiting) {7
-        event.preventDefault();
-        //mainWindow.hide();
-        mainWindow.removeAllListeners('close');
-        mainWindow = null
-        app.quit();
-      }
-      return false;
+    if (!app.isQuiting) {
+      7;
+      event.preventDefault();
+      //mainWindow.hide();
+      mainWindow.removeAllListeners("close");
+      mainWindow = null;
+      app.quit();
+    }
+    return false;
     //}
   });
 
@@ -105,8 +112,6 @@ const createWindow = () => {
     }
   });
 };
-
-
 
 if (!isDev) {
   const gotTheLock = app.getVersion();
@@ -147,13 +152,12 @@ app.on("window-all-closed", () => {
   }
 });
 
-app.on('before-quit', () => {
-  if(mainWindow) {
-    mainWindow.removeAllListeners('close');
-    mainWindow.close();  
+app.on("before-quit", () => {
+  if (mainWindow) {
+    mainWindow.removeAllListeners("close");
+    mainWindow.close();
   }
 });
-
 
 app.on("activate", () => {
   // On OS X it's common to re-create a window in the app when the
@@ -168,19 +172,16 @@ function checkSession(win) {
   //console.log(session.defaultSession);
 }
 
-
 function openWorkspacePicker(pickerURL) {
-  
   mainWindow.loadURL(pickerURL);
   checkSession(mainWindow);
-  mainWindow.once('ready-to-show', () => {
-    var workspaces = store.get('workspaces');
+  mainWindow.once("ready-to-show", () => {
+    var workspaces = store.get("workspaces");
     mainWindow.webContents.send("loadworkspaces", {
       ...{},
       ...workspaces,
     });
   });
-  
 }
 
 function openWorkspace(homeUrl) {
@@ -195,17 +196,15 @@ function openWorkspace(homeUrl) {
 }
 
 ipcMain.on("setHomeUrl", (event, url) => {
-  
-  var workspaces = store.get('workspaces');
+  var workspaces = store.get("workspaces");
   if (workspaces) {
     const exists = workspaces.includes(url);
-    if(!exists) {
+    if (!exists) {
       workspaces.push(url);
     }
-    store.set('workspaces', workspaces) ;
-  }
-  else {
-    store.set('workspaces', [url]);
+    store.set("workspaces", workspaces);
+  } else {
+    store.set("workspaces", [url]);
   }
   store.set("homeUrl", url);
   store.set("mediadburl", "");
@@ -671,13 +670,12 @@ function openFile(path) {
 
 function openFolder(path) {
   //shell.showItemInFolder(path);
-  fs.mkdir(path, {recursive: true}, 
-    (err) => {
-        if (err) {
-            return console.error(err);
-        }
-        console.log('Directory created successfully');
-    });
+  fs.mkdir(path, { recursive: true }, (err) => {
+    if (err) {
+      return console.error(err);
+    }
+    console.log("Directory created successfully");
+  });
   shell.openPath(path);
 }
 
@@ -699,10 +697,10 @@ function readDirectory(directory, append = false) {
     let stats = fs.statSync(filepath);
     if (stats.isDirectory()) {
       var subfolderPaths = {};
-      if(append) {
+      if (append) {
         subfolderPaths = readDirectory(filepath, true);
       }
-      folderPaths.push({ path: file, subfolders :  subfolderPaths});
+      folderPaths.push({ path: file, subfolders: subfolderPaths });
     } else {
       filePaths.push({ path: file, size: stats.size, abspath: filepath });
     }
@@ -712,7 +710,6 @@ function readDirectory(directory, append = false) {
     folders: folderPaths,
   };
 }
-
 
 function readDirectories(directory) {
   var filePaths = [];
@@ -724,8 +721,8 @@ function readDirectories(directory) {
     if (fs.isDirectory(filepath)) {
       var subfolderPaths = {};
       subfolderPaths = readDirectories(filepath);
-      folderPaths.push({ path: file, subfolders :  subfolderPaths});
-    } 
+      folderPaths.push({ path: file, subfolders: subfolderPaths });
+    }
   });
   return {
     folders: folderPaths,
@@ -735,105 +732,108 @@ function readDirectories(directory) {
 ipcMain.on("downloadall", (_, options) => {
   var mediadbUrl = getMediaDbUrl(options["mediadb"]);
   var categorypath = options["categorypath"];
-  var downloadallurl = mediadbUrl + "/services/module/asset/entity/pullfolderlist.json";
-  const response =  axios.post(downloadallurl,   
-    {
-      categorypath: categorypath
-    },
-    {
-      headers: options["headers"],
-    }
-  ).then(function (res) {
-    if(res.data !== undefined) 
-    {
-      var category = res.data.tree;
-      downloadfolder(categorypath, category, options["headers"], category, options["mediadb"]);
-    }
-  })
-  .catch(function (error) {
-    console.log("Error loading: " + downloadallurl);
-    console.log(error);
-  });;
+  var downloadallurl =
+    mediadbUrl + "/services/module/asset/entity/pullfolderlist.json";
+  const response = axios
+    .post(
+      downloadallurl,
+      {
+        categorypath: categorypath,
+      },
+      {
+        headers: options["headers"],
+      }
+    )
+    .then(function (res) {
+      if (res.data !== undefined) {
+        var category = res.data.tree;
+        downloadfolder(
+          categorypath,
+          category,
+          options["headers"],
+          category,
+          options["mediadb"]
+        );
+      }
+    })
+    .catch(function (error) {
+      console.log("Error loading: " + downloadallurl);
+      console.log(error);
+    });
 });
 
-
-downloadfolder = async function(categorypath, category, headers, mediadb) {
-
+downloadfolder = async function (categorypath, category, headers, mediadb) {
   var fetchpath = userHomePath + "/eMedia/" + categorypath;
   var data = {};
-  
+
   if (fs.existsSync(fetchpath)) {
     data = readDirectory(fetchpath, true);
   }
   data.categorypath = categorypath;
-  
-  var mediadbUrl = getMediaDbUrl(mediadb);
-  var downloadfolderurl = mediadbUrl + "/services/module/asset/entity/pullpendingfiles.json";
 
-  const response = await axios.post(
-    downloadfolderurl,    
-    data,
-    {
+  var mediadbUrl = getMediaDbUrl(mediadb);
+  var downloadfolderurl =
+    mediadbUrl + "/services/module/asset/entity/pullpendingfiles.json";
+
+  const response = await axios
+    .post(downloadfolderurl, data, {
       headers: headers,
-    }
-  ).then(function (res) {
-    if(res.data !== undefined) 
-    {
-      var folderfiles = res.data.files;
-      if(folderfiles !== undefined) 
-      {
-        folderfiles.forEach(item => {
+    })
+    .then(function (res) {
+      if (res.data !== undefined) {
+        var folderfiles = res.data.files;
+        if (folderfiles !== undefined) {
+          folderfiles.forEach((item) => {
             var file = {
               itemexportname: categorypath + "/" + item.path,
               itemdownloadurl: item.url,
               categorypath: categorypath,
             };
             var assetid = item.id;
-            fetchfilesdownload( assetid, file, headers );
-
+            fetchfilesdownload(assetid, file, headers);
           });
         }
-    }
-    else {
-      console.log("No Data: " + categorypath + " - " +headers +" - "+ category)
-      //console.log(res);
-    }
-  })
-  .catch(function (error) {
-    console.log("Error on downloadfolder: " + categorypath + " - " +headers +" - "+ category)
-   // console.log(error);
-  });;
+      } else {
+        console.log(
+          "No Data: " + categorypath + " - " + headers + " - " + category
+        );
+        //console.log(res);
+      }
+    })
+    .catch(function (error) {
+      console.log(
+        "Error on downloadfolder: " +
+          categorypath +
+          " - " +
+          headers +
+          " - " +
+          category
+      );
+      // console.log(error);
+    });
 
-  if(category.children !== undefined)  {
-    category.children.forEach(item => {
+  if (category.children !== undefined) {
+    category.children.forEach((item) => {
       var childcategory = item;
       console.log("Fetching folder: " + childcategory.path);
       downloadfolder(childcategory.path, childcategory, headers, mediadb);
     });
   }
-  };
+};
 
-
-
-
-  
 function getMediaDbUrl(mediadbappid) {
   var mediadburl = store.get("mediadburl");
   if (!mediadburl) {
     const parsedUrl = url.parse(store.get("homeUrl"), true);
-    if(parsedUrl.protocol !== undefined && parsedUrl.host !== undefined)
-    {
-      mediadburl = parsedUrl.protocol + "//" + parsedUrl.host + "/" + mediadbappid;
+    if (parsedUrl.protocol !== undefined && parsedUrl.host !== undefined) {
+      mediadburl =
+        parsedUrl.protocol + "//" + parsedUrl.host + "/" + mediadbappid;
       console.log("mediadburl set to: " + mediadburl);
       store.set("mediadburl", mediadburl);
     }
   }
   return mediadburl;
 }
-  
-
-
-  
 
 /*
 readirectory recursibly 
@@ -859,7 +859,6 @@ ipcMain.on("fetchFiles", (_, options) => {
   });
 });
 
-
 ipcMain.on("fetchFilesPush", (_, options) => {
   var fetchpath = userHomePath + "/eMedia/" + options["categorypath"];
   var data = {};
@@ -867,7 +866,7 @@ ipcMain.on("fetchFilesPush", (_, options) => {
     data = readDirectory(fetchpath, true);
   }
   data.filedownloadpath = fetchpath;
-  console.log("fetchFiles push:")
+  console.log("fetchFiles push:");
   console.log(data);
   mainWindow.webContents.send("files-fetched-push", {
     ...options,
@@ -888,7 +887,6 @@ ipcMain.on("fetchFoldersPush", (_, options) => {
     ...data,
   });
 });
-
 
 ipcMain.on("openFolder", (_, options) => {
   openFolder(options["path"]);
@@ -913,7 +911,7 @@ ipcMain.on("fetchfilesupload", async (event, { assetid, file, headers }) => {
   const items = {
     downloadItemId: assetid,
     downloadPath:
-    parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
+      parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
     donwloadFilePath: file,
     localFolderPath: userHomePath + "/eMedia/" + file.categorypath,
     header: headers,
@@ -986,10 +984,10 @@ function fetchfilesdownload(assetid, file, headers) {
 
       mainWindow.webContents.send("download-asset-complete", {
         categorypath: file.categorypath,
-        assetid: file.assetid
+        assetid: file.assetid,
       });
 
-      console.log("Downloaded: " + filePath); 
+      console.log("Downloaded: " + filePath);
     },
     onError: (err) => {
       //mainWindow.webContents.send(`download-error-${orderitemid}`, err);
@@ -1125,7 +1123,11 @@ class DownloadManager {
   }
 
   processQueue() {
-    console.log(this.currentDownloads + " current downloadas of " + this.downloadQueue.length);
+    console.log(
+      this.currentDownloads +
+        " current downloadas of " +
+        this.downloadQueue.length
+    );
     if (
       this.currentDownloads < this.maxConcurrentDownloads &&
       this.downloadQueue.length > 0 &&
@@ -1532,8 +1534,6 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
   downloadManager.downloadFile(items);
 });
 
-
-
 // -------- Upload -------
 
 class UploadManager {
@@ -1559,9 +1559,9 @@ class UploadManager {
     onError,
   }) {
     const formData = new FormData();
-    
+
     formData.append("jsonrequest", JSON.stringify(jsonData));
-    formData.append("file",  fs.createReadStream(filePath));
+    formData.append("file", fs.createReadStream(filePath));
 
     const uploadPromise = this.createUploadPromise(
       uploadItemId,
@@ -1598,7 +1598,8 @@ class UploadManager {
           const response = await axios.post(
             parsedUrl.protocol +
               "//" +
-              parsedUrl.host + "/mediadb/services/module/asset/create",
+              parsedUrl.host +
+              "/mediadb/services/module/asset/create",
             formData,
             {
               headers: headers,
@@ -1719,48 +1720,45 @@ const uploadManager = new UploadManager(mainWindow);
  */
 
 // Listen for the "start-upload" event from the renderer process
-ipcMain.on("start-upload",  async (event, options) => {
-    try {
-      // Initiate the upload process using the upload manager
-      const uploadItemId = options["itemid"]
-      const item = {
-        uploadItemId: uploadItemId,
-        headers: options["headers"],
-        jsonData: options,
-        filePath: options["abspath"],
-        mediadb: options["mediadb"],
-        onStarted: () => {
-          // Send an event to the renderer process indicating upload started
-          mainWindow.webContents.send(`upload-started-${uploadItemId}`);
-        },
-        onCancel: () => {
-          // Send an event to the renderer process indicating upload cancelled
-          mainWindow.webContents.send(`upload-cancelled-${uploadItemId}`);
-        },
-        onProgress: (progress) => {
-          // Send an event to the renderer process with upload progress information
-          mainWindow.webContents.send(`upload-progress-${uploadItemId}`, {
-            progress,
-          });
-        },
-        onCompleted: (data) => {
-          // Send an event to the renderer process with upload completion data
-          mainWindow.webContents.send(`upload-completed-${uploadItemId}`, data);
-        },
-        onError: (err) => {
-          // Send an event to the renderer process with upload error information
-          mainWindow.webContents.send(`upload-error-${uploadItemId}`, err);
-        }
-      };
-      await uploadManager.uploadFile(item);
-        
-      
-    } catch (error) {
-      console.error("Error during upload:", error);
-      // Handle upload errors appropriately (e.g., send error message to renderer)
-    }
+ipcMain.on("start-upload", async (event, options) => {
+  try {
+    // Initiate the upload process using the upload manager
+    const uploadItemId = options["itemid"];
+    const item = {
+      uploadItemId: uploadItemId,
+      headers: options["headers"],
+      jsonData: options,
+      filePath: options["abspath"],
+      mediadb: options["mediadb"],
+      onStarted: () => {
+        // Send an event to the renderer process indicating upload started
+        mainWindow.webContents.send(`upload-started-${uploadItemId}`);
+      },
+      onCancel: () => {
+        // Send an event to the renderer process indicating upload cancelled
+        mainWindow.webContents.send(`upload-cancelled-${uploadItemId}`);
+      },
+      onProgress: (progress) => {
+        // Send an event to the renderer process with upload progress information
+        mainWindow.webContents.send(`upload-progress-${uploadItemId}`, {
+          progress,
+        });
+      },
+      onCompleted: (data) => {
+        // Send an event to the renderer process with upload completion data
+        mainWindow.webContents.send(`upload-completed-${uploadItemId}`, data);
+      },
+      onError: (err) => {
+        // Send an event to the renderer process with upload error information
+        mainWindow.webContents.send(`upload-error-${uploadItemId}`, err);
+      },
+    };
+    await uploadManager.uploadFile(item);
+  } catch (error) {
+    console.error("Error during upload:", error);
+    // Handle upload errors appropriately (e.g., send error message to renderer)
   }
-);
+});
 
 // Listen for the "cancel-upload" event from the renderer process
 ipcMain.on("cancel-upload", (event, { uploadItemId }) => {

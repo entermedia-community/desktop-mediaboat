@@ -387,6 +387,8 @@ function DrawTray(mainWin) {
   this.tray.setContextMenu(contextMenu);
 }
 
+//Include all Workspace Functions
+/*
 function UpdateTray(mainWin, workspaces) {
   newTrayMenu = [];
   newTrayMenu.push({
@@ -408,8 +410,6 @@ function UpdateTray(mainWin, workspaces) {
   DrawTray();
 }
 
-//Include all Workspace Functions
-/*
 ipcMain.on("uploadFiles", (event, options) => {
   console.log("uploadFiles called", options);
   let inSourcepath = options["sourcepath"];
@@ -474,7 +474,7 @@ function startFilesUpload(filePaths, inSourcepath, inMediadbUrl, options) {
     }
   );
 }
-*/
+
 function loopFiles(filePaths, savingPath, inMediadbUrl) {
   filePaths.forEach(function (filename) {
     const file = fs.createReadStream(filename);
@@ -493,7 +493,7 @@ function loopFiles(filePaths, savingPath, inMediadbUrl) {
     //filecount++;
   });
 }
-
+*/
 ipcMain.on("uploadFolder", (event, options) => {
   console.log("uploadFolder called", options);
 
@@ -760,8 +760,8 @@ ipcMain.on("downloadall", (_, options) => {
           await downloadfolder(
             categorypath,
             category,
+            category.children,
             options["headers"],
-            category,
             options["mediadb"]
           );
         }
@@ -774,20 +774,83 @@ ipcMain.on("downloadall", (_, options) => {
     });
 });
 
-downloadfolder = async function (categorypath, category, headers, mediadb) {
+class DownloadCounter extends EventEmitter {
+  constructor() {
+    super();
+    this.totalDownloads = 0;
+    this.completedDownloads = 0;
+  }
+
+  setTotal(count) {
+    this.totalDownloads = count;
+    this.completedDownloads = 0;
+    if (count === 0) {
+      this.emit("completed");
+    }
+  }
+
+  incrementCompleted() {
+    this.completedDownloads++;
+    if (this.completedDownloads >= this.totalDownloads) {
+      this.emit("completed");
+      this.completedDownloads = 0;
+      this.totalDownloads = 0;
+    }
+  }
+}
+
+const downloadCounter = new DownloadCounter();
+
+// const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)); // test
+
+const downloadfolder = async function (
+  categorypath,
+  category,
+  categoryChildren,
+  headers,
+  mediadb,
+  sequence = 0
+) {
   var fetchpath = userHomePath + "/eMedia/" + categorypath;
   var data = {};
 
   if (fs.existsSync(fetchpath)) {
     data = readDirectory(fetchpath, true);
   }
+
   data.categorypath = categorypath;
 
   var mediadbUrl = getMediaDbUrl(mediadb);
   var downloadfolderurl =
     mediadbUrl + "/services/module/asset/entity/pullpendingfiles.json";
 
-  const response = await axios
+  const startNextDownload = async () => {
+    if (categoryChildren !== undefined && categoryChildren.length > sequence) {
+      var childcategory = categoryChildren[sequence];
+      mainWindow.webContents.send("download-all-next", {
+        categorypath: childcategory.path,
+      });
+      sequence++;
+      // await sleep(3000);
+      // console.log("Starting------ ", childcategory.path);
+      await downloadfolder(
+        childcategory.path,
+        childcategory,
+        categoryChildren,
+        headers,
+        mediadb,
+        sequence
+      );
+    } else {
+      downloadCounter.removeAllListeners("completed");
+      mainWindow.webContents.send("download-all-complete");
+    }
+  };
+  if (sequence === 0) {
+    downloadCounter.on("completed", startNextDownload);
+  }
+
+  await axios
     .post(downloadfolderurl, data, {
       headers: headers,
     })
@@ -795,6 +858,7 @@ downloadfolder = async function (categorypath, category, headers, mediadb) {
       if (res.data !== undefined) {
         var folderfiles = res.data.files;
         if (folderfiles !== undefined) {
+          downloadCounter.setTotal(folderfiles.length);
           folderfiles.forEach((item) => {
             var file = {
               itemexportname: categorypath + "/" + item.path,
@@ -802,17 +866,18 @@ downloadfolder = async function (categorypath, category, headers, mediadb) {
               categorypath: categorypath,
             };
             var assetid = item.id;
-            fetchfilesdownload(assetid, file, headers);
+            console.log("Downloading: " + file.itemexportname);
+            fetchfilesdownload(assetid, file, headers, true);
           });
+        } else {
+          throw new Error("No files found");
         }
       } else {
-        console.log(
-          "No Data: " + categorypath + " - " + headers + " - " + category
-        );
-        //console.log(res);
+        throw new Error("No data found");
       }
     })
-    .catch(function (error) {
+    .catch(function () {
+      downloadCounter.setTotal(0);
       console.log(
         "Error on downloadfolder: " +
           categorypath +
@@ -821,16 +886,7 @@ downloadfolder = async function (categorypath, category, headers, mediadb) {
           " - " +
           category
       );
-      // console.log(error);
     });
-
-  if (category.children !== undefined) {
-    category.children.forEach((item) => {
-      var childcategory = item;
-      console.log("Fetching folder: " + childcategory.path);
-      downloadfolder(childcategory.path, childcategory, headers, mediadb);
-    });
-  }
 };
 
 function getMediaDbUrl(mediadbappid) {
@@ -966,7 +1022,7 @@ ipcMain.on("fetchfilesdownload", async (event, { assetid, file, headers }) => {
   fetchfilesdownload(assetid, file, headers);
 });
 
-function fetchfilesdownload(assetid, file, headers) {
+function fetchfilesdownload(assetid, file, headers, batchMode = false) {
   var parsedUrl = url.parse(store.get("homeUrl"), true);
 
   const items = {
@@ -1002,7 +1058,10 @@ function fetchfilesdownload(assetid, file, headers) {
         assetid: file.assetid,
       });
 
-      console.log("Downloaded: " + filePath);
+      // console.log("Downloaded: " + filePath);
+      if (batchMode) {
+        downloadCounter.incrementCompleted();
+      }
     },
     onError: (err) => {
       //mainWindow.webContents.send(`download-error-${orderitemid}`, err);
@@ -1138,11 +1197,11 @@ class DownloadManager {
   }
 
   processQueue() {
-    console.log(
-      this.currentDownloads +
-        " current downloadas of " +
-        this.downloadQueue.length
-    );
+    // console.log(
+    //   this.currentDownloads +
+    //     " current downloads of " +
+    //     this.downloadQueue.length
+    // );
     if (
       this.currentDownloads < this.maxConcurrentDownloads &&
       this.downloadQueue.length > 0 &&

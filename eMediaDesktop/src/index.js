@@ -25,7 +25,7 @@ const axios = require("axios");
 const extName = require("ext-name");
 // const { exec } = require("child_process");
 
-if (process.env.NODE_ENV === "development") {
+if (process.env.NODE_ENV === "developmentX") {
   try {
     require("electron-reloader")(module, {
       ignore: ["dist", "Activity", "build", "asset"],
@@ -218,6 +218,11 @@ ipcMain.on("setHomeUrl", (event, url) => {
   store.set("homeUrl", url);
   store.set("mediadburl", "");
   openWorkspace(url);
+});
+
+var connectionOptions = {};
+ipcMain.on("setConnectionOptions", (_, options) => {
+  connectionOptions = options;
 });
 
 function setMainMenu(mainWindow) {
@@ -739,7 +744,7 @@ function readDirectories(directory) {
 }
 
 ipcMain.on("downloadall", (_, options) => {
-  var mediadbUrl = getMediaDbUrl(options["mediadb"]);
+  var mediadbUrl = getMediaDbUrl();
   var categorypath = options["categorypath"];
   var downloadallurl =
     mediadbUrl + "/services/module/asset/entity/pullfolderlist.json";
@@ -750,20 +755,14 @@ ipcMain.on("downloadall", (_, options) => {
         categorypath: categorypath,
       },
       {
-        headers: options["headers"],
+        headers: connectionOptions.headers,
       }
     )
     .then(function (res) {
       if (res.data !== undefined) {
-        var category = res.data.tree;
+        var categories = res.data.categories;
         async function initDownload() {
-          await downloadfolder(
-            categorypath,
-            category,
-            category.children,
-            options["headers"],
-            options["mediadb"]
-          );
+          await downloadFolder(categories, 0, options["scanOnly"]);
         }
         initDownload();
       }
@@ -803,72 +802,82 @@ const downloadCounter = new DownloadCounter();
 
 // const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)); // test
 
-const downloadfolder = async function (
-  categorypath,
-  category,
-  categoryChildren,
-  headers,
-  mediadb,
-  sequence = 0
+const downloadFolder = async function (
+  categories,
+  index = 0,
+  scanOnly = false
 ) {
-  var fetchpath = userHomePath + "/eMedia/" + categorypath;
+  var category = categories[index];
+
+  var fetchpath = userHomePath + "/eMedia/" + category.path;
   var data = {};
 
   if (fs.existsSync(fetchpath)) {
     data = readDirectory(fetchpath, true);
   }
 
-  data.categorypath = categorypath;
-
-  var mediadbUrl = getMediaDbUrl(mediadb);
-  var downloadfolderurl =
-    mediadbUrl + "/services/module/asset/entity/pullpendingfiles.json";
+  data.categorypath = category.path;
 
   const startNextDownload = async () => {
-    if (categoryChildren !== undefined && categoryChildren.length > sequence) {
-      var childcategory = categoryChildren[sequence];
-      mainWindow.webContents.send("download-all-next", {
-        categorypath: childcategory.path,
+    if (categories.length > index) {
+      index++;
+      mainWindow.webContents.send("download-next", {
+        index: index,
       });
-      sequence++;
       // await sleep(3000);
-      // console.log("Starting------ ", childcategory.path);
-      await downloadfolder(
-        childcategory.path,
-        childcategory,
-        categoryChildren,
-        headers,
-        mediadb,
-        sequence
-      );
+      await downloadFolder(categories, index, false);
     } else {
       downloadCounter.removeAllListeners("completed");
       mainWindow.webContents.send("download-all-complete");
     }
   };
-  if (sequence === 0) {
+  if (index === 0 && !scanOnly) {
     downloadCounter.on("completed", startNextDownload);
   }
 
+  var mediadbUrl = getMediaDbUrl();
+  var downloadfolderurl =
+    mediadbUrl + "/services/module/asset/entity/pullpendingfiles.json";
   await axios
     .post(downloadfolderurl, data, {
-      headers: headers,
+      headers: connectionOptions.headers,
     })
     .then(function (res) {
       if (res.data !== undefined) {
         var folderfiles = res.data.files;
         if (folderfiles !== undefined) {
-          downloadCounter.setTotal(folderfiles.length);
-          folderfiles.forEach((item) => {
-            var file = {
-              itemexportname: categorypath + "/" + item.path,
-              itemdownloadurl: item.url,
-              categorypath: categorypath,
-            };
-            var assetid = item.id;
-            console.log("Downloading: " + file.itemexportname);
-            fetchfilesdownload(assetid, file, headers, true);
-          });
+          if (!scanOnly) {
+            downloadCounter.setTotal(folderfiles.length);
+          }
+          if (!scanOnly) {
+            folderfiles.forEach((item) => {
+              var file = {
+                itemexportname: category.path + "/" + item.path,
+                itemdownloadurl: item.url,
+                categorypath: category.path,
+              };
+              var assetid = item.id;
+              console.log("Downloading: " + file.itemexportname);
+              fetchfilesdownload(assetid, file, true);
+            });
+          } else {
+            //?!: TODO: track extra files
+            var folderDownloadSize = 0;
+            folderfiles.forEach((item) => {
+              folderDownloadSize += parseInt(item.size);
+            });
+            mainWindow.webContents.send("scan-progress", {
+              ...category,
+              downloadSize: folderDownloadSize,
+              downloadCount: folderfiles.length,
+            });
+            index++;
+            if (categories.length > index) {
+              downloadFolder(categories, index, true);
+            } else {
+              mainWindow.webContents.send("scan-complete");
+            }
+          }
         } else {
           throw new Error("No files found");
         }
@@ -879,8 +888,8 @@ const downloadfolder = async function (
     .catch(function () {
       downloadCounter.setTotal(0);
       console.log(
-        "Error on downloadfolder: " +
-          categorypath +
+        "Error on downloadFolder: " +
+          category.path +
           " - " +
           headers +
           " - " +
@@ -889,13 +898,17 @@ const downloadfolder = async function (
     });
 };
 
-function getMediaDbUrl(mediadbappid) {
+function getMediaDbUrl() {
   var mediadburl = store.get("mediadburl");
   if (!mediadburl) {
     const parsedUrl = url.parse(store.get("homeUrl"), true);
     if (parsedUrl.protocol !== undefined && parsedUrl.host !== undefined) {
       mediadburl =
-        parsedUrl.protocol + "//" + parsedUrl.host + "/" + mediadbappid;
+        parsedUrl.protocol +
+        "//" +
+        parsedUrl.host +
+        "/" +
+        connectionOptions.mediadb;
       console.log("mediadburl set to: " + mediadburl);
       store.set("mediadburl", mediadburl);
     }
@@ -1018,11 +1031,11 @@ ipcMain.on("fetchfilesupload", async (event, { assetid, file, headers }) => {
   downloadManager.downloadFile(items);
 });
 
-ipcMain.on("fetchfilesdownload", async (event, { assetid, file, headers }) => {
-  fetchfilesdownload(assetid, file, headers);
+ipcMain.on("fetchfilesdownload", async (_, { assetid, file }) => {
+  fetchfilesdownload(assetid, file);
 });
 
-function fetchfilesdownload(assetid, file, headers, batchMode = false) {
+function fetchfilesdownload(assetid, file, batchMode = false) {
   var parsedUrl = url.parse(store.get("homeUrl"), true);
 
   const items = {
@@ -1031,7 +1044,7 @@ function fetchfilesdownload(assetid, file, headers, batchMode = false) {
       parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
     donwloadFilePath: file,
     localFolderPath: userHomePath + "/eMedia/" + file.categorypath,
-    header: headers,
+    header: connectionOptions.headers,
     onStarted: () => {
       //mainWindow.webContents.send(`download-started-${orderitemid}`);
     },

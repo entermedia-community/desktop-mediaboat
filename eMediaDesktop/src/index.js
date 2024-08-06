@@ -70,6 +70,17 @@ const createWindow = () => {
     },
   });
 
+  // ipcMain.handle("dialog:openDirectory", async () => {
+  //   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+  //     properties: ["openDirectory"],
+  //   });
+  //   if (canceled) {
+  //     return;
+  //   } else {
+  //     return filePaths[0];
+  //   }
+  // });
+
   var homeUrl = store.get("homeUrl");
   app.allowRendererProcessReuse = false;
   //console.log("Searched " + homeUrl)
@@ -732,7 +743,8 @@ function readDirectories(directory) {
   files.forEach((file) => {
     if (file.startsWith(".")) return;
     let filepath = path.join(directory, file);
-    if (fs.isDirectory(filepath)) {
+    let stats = fs.statSync(filepath);
+    if (stats.isDirectory(filepath)) {
       var subfolderPaths = {};
       subfolderPaths = readDirectories(filepath);
       folderPaths.push({ path: file, subfolders: subfolderPaths });
@@ -743,7 +755,7 @@ function readDirectories(directory) {
   };
 }
 
-ipcMain.on("downloadall", (_, options) => {
+ipcMain.on("downloadAll", (_, options) => {
   var mediadbUrl = getMediaDbUrl();
   var categorypath = options["categorypath"];
   var downloadallurl =
@@ -761,10 +773,9 @@ ipcMain.on("downloadall", (_, options) => {
     .then(function (res) {
       if (res.data !== undefined) {
         var categories = res.data.categories;
-        async function initDownload() {
-          await downloadFolder(categories, 0, options["scanOnly"]);
+        if (categories.length > 0) {
+          downloadFolder(categories, 0, options["scanOnly"]);
         }
-        initDownload();
       }
     })
     .catch(function (error) {
@@ -807,6 +818,16 @@ const downloadFolder = async function (
   index = 0,
   scanOnly = false
 ) {
+  console.log({ categories, index, scanOnly });
+  if (index >= categories.length) {
+    if (scanOnly) {
+      mainWindow.webContents.send("scan-complete");
+    } else {
+      mainWindow.webContents.send("download-all-complete");
+      downloadCounter.removeAllListeners("completed");
+    }
+    return;
+  }
   var category = categories[index];
 
   var fetchpath = userHomePath + "/eMedia/" + category.path;
@@ -821,14 +842,14 @@ const downloadFolder = async function (
   const startNextDownload = async () => {
     if (categories.length > index) {
       index++;
+      // await sleep(3000);
+      await downloadFolder(categories, index, false);
       mainWindow.webContents.send("download-next", {
         index: index,
       });
-      // await sleep(3000);
-      await downloadFolder(categories, index, false);
     } else {
-      downloadCounter.removeAllListeners("completed");
       mainWindow.webContents.send("download-all-complete");
+      downloadCounter.removeAllListeners("completed");
     }
   };
   if (index === 0 && !scanOnly) {
@@ -844,13 +865,14 @@ const downloadFolder = async function (
     })
     .then(function (res) {
       if (res.data !== undefined) {
-        var folderfiles = res.data.files;
-        if (folderfiles !== undefined) {
+        var filestodownload = res.data.filestodownload;
+        var filestoupload = res.data.filestoupload;
+        if (filestodownload !== undefined) {
           if (!scanOnly) {
-            downloadCounter.setTotal(folderfiles.length);
+            downloadCounter.setTotal(filestodownload.length);
           }
           if (!scanOnly) {
-            folderfiles.forEach((item) => {
+            filestodownload.forEach((item) => {
               var file = {
                 itemexportname: category.path + "/" + item.path,
                 itemdownloadurl: item.url,
@@ -863,13 +885,19 @@ const downloadFolder = async function (
           } else {
             //?!: TODO: track extra files
             var folderDownloadSize = 0;
-            folderfiles.forEach((item) => {
+            filestodownload.forEach((item) => {
               folderDownloadSize += parseInt(item.size);
+            });
+            var folderUploadSize = 0;
+            filestoupload.forEach((item) => {
+              folderUploadSize += parseInt(item.size);
             });
             mainWindow.webContents.send("scan-progress", {
               ...category,
               downloadSize: folderDownloadSize,
-              downloadCount: folderfiles.length,
+              downloadCount: filestodownload.length,
+              uploadSize: folderUploadSize,
+              uploadCount: filestoupload.length,
             });
             index++;
             if (categories.length > index) {
@@ -887,14 +915,7 @@ const downloadFolder = async function (
     })
     .catch(function () {
       downloadCounter.setTotal(0);
-      console.log(
-        "Error on downloadFolder: " +
-          category.path +
-          " - " +
-          headers +
-          " - " +
-          category
-      );
+      console.log("Error on download Folder: " + category.path);
     });
 };
 
@@ -974,6 +995,20 @@ ipcMain.on("openFolder", (_, options) => {
     options["path"] = userHomePath + "/" + options["path"];
   }
   openFolder(options["path"]);
+});
+
+ipcMain.on("folderSelected", (_, options) => {
+  if (!options["currentPath"].startsWith(userHomePath)) {
+    options["currentPath"] = userHomePath + "/" + options["path"];
+  }
+
+  // mainWindow.selectAPI.selectFolder().then((result) => {
+  //   console.log(result);
+  //   mainWindow.webContents.send("folder-selected", {
+  //     previousPath: options["currentPath"],
+  //     currentPath: result,
+  //   });
+  // });
 });
 
 ipcMain.on("pickFolder", (_, options) => {

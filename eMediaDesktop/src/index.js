@@ -1011,6 +1011,20 @@ ipcMain.on("folderSelected", (_, options) => {
   // });
 });
 
+ipcMain.on("uploadAll", (_, options) => {
+  var categorypath = options["categorypath"];
+  fs.mkdir(
+    userHomePath + "/eMedia/Trash/" + categorypath,
+    { recursive: true },
+    (err) => {
+      if (err) {
+        return console.error(err);
+      }
+      console.log("Directory created successfully");
+    }
+  );
+});
+
 ipcMain.on("pickFolder", (_, options) => {
   var fetchpath = pickFolder();
   var data = {};

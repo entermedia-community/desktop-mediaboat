@@ -17,7 +17,7 @@ const FormData = require("form-data");
 // const computerName = os.hostname();
 const userHomePath = app.getPath("home");
 const Store = require("electron-store");
-var url = require("url");
+var URL = require("url");
 var querystring = require("querystring");
 var fs = require("fs");
 const { EventEmitter } = require("events");
@@ -205,7 +205,7 @@ function openWorkspacePicker(pickerURL) {
 }
 
 function openWorkspace(homeUrl) {
-  var parsedUrl = url.parse(homeUrl, true);
+  var parsedUrl = URL.parse(homeUrl, true);
   var qs_ = querystring.stringify(parsedUrl.query) + "desktop=true";
   var finalUrl = homeUrl.split("?").shift();
   finalUrl = finalUrl.trim() + "?" + qs_;
@@ -577,7 +577,7 @@ function startFolderUpload(
 }
 
 function submitForm(form, formurl, formCompleted) {
-  const q = url.parse(formurl, true);
+  const q = URL.parse(formurl, true);
   //entermediakey = "cristobalmd542602d7e0ba09a4e08c0a6234578650c08d0ba08d";
   console.log("submitForm Sending Form: " + formurl);
 
@@ -851,6 +851,9 @@ const downloadFolderRecursive = async function (
     }
   };
   if (index === 0 && !scanOnly) {
+    mainWindow.webContents.send("download-next", {
+      index: index,
+    });
     downloadCounter.on("completed", startNextDownload);
   }
 
@@ -864,9 +867,8 @@ const downloadFolderRecursive = async function (
 
   data.categorypath = category.path;
 
-  var mediadbUrl = getMediaDbUrl();
   var downloadfolderurl =
-    mediadbUrl + "/services/module/asset/entity/pullpendingfiles.json";
+    getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json";
   await axios
     .post(downloadfolderurl, data, {
       headers: connectionOptions.headers,
@@ -930,7 +932,7 @@ const downloadFolderRecursive = async function (
 function getMediaDbUrl() {
   var mediadburl = store.get("mediadburl");
   if (!mediadburl) {
-    const parsedUrl = url.parse(store.get("homeUrl"), true);
+    const parsedUrl = URL.parse(store.get("homeUrl"), true);
     if (parsedUrl.protocol !== undefined && parsedUrl.host !== undefined) {
       mediadburl =
         parsedUrl.protocol +
@@ -1019,50 +1021,224 @@ ipcMain.on("folderSelected", (_, options) => {
   // });
 });
 
+class UploadManager {
+  constructor(window_, maxConcurrentUploads = 4) {
+    this.uploads = new Map();
+    this.uploadQueue = [];
+    this.maxConcurrentUploads = maxConcurrentUploads;
+    this.currentUploads = 0;
+    this.totalUploadsCount = 0;
+    this.window = window_;
+  }
+
+  async uploadFile({
+    uploadItemId,
+    jsonData,
+    filePath,
+    onStarted,
+    onCancel,
+    onProgress,
+    onCompleted,
+    onError,
+  }) {
+    const formData = new FormData();
+
+    formData.append("jsonrequest", JSON.stringify(jsonData));
+    formData.append("file", fs.createReadStream(filePath));
+
+    const uploadPromise = this.createUploadPromise(uploadItemId, formData, {
+      onStarted,
+      onProgress,
+      onCancel,
+      onCompleted,
+      onError,
+    });
+
+    if (this.currentUploads < this.maxConcurrentUploads) {
+      this.currentUploads++;
+      uploadPromise.start();
+    } else {
+      this.uploadQueue.push(uploadPromise);
+    }
+    this.totalUploadsCount++;
+  }
+
+  createUploadPromise(uploadItemId, formData, callbacks) {
+    return {
+      start: async () => {
+        try {
+          if (typeof callbacks.onStarted === "function") {
+            callbacks.onStarted();
+          }
+
+          const response = await axios.post(
+            getMediaDbUrl() + "/services/module/asset/create",
+            formData,
+            {
+              headers: connectionOptions.headers,
+              onUploadProgress: (progressEvent) => {
+                const progress = Math.round(
+                  (progressEvent.loaded / progressEvent.total) * 100
+                );
+                if (typeof callbacks.onProgress === "function") {
+                  callbacks.onProgress(progress);
+                }
+              },
+            }
+          );
+
+          if (typeof callbacks.onCompleted === "function") {
+            callbacks.onCompleted(response.data);
+          }
+        } catch (error) {
+          console.log("catch:1096", error);
+          if (axios.isCancel(error)) {
+            if (typeof callbacks.onCancel === "function") {
+              callbacks.onCancel();
+            }
+          } else {
+            if (typeof callbacks.onError === "function") {
+              callbacks.onError(error);
+            }
+          }
+        } finally {
+          console.log("Finally upload promise");
+          this.currentUploads--;
+          this.totalUploadsCount--;
+          this.processQueue();
+        }
+      },
+      cancel: () => {
+        this.currentUploads--;
+        this.uploads.delete(uploadItemId);
+        if (typeof callbacks.onCancel === "function") {
+          callbacks.onCancel();
+        }
+      },
+    };
+  }
+
+  processQueue() {
+    if (
+      this.currentUploads < this.maxConcurrentUploads &&
+      this.uploadQueue.length > 0
+    ) {
+      const nextUpload = this.uploadQueue.shift();
+      this.currentUploads++;
+      nextUpload.start();
+    }
+  }
+
+  cancelUpload(uploadItemId) {
+    const upload = this.uploads.get(uploadItemId);
+    if (upload) {
+      upload.cancel();
+      this.uploads.delete(uploadItemId);
+    }
+  }
+}
+
+class UploadCounter extends EventEmitter {
+  constructor() {
+    super();
+    this.totalUploads = 0;
+    this.completedUploads = 0;
+  }
+
+  setTotal(count) {
+    this.totalUploads = count;
+    this.completedUploads = 0;
+    if (count === 0) {
+      this.emit("completed");
+    }
+  }
+
+  incrementCompleted() {
+    this.completedUploads++;
+    if (this.completedUploads >= this.totalUploads) {
+      this.emit("completed");
+      this.completedUploads = 0;
+      this.totalUploads = 0;
+    }
+  }
+}
+
 ipcMain.on("uploadAll", async (_, options) => {
   pullFolderList(options["categorypath"], uploadFilesRecursive);
 });
 
-function uploadFilesRecursive(categories, index = 0) {
+var batchUploadManager = new UploadManager(mainWindow);
+var uploadCounter = new UploadCounter();
+
+function batchUpload(id, filePath, options) {
+  batchUploadManager.uploadFile({
+    uploadItemId: id,
+    filePath: filePath,
+    jsonData: options,
+    onStarted: () => {},
+    onCancel: () => {},
+    onProgress: () => {},
+    onCompleted: () => {
+      uploadCounter.incrementCompleted();
+    },
+    onError: () => {
+      uploadCounter.incrementCompleted();
+    },
+  });
+}
+
+async function uploadFilesRecursive(categories, index = 0) {
   if (index >= categories.length) {
-    mainWindow.webContents.send("trash-complete");
+    mainWindow.webContents.send("upload-all-complete");
+    uploadCounter.removeAllListeners("completed");
     return;
+  }
+
+  const startNextUpload = async () => {
+    if (categories.length > index) {
+      index++;
+      await uploadFilesRecursive(categories, index);
+      mainWindow.webContents.send("upload-next", {
+        index: index,
+      });
+    } else {
+      mainWindow.webContents.send("upload-all-complete");
+      uploadCounter.removeAllListeners("completed");
+    }
+  };
+
+  if (index === 0) {
+    mainWindow.webContents.send("upload-next", {
+      index: index,
+    });
+    uploadCounter.on("completed", startNextUpload);
   }
 
   var category = categories[index];
   var fetchpath = userHomePath + "/eMedia/" + category.path;
-  var trashRoot = userHomePath + "/eMedia/_Trash/";
-  var data = {};
 
+  var data = {};
   if (fs.existsSync(fetchpath)) {
     data = readDirectory(fetchpath, true);
   }
-
   data.categorypath = category.path;
-
-  axios
+  await axios
     .post(
       getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json",
       data,
-      {
-        headers: connectionOptions.headers,
-      }
+      { headers: connectionOptions.headers }
     )
     .then(function (res) {
       if (res.data !== undefined) {
-        var filestodelete = res.data.filestoupload;
-        if (filestodelete) {
-          filestodelete.forEach((item) => {
-            if (!fs.existsSync(trashRoot + category.path)) {
-              fs.mkdirSync(trashRoot + category.path, { recursive: true });
-            }
-            var filepath = category.path + "/" + item.path;
-            if (fs.existsSync(trashRoot + filepath)) {
-              filepath = category.path + "/" + Date.now() + "_" + item.path;
-            }
-            fs.renameSync(fetchpath + "/" + item.path, trashRoot + filepath);
+        var filestoupload = res.data.filestoupload;
+        if (filestoupload !== undefined) {
+          uploadCounter.setTotal(filestoupload.length);
+          filestoupload.forEach((item, idx) => {
+            var filepath = fetchpath + "/" + item.path;
+            batchUpload(idx, filepath, {
+              sourcepath: category.path + "/" + item.path,
+            });
           });
-          trashFilesRecursive(categories, index + 1);
         } else {
           throw new Error("No files found");
         }
@@ -1070,9 +1246,10 @@ function uploadFilesRecursive(categories, index = 0) {
         throw new Error("No data found");
       }
     })
-    .catch(function () {
-      trashFilesRecursive(categories, index + 1);
-      console.log("Error on trashFilesRecursive: " + category.path);
+    .catch(function (e) {
+      uploadCounter.setTotal(0);
+      console.log("Error on uploadFilesRecursive: " + category.path);
+      console.log(e);
     });
 }
 
@@ -1146,8 +1323,8 @@ ipcMain.on("pickFolder", (_, options) => {
   });
 });
 
-ipcMain.on("fetchfilesupload", async (event, { assetid, file, headers }) => {
-  var parsedUrl = url.parse(store.get("homeUrl"), true);
+ipcMain.on("fetchfilesupload", async (event, { assetid, file }) => {
+  var parsedUrl = URL.parse(store.get("homeUrl"), true);
 
   const items = {
     downloadItemId: assetid,
@@ -1155,7 +1332,7 @@ ipcMain.on("fetchfilesupload", async (event, { assetid, file, headers }) => {
       parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
     donwloadFilePath: file,
     localFolderPath: userHomePath + "/eMedia/" + file.categorypath,
-    header: headers,
+    header: connectionOptions.headers,
     onStarted: () => {
       //mainWindow.webContents.send(`download-started-${orderitemid}`);
     },
@@ -1193,7 +1370,7 @@ ipcMain.on("fetchfilesdownload", async (_, { assetid, file }) => {
 });
 
 function fetchfilesdownload(assetid, file, batchMode = false) {
-  var parsedUrl = url.parse(store.get("homeUrl"), true);
+  var parsedUrl = URL.parse(store.get("homeUrl"), true);
 
   const items = {
     downloadItemId: assetid,
@@ -1742,7 +1919,7 @@ ipcMain.on("cancel-download", (event, { orderitemid }) => {
 });
 
 ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
-  var parsedUrl = url.parse(store.get("homeUrl"), true);
+  var parsedUrl = URL.parse(store.get("homeUrl"), true);
   const items = {
     downloadItemId: orderitemid,
     downloadPath:
@@ -1779,189 +1956,7 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
 });
 
 // -------- Upload -------
-
-class UploadManager {
-  constructor(window_, maxConcurrentUploads = 4) {
-    this.uploads = new Map();
-    this.uploadQueue = [];
-    this.maxConcurrentUploads = maxConcurrentUploads;
-    this.currentUploads = 0;
-    this.totalUploadsCount = 0;
-    this.window = window_;
-  }
-
-  async uploadFile({
-    uploadItemId,
-    headers,
-    jsonData,
-    filePath,
-    mediadb,
-    onStarted,
-    onCancel,
-    onProgress,
-    onCompleted,
-    onError,
-  }) {
-    const formData = new FormData();
-
-    formData.append("jsonrequest", JSON.stringify(jsonData));
-    formData.append("file", fs.createReadStream(filePath));
-
-    const uploadPromise = this.createUploadPromise(
-      uploadItemId,
-      headers,
-      formData,
-      mediadb,
-      {
-        onStarted,
-        onProgress,
-        onCancel,
-        onCompleted,
-        onError,
-      }
-    );
-
-    if (this.currentUploads < this.maxConcurrentUploads) {
-      this.currentUploads++;
-      uploadPromise.start();
-    } else {
-      this.uploadQueue.push(uploadPromise);
-    }
-    this.totalUploadsCount++;
-  }
-
-  createUploadPromise(uploadItemId, headers, formData, mediadb, callbacks) {
-    return {
-      start: async () => {
-        try {
-          if (typeof callbacks.onStarted === "function") {
-            callbacks.onStarted();
-          }
-          var parsedUrl = url.parse(store.get("homeUrl"), true);
-
-          const response = await axios.post(
-            parsedUrl.protocol +
-              "//" +
-              parsedUrl.host +
-              "/mediadb/services/module/asset/create",
-            formData,
-            {
-              headers: headers,
-              onUploadProgress: (progressEvent) => {
-                const progress = Math.round(
-                  (progressEvent.loaded / progressEvent.total) * 100
-                );
-                if (typeof callbacks.onProgress === "function") {
-                  callbacks.onProgress(progress);
-                }
-              },
-            }
-          );
-
-          if (typeof callbacks.onCompleted === "function") {
-            callbacks.onCompleted(response.data);
-          }
-        } catch (error) {
-          if (axios.isCancel(error)) {
-            if (typeof callbacks.onCancel === "function") {
-              callbacks.onCancel();
-            }
-          } else {
-            if (typeof callbacks.onError === "function") {
-              callbacks.onError(error);
-            }
-          }
-        } finally {
-          console.log("Finally upload promise");
-          this.currentUploads--;
-          this.totalUploadsCount--;
-          this.processQueue();
-        }
-      },
-      cancel: () => {
-        this.currentUploads--;
-        this.uploads.delete(uploadItemId);
-        if (typeof callbacks.onCancel === "function") {
-          callbacks.onCancel();
-        }
-      },
-    };
-  }
-
-  processQueue() {
-    if (
-      this.currentUploads < this.maxConcurrentUploads &&
-      this.uploadQueue.length > 0
-    ) {
-      const nextUpload = this.uploadQueue.shift();
-      this.currentUploads++;
-      nextUpload.start();
-    }
-  }
-
-  cancelUpload(uploadItemId) {
-    const upload = this.uploads.get(uploadItemId);
-    if (upload) {
-      upload.cancel();
-      this.uploads.delete(uploadItemId);
-    }
-  }
-}
-
 const uploadManager = new UploadManager(mainWindow);
-/**
- *
- *  // Function to initiate an upload from the renderer process
- *   function initiateUpload(uploadItemId, headers, jsonData, filePath) {
- *     // Send an IPC event to the main process with upload details
- *     mainWindow.webContents.send('start-upload', {
- *       uploadItemId,
- *       headers,
- *       jsonData,
- *       filePath,
- *     });
- *   }
- *
- *   // Function to handle upload progress updates received from the main process
- *   function handleUploadProgress(event, { uploadItemId, progress }) {
- *     // Update the UI element representing upload progress for the specific uploadItemId (e.g., progress bar)
- *     console.log(`Upload ${uploadItemId} progress: ${progress}`);
- *     // Replace with your specific UI framework logic to update the progress bar
- *     // document.getElementById(`upload-progress-${uploadItemId}`).value = progress;
- *   }
- *
- *   // Function to handle upload completion received from the main process
- *   function handleUploadCompleted(event, data) {
- *     console.log(`Upload completed:`, data);
- *     // Handle successful upload completion (e.g., display success message)
- *     // You might update UI or perform actions based on the received data
- *   }
- *
- *   // Function to handle upload cancellation received from the main process
- *   function handleUploadCancelled(event, { uploadItemId }) {
- *     console.log(`Upload ${uploadItemId} cancelled`);
- *     // Handle upload cancellation (e.g., display cancellation message)
- *     // You might reset UI elements related to the cancelled upload
- *   }
- *
- *   // Function to handle upload errors received from the main process
- *   function handleUploadError(event, error) {
- *     console.error('Upload error:', error);
- *     // Handle upload errors (e.g., display error message to the user)
- *   }
- *
- *   // Register listeners for IPC events from the main process
- *   ipcRenderer.on('upload-started-${uploadItemId}', () => {
- *     console.log(`Upload ${uploadItemId} started`);
- *     // You might update UI to indicate upload has started (e.g., show a loading indicator)
- *   });
- *
- *   ipcRenderer.on('upload-progress-${uploadItemId}', handleUploadProgress);
- *   ipcRenderer.on('upload-completed-${uploadItemId}', handleUploadCompleted);
- *   ipcRenderer.on('upload-cancelled-${uploadItemId}', handleUploadCancelled);
- *   ipcRenderer.on('upload-error-${uploadItemId}', handleUploadError);
- *
- */
 
 // Listen for the "start-upload" event from the renderer process
 ipcMain.on("start-upload", async (event, options) => {
@@ -1970,10 +1965,8 @@ ipcMain.on("start-upload", async (event, options) => {
     const uploadItemId = options["itemid"];
     const item = {
       uploadItemId: uploadItemId,
-      headers: options["headers"],
       jsonData: options,
       filePath: options["abspath"],
-      mediadb: options["mediadb"],
       onStarted: () => {
         // Send an event to the renderer process indicating upload started
         mainWindow.webContents.send(`upload-started-${uploadItemId}`);

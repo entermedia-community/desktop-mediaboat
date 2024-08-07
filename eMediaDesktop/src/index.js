@@ -818,7 +818,6 @@ const downloadFolder = async function (
   index = 0,
   scanOnly = false
 ) {
-  console.log({ categories, index, scanOnly });
   if (index >= categories.length) {
     if (scanOnly) {
       mainWindow.webContents.send("scan-complete");
@@ -828,16 +827,6 @@ const downloadFolder = async function (
     }
     return;
   }
-  var category = categories[index];
-
-  var fetchpath = userHomePath + "/eMedia/" + category.path;
-  var data = {};
-
-  if (fs.existsSync(fetchpath)) {
-    data = readDirectory(fetchpath, true);
-  }
-
-  data.categorypath = category.path;
 
   const startNextDownload = async () => {
     if (categories.length > index) {
@@ -855,6 +844,16 @@ const downloadFolder = async function (
   if (index === 0 && !scanOnly) {
     downloadCounter.on("completed", startNextDownload);
   }
+
+  var category = categories[index];
+  var fetchpath = userHomePath + "/eMedia/" + category.path;
+  var data = {};
+
+  if (fs.existsSync(fetchpath)) {
+    data = readDirectory(fetchpath, true);
+  }
+
+  data.categorypath = category.path;
 
   var mediadbUrl = getMediaDbUrl();
   var downloadfolderurl =
@@ -1011,19 +1010,83 @@ ipcMain.on("folderSelected", (_, options) => {
   // });
 });
 
-ipcMain.on("uploadAll", (_, options) => {
-  var categorypath = options["categorypath"];
-  fs.mkdir(
-    userHomePath + "/eMedia/Trash/" + categorypath,
-    { recursive: true },
-    (err) => {
-      if (err) {
-        return console.error(err);
+ipcMain.on("trashExtraFiles", async (_, options) => {
+  axios
+    .post(
+      getMediaDbUrl() + "/services/module/asset/entity/pullfolderlist.json",
+      {
+        categorypath: options["categorypath"],
+      },
+      {
+        headers: connectionOptions.headers,
       }
-      console.log("Directory created successfully");
-    }
-  );
+    )
+    .then(function (res) {
+      if (res.data !== undefined) {
+        var categories = res.data.categories;
+        if (categories && categories.length > 0) {
+          trashFilesRecursive(categories);
+        }
+      }
+    })
+    .catch(function (error) {
+      console.log("Error loading: " + downloadallurl);
+      console.log(error);
+    });
 });
+
+function trashFilesRecursive(categories, index = 0) {
+  if (index >= categories.length) {
+    mainWindow.webContents.send("trash-complete");
+    return;
+  }
+
+  var category = categories[index];
+  var fetchpath = userHomePath + "/eMedia/" + category.path;
+  var trashRoot = userHomePath + "/eMedia/_Trash/";
+  var data = {};
+
+  if (fs.existsSync(fetchpath)) {
+    data = readDirectory(fetchpath, true);
+  }
+
+  data.categorypath = category.path;
+
+  axios
+    .post(
+      getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json",
+      data,
+      {
+        headers: connectionOptions.headers,
+      }
+    )
+    .then(function (res) {
+      if (res.data !== undefined) {
+        var filestodelete = res.data.filestoupload;
+        if (filestodelete) {
+          filestodelete.forEach((item) => {
+            if (!fs.existsSync(trashRoot + category.path)) {
+              fs.mkdirSync(trashRoot + category.path, { recursive: true });
+            }
+            var filepath = category.path + "/" + item.path;
+            if (fs.existsSync(trashRoot + filepath)) {
+              filepath = category.path + "/" + Date.now() + "_" + item.path;
+            }
+            fs.renameSync(fetchpath + "/" + item.path, trashRoot + filepath);
+          });
+          trashFilesRecursive(categories, index + 1);
+        } else {
+          throw new Error("No files found");
+        }
+      } else {
+        throw new Error("No data found");
+      }
+    })
+    .catch(function () {
+      trashFilesRecursive(categories, index + 1);
+      console.log("Error on trashFilesRecursive: " + category.path);
+    });
+}
 
 ipcMain.on("pickFolder", (_, options) => {
   var fetchpath = pickFolder();

@@ -755,14 +755,12 @@ function readDirectories(directory) {
   };
 }
 
-ipcMain.on("downloadAll", (_, options) => {
-  var mediadbUrl = getMediaDbUrl();
-  var categorypath = options["categorypath"];
-  var downloadallurl =
-    mediadbUrl + "/services/module/asset/entity/pullfolderlist.json";
+async function pullFolderList(categorypath, callback, args = null) {
+  var url =
+    getMediaDbUrl() + "/services/module/asset/entity/pullfolderlist.json";
   axios
     .post(
-      downloadallurl,
+      url,
       {
         categorypath: categorypath,
       },
@@ -774,14 +772,25 @@ ipcMain.on("downloadAll", (_, options) => {
       if (res.data !== undefined) {
         var categories = res.data.categories;
         if (categories.length > 0) {
-          downloadFolder(categories, 0, options["scanOnly"]);
+          if (args && args.length > 0) {
+            callback(categories, ...args);
+          } else {
+            callback(categories);
+          }
         }
       }
     })
     .catch(function (error) {
-      console.log("Error loading: " + downloadallurl);
+      console.log("Error loading: " + url);
       console.log(error);
     });
+}
+
+ipcMain.on("downloadAll", (_, options) => {
+  pullFolderList(options["categorypath"], downloadFolderRecursive, [
+    0,
+    options["scanOnly"],
+  ]);
 });
 
 class DownloadCounter extends EventEmitter {
@@ -813,7 +822,7 @@ const downloadCounter = new DownloadCounter();
 
 // const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)); // test
 
-const downloadFolder = async function (
+const downloadFolderRecursive = async function (
   categories,
   index = 0,
   scanOnly = false
@@ -832,7 +841,7 @@ const downloadFolder = async function (
     if (categories.length > index) {
       index++;
       // await sleep(3000);
-      await downloadFolder(categories, index, false);
+      await downloadFolderRecursive(categories, index, false);
       mainWindow.webContents.send("download-next", {
         index: index,
       });
@@ -900,7 +909,7 @@ const downloadFolder = async function (
             });
             index++;
             if (categories.length > index) {
-              downloadFolder(categories, index, true);
+              downloadFolderRecursive(categories, index, true);
             } else {
               mainWindow.webContents.send("scan-complete");
             }
@@ -1010,29 +1019,65 @@ ipcMain.on("folderSelected", (_, options) => {
   // });
 });
 
-ipcMain.on("trashExtraFiles", async (_, options) => {
+ipcMain.on("uploadAll", async (_, options) => {
+  pullFolderList(options["categorypath"], uploadFilesRecursive);
+});
+
+function uploadFilesRecursive(categories, index = 0) {
+  if (index >= categories.length) {
+    mainWindow.webContents.send("trash-complete");
+    return;
+  }
+
+  var category = categories[index];
+  var fetchpath = userHomePath + "/eMedia/" + category.path;
+  var trashRoot = userHomePath + "/eMedia/_Trash/";
+  var data = {};
+
+  if (fs.existsSync(fetchpath)) {
+    data = readDirectory(fetchpath, true);
+  }
+
+  data.categorypath = category.path;
+
   axios
     .post(
-      getMediaDbUrl() + "/services/module/asset/entity/pullfolderlist.json",
-      {
-        categorypath: options["categorypath"],
-      },
+      getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json",
+      data,
       {
         headers: connectionOptions.headers,
       }
     )
     .then(function (res) {
       if (res.data !== undefined) {
-        var categories = res.data.categories;
-        if (categories && categories.length > 0) {
-          trashFilesRecursive(categories);
+        var filestodelete = res.data.filestoupload;
+        if (filestodelete) {
+          filestodelete.forEach((item) => {
+            if (!fs.existsSync(trashRoot + category.path)) {
+              fs.mkdirSync(trashRoot + category.path, { recursive: true });
+            }
+            var filepath = category.path + "/" + item.path;
+            if (fs.existsSync(trashRoot + filepath)) {
+              filepath = category.path + "/" + Date.now() + "_" + item.path;
+            }
+            fs.renameSync(fetchpath + "/" + item.path, trashRoot + filepath);
+          });
+          trashFilesRecursive(categories, index + 1);
+        } else {
+          throw new Error("No files found");
         }
+      } else {
+        throw new Error("No data found");
       }
     })
-    .catch(function (error) {
-      console.log("Error loading: " + downloadallurl);
-      console.log(error);
+    .catch(function () {
+      trashFilesRecursive(categories, index + 1);
+      console.log("Error on trashFilesRecursive: " + category.path);
     });
+}
+
+ipcMain.on("trashExtraFiles", async (_, options) => {
+  pullFolderList(options["categorypath"], trashFilesRecursive);
 });
 
 function trashFilesRecursive(categories, index = 0) {

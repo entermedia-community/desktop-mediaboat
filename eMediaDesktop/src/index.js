@@ -694,14 +694,17 @@ function openFile(path) {
 }
 
 function openFolder(path) {
-  //shell.showItemInFolder(path);
-  fs.mkdir(path, { recursive: true }, (err) => {
-    if (err) {
-      return console.error(err);
-    }
-    console.log("Directory created successfully");
-  });
-  shell.openPath(path);
+  if (!fs.existsSync(path)) {
+    fs.mkdir(path, { recursive: true }, (err) => {
+      if (err) {
+        return console.error(err);
+      }
+      shell.openPath(path);
+      return;
+    });
+  } else {
+    shell.openPath(path);
+  }
 }
 
 // Read folders of the files.
@@ -1002,14 +1005,14 @@ ipcMain.on("fetchFoldersPush", (_, options) => {
 
 ipcMain.on("openFolder", (_, options) => {
   if (!options["path"].startsWith(userHomePath)) {
-    options["path"] = userHomePath + "/" + options["path"];
+    options["path"] = userHomePath + "/eMedia/" + options["path"];
   }
   openFolder(options["path"]);
 });
 
 ipcMain.on("folderSelected", (_, options) => {
   if (!options["currentPath"].startsWith(userHomePath)) {
-    options["currentPath"] = userHomePath + "/" + options["path"];
+    options["currentPath"] = userHomePath + "/eMedia/" + options["path"];
   }
 
   // mainWindow.selectAPI.selectFolder().then((result) => {
@@ -2002,15 +2005,6 @@ ipcMain.on("cancel-upload", (event, { uploadItemId }) => {
   // Attempt to cancel the upload using the upload manager
   uploadManager.cancelUpload(uploadItemId);
 });
-
-/**
- *  ipcRenderer.send('onOpenFolder', {path});
- */
-
-ipcMain.on("onOpenFolder", (event, { path }) => {
-  openFolder(path);
-});
-
 /**
  *  ipcRenderer.send('onOpenFile', {path});
  */

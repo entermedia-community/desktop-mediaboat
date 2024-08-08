@@ -15,7 +15,6 @@ const log = require("electron-log");
 const FormData = require("form-data");
 // const os = require("os");
 // const computerName = os.hostname();
-const userHomePath = app.getPath("home");
 const Store = require("electron-store");
 var URL = require("url");
 var querystring = require("querystring");
@@ -24,6 +23,8 @@ const { EventEmitter } = require("events");
 const axios = require("axios");
 const extName = require("ext-name");
 // const { exec } = require("child_process");
+
+const userHomePath = app.getPath("home") + "/eMedia/";
 
 if (process.env.NODE_ENV === "developmentX") {
   try {
@@ -861,7 +862,7 @@ const downloadFolderRecursive = async function (
   }
 
   var category = categories[index];
-  var fetchpath = userHomePath + "/eMedia/" + category.path;
+  var fetchpath = userHomePath + category.path;
   var data = {};
 
   if (fs.existsSync(fetchpath)) {
@@ -962,7 +963,7 @@ use orders as centarl manager?
 */
 
 ipcMain.on("fetchFiles", (_, options) => {
-  var fetchpath = userHomePath + "/eMedia/" + options["categorypath"];
+  var fetchpath = userHomePath + options["categorypath"];
   var data = {};
   if (fs.existsSync(fetchpath)) {
     data = readDirectory(fetchpath, true);
@@ -975,7 +976,7 @@ ipcMain.on("fetchFiles", (_, options) => {
 });
 
 ipcMain.on("fetchFilesPush", (_, options) => {
-  var fetchpath = userHomePath + "/eMedia/" + options["categorypath"];
+  var fetchpath = userHomePath + options["categorypath"];
   var data = {};
   if (fs.existsSync(fetchpath)) {
     data = readDirectory(fetchpath, true);
@@ -990,7 +991,7 @@ ipcMain.on("fetchFilesPush", (_, options) => {
 });
 
 ipcMain.on("fetchFoldersPush", (_, options) => {
-  var fetchpath = userHomePath + "/eMedia/" + options["categorypath"];
+  var fetchpath = userHomePath + options["categorypath"];
   var data = {};
   if (fs.existsSync(fetchpath)) {
     data = readDirectories(fetchpath);
@@ -1005,14 +1006,14 @@ ipcMain.on("fetchFoldersPush", (_, options) => {
 
 ipcMain.on("openFolder", (_, options) => {
   if (!options["path"].startsWith(userHomePath)) {
-    options["path"] = userHomePath + "/eMedia/" + options["path"];
+    options["path"] = userHomePath + options["path"];
   }
   openFolder(options["path"]);
 });
 
 ipcMain.on("folderSelected", (_, options) => {
   if (!options["currentPath"].startsWith(userHomePath)) {
-    options["currentPath"] = userHomePath + "/eMedia/" + options["path"];
+    options["currentPath"] = userHomePath + options["path"];
   }
 
   // mainWindow.selectAPI.selectFolder().then((result) => {
@@ -1218,7 +1219,7 @@ async function uploadFilesRecursive(categories, index = 0) {
   }
 
   var category = categories[index];
-  var fetchpath = userHomePath + "/eMedia/" + category.path;
+  var fetchpath = userHomePath + category.path;
 
   var data = {};
   if (fs.existsSync(fetchpath)) {
@@ -1267,8 +1268,8 @@ function trashFilesRecursive(categories, index = 0) {
   }
 
   var category = categories[index];
-  var fetchpath = userHomePath + "/eMedia/" + category.path;
-  var trashRoot = userHomePath + "/eMedia/_Trash/";
+  var fetchpath = userHomePath + category.path;
+  var trashRoot = userHomePath + "_Trash/";
   var data = {};
 
   if (fs.existsSync(fetchpath)) {
@@ -1334,7 +1335,7 @@ ipcMain.on("fetchfilesupload", async (event, { assetid, file }) => {
     downloadPath:
       parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
     donwloadFilePath: file,
-    localFolderPath: userHomePath + "/eMedia/" + file.categorypath,
+    localFolderPath: userHomePath + file.categorypath,
     header: connectionOptions.headers,
     onStarted: () => {
       //mainWindow.webContents.send(`download-started-${orderitemid}`);
@@ -1380,7 +1381,7 @@ function fetchfilesdownload(assetid, file, batchMode = false) {
     downloadPath:
       parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
     donwloadFilePath: file,
-    localFolderPath: userHomePath + "/eMedia/" + file.categorypath,
+    localFolderPath: userHomePath + file.categorypath,
     header: connectionOptions.headers,
     onStarted: () => {
       //mainWindow.webContents.send(`download-started-${orderitemid}`);

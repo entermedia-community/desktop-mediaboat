@@ -115,7 +115,6 @@ const createWindow = () => {
   mainWindow.on("close", (event) => {
     //if (!isDev) {
     if (!app.isQuiting) {
-      7;
       event.preventDefault();
       //mainWindow.hide();
       mainWindow.removeAllListeners("close");
@@ -242,32 +241,18 @@ function setMainMenu(mainWindow) {
     {
       label: "Workspace",
       submenu: [
-        /*{
-          label: "Logout",
+        {
+          label: "Change Workspace",
           click() {
-              this.session.clearStorageData([], function (data) { });
-              mainWindow.loadURL(homeUrl);
-              this.session.clearStorageData([], function (data) { });
-              KillAllMediaBoatProcesses();
-          }
-      }, */ {
-          label: "Open Workspace",
-          click() {
-            //this.session.clearStorageData([], function (data) { });
-            //mainWindow.loadURL(selectWorkspaceForm);
             openWorkspacePicker(selectWorkspaceForm);
-            //this.session.clearStorageData([], function (data) { });
-            //KillAllMediaBoatProcesses();
           },
         },
         {
-          label: "Minimize To Tray",
-          click() {
-            mainWindow.hide();
-          },
+          type: "separator",
         },
         {
           label: "Exit",
+          accelerator: "CmdOrCtrl+Q",
           click() {
             app.isQuiting = true;
             mainWindow.close();
@@ -293,7 +278,11 @@ function setMainMenu(mainWindow) {
           },
         },
         {
+          type: "separator",
+        },
+        {
           label: "Code Inspector",
+          accelerator: "CmdOrCtrl+Shift+I",
           click() {
             mainWindow.webContents.openDevTools();
           },
@@ -301,37 +290,53 @@ function setMainMenu(mainWindow) {
       ],
     },
     {
-      label: "Edit",
+      label: "Window",
       submenu: [
-        { label: "Undo", accelerator: "CmdOrCtrl+Z", selector: "undo:" },
-        { label: "Redo", accelerator: "Shift+CmdOrCtrl+Z", selector: "redo:" },
-        { type: "separator" },
-        { label: "Cut", accelerator: "CmdOrCtrl+X", selector: "cut:" },
-        { label: "Copy", accelerator: "CmdOrCtrl+C", selector: "copy:" },
-        { label: "Paste", accelerator: "CmdOrCtrl+V", selector: "paste:" },
         {
-          label: "Select All",
-          accelerator: "CmdOrCtrl+A",
-          selector: "selectAll:",
+          label: "Local Drive",
+          click() {
+            shell.openPath(userHomePath);
+          },
+        },
+        {
+          type: "separator",
+        },
+        {
+          label: "Minimize",
+          accelerator: "CmdOrCtrl+M",
+          click() {
+            mainWindow.minimize();
+          },
+        },
+        {
+          label: "Maximize",
+          accelerator: "CmdOrCtrl+Shift+M",
+          click() {
+            if (mainWindow.isMaximized()) {
+              mainWindow.unmaximize();
+            } else {
+              mainWindow.maximize();
+            }
+          },
         },
       ],
     },
     {
       label: "Help",
       submenu: [
-        {
-          label: "Log",
-          click() {
-            const options = {
-              buttons: ["Close"],
-              defaultId: 2,
-              title: "eMediaBoatLog",
-              message: "Logs",
-              detail: this.mediaBoatLog,
-            };
-            dialog.showMessageBox(null, options);
-          },
-        },
+        // {
+        //   label: "Log",
+        //   click() {
+        //     const options = {
+        //       buttons: ["Close"],
+        //       defaultId: 2,
+        //       title: "eMediaBoatLog",
+        //       message: "Logs",
+        //       detail: this.mediaBoatLog,
+        //     };
+        //     dialog.showMessageBox(null, options);
+        //   },
+        // },
         {
           label: "About",
           click() {

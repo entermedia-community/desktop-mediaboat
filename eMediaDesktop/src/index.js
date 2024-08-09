@@ -785,22 +785,36 @@ function deSanitizePath(path) {
   return path;
 }
 
-function addExtraFoldersToList(categories) {
-  if (categories.length === 0) return;
-  var rootPath = userHomePath + categories[0].path;
-  var rootLevel = parseInt(categories[0].level);
+function addExtraFoldersToList(categories, categoryPath) {
+  var rootPath;
+  var rootLevel;
+  var shouldUpdateTree = true;
+  var filter = null;
+  if (categories.length === 0) {
+    if (!categoryPath) return;
+    rootPath = path.dirname(userHomePath + categoryPath);
+    rootLevel = categoryPath.split("/").length;
+    shouldUpdateTree = false;
+    filter = path.basename(userHomePath + categoryPath);
+  } else {
+    rootPath = userHomePath + categories[0].path;
+    rootLevel = parseInt(categories[0].level);
+  }
   var localPaths = [];
-  function readDirs(rootPath, index, level) {
-    var files = fs.readdirSync(rootPath);
+  function readDirs(root, index, level) {
+    var files = fs.readdirSync(root);
     files.forEach((file) => {
       if (file.startsWith(".")) return;
-      let fullpath = path.join(rootPath, file);
+      let fullpath = path.join(root, file);
+      if (filter && fullpath.indexOf(filter) === -1) return;
       let stats = fs.statSync(fullpath);
       if (stats.isDirectory(fullpath)) {
         var categoryPath = fullpath.substring(userHomePath.length);
         var isExtra =
           categories.find((c) => c.path === categoryPath) === undefined;
-        if (isExtra) {
+        var _files = fs.readdirSync(fullpath);
+        var hasFiles = _files.some((f) => !f.startsWith("."));
+        if (isExtra && hasFiles) {
           localPaths.push({
             level: level + 1,
             path: categoryPath,
@@ -828,11 +842,13 @@ function addExtraFoldersToList(categories) {
   });
   var newCategories = categories.map((c, i) => {
     c.index = String(i);
-    c.id = c.id ? c.id : "fake-id-" + String(i);
+    c.id = c.id ? c.id : "fake-id-" + String(i) + "-" + Date.now();
     c.level = String(c.level);
     return c;
   });
-  mainWindow.webContents.send("extra-folders-found", newCategories);
+  if (shouldUpdateTree) {
+    mainWindow.webContents.send("extra-folders-found", newCategories);
+  }
   return newCategories;
 }
 
@@ -852,9 +868,9 @@ async function pullFolderList(categorypath, callback, args = null) {
     .then(function (res) {
       if (res.data !== undefined) {
         var categories = res.data.categories;
-        if (categories.length > 0) {
-          addExtraFoldersToList(categories);
-          console.log(categories);
+        if (categories.length >= 0) {
+          addExtraFoldersToList(categories, categorypath);
+          console.log({ categories, categorypath });
           if (args && args.length > 0) {
             callback(categories, ...args);
           } else {

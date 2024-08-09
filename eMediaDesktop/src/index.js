@@ -701,7 +701,7 @@ function openFile(path) {
 
 function openFolder(path) {
   if (!fs.existsSync(path)) {
-    fs.mkdir(path, { recursive: true }, (err) => {
+    fs.mkdirSync(path, { recursive: true }, (err) => {
       if (err) {
         return console.error(err);
       }
@@ -746,7 +746,6 @@ function readDirectory(directory, append = false) {
 }
 
 function readDirectories(directory) {
-  var filePaths = [];
   var folderPaths = [];
   var files = fs.readdirSync(directory);
   files.forEach((file) => {
@@ -762,6 +761,86 @@ function readDirectories(directory) {
   return {
     folders: folderPaths,
   };
+}
+
+function sanitizePath(path) {
+  path = path.replace(/:/g, "[colon]");
+  path = path.replace(/\./g, "[dot]");
+  path = path.replace(/\//g, "[slash]");
+  path = path.replace(/\\/g, "[backslash]");
+  path = path.replace(/</g, "[lt]");
+  path = path.replace(/>/g, "[gt]");
+  path = path.replace(/”/g, "[quote]");
+  path = path.replace(/\|/g, "[pipe]");
+  path = path.replace(/\?/g, "[question]");
+  path = path.replace(/\*/g, "[asterisk]");
+  path = path.replace(/\^/g, "[caret]");
+  return path;
+}
+function deSanitizePath(path) {
+  path = path.replace(/\[colon\]/g, ":");
+  path = path.replace(/\[dot\]/g, ".");
+  path = path.replace(/\[slash\]/g, "/");
+  path = path.replace(/\[backslash\]/g, "\\");
+  path = path.replace(/\[lt\]/g, "<");
+  path = path.replace(/\[gt\]/g, ">");
+  path = path.replace(/\[quote\]/g, "”");
+  path = path.replace(/\[pipe\]/g, "|");
+  path = path.replace(/\[question\]/g, "?");
+  path = path.replace(/\[asterisk\]/g, "*");
+  path = path.replace(/\[caret\]/g, "^");
+  return path;
+}
+
+function addExtraFoldersToList(categories) {
+  if (categories.length === 0) return;
+  var rootPath = userHomePath + categories[0].path;
+  var rootLevel = parseInt(categories[0].level);
+  var localPaths = [];
+  function readDirs(rootPath, index, level) {
+    var files = fs.readdirSync(rootPath);
+    files.forEach((file) => {
+      if (file.startsWith(".")) return;
+      let fullpath = path.join(rootPath, file);
+      let stats = fs.statSync(fullpath);
+      if (stats.isDirectory(fullpath)) {
+        var categoryPath = fullpath.substring(userHomePath.length);
+        var isExtra =
+          categories.find((c) => c.path === categoryPath) === undefined;
+        if (isExtra) {
+          localPaths.push({
+            level: level + 1,
+            path: categoryPath,
+          });
+        }
+        readDirs(fullpath, index + 1, level + 1);
+      }
+    });
+  }
+  readDirs(rootPath, 0, rootLevel);
+  if (localPaths.length === 0) return categories;
+  localPaths.sort((a, b) => a.level - b.level);
+  localPaths.forEach((lp) => {
+    var level = lp.level;
+    var parent = lp.path.split("/").slice(0, -1).join("/");
+    var categoryIndex = categories.findIndex(
+      (c) => parseInt(c.level) === level - 1 && c.path === parent
+    );
+    categories.splice(categoryIndex + 1, 0, {
+      name: path.basename(lp.path),
+      level: level,
+      path: lp.path,
+      isExtra: true,
+    });
+  });
+  var newCategories = categories.map((c, i) => {
+    c.index = String(i);
+    c.id = c.id ? c.id : "fake-id-" + String(i);
+    c.level = String(c.level);
+    return c;
+  });
+  mainWindow.webContents.send("extra-folders-found", newCategories);
+  return newCategories;
 }
 
 async function pullFolderList(categorypath, callback, args = null) {
@@ -781,6 +860,7 @@ async function pullFolderList(categorypath, callback, args = null) {
       if (res.data !== undefined) {
         var categories = res.data.categories;
         if (categories.length > 0) {
+          addExtraFoldersToList(categories);
           if (args && args.length > 0) {
             callback(categories, ...args);
           } else {
@@ -970,9 +1050,10 @@ use orders as centarl manager?
 ipcMain.on("fetchFiles", (_, options) => {
   var fetchpath = userHomePath + options["categorypath"];
   var data = {};
-  if (fs.existsSync(fetchpath)) {
-    data = readDirectory(fetchpath, true);
+  if (!fs.existsSync(fetchpath)) {
+    fs.mkdirSync(fetchpath, { recursive: true });
   }
+  data = readDirectory(fetchpath, true);
   data.filedownloadpath = fetchpath;
   mainWindow.webContents.send("files-fetched", {
     ...options,

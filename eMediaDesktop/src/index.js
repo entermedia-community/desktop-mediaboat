@@ -26,19 +26,22 @@ const extName = require("ext-name");
 
 const userHomePath = app.getPath("home") + "/eMedia/";
 
-if (process.env.NODE_ENV === "developmentX") {
+const isDev = process.env.NODE_ENV === "development";
+
+if (isDev) {
   try {
     require("electron-reloader")(module, {
       ignore: ["dist", "Activity", "build", "asset"],
     });
-  } catch {}
+  } catch (err) {
+    mainWindow.webContents.send("electron-error", err);
+  }
 }
 
 let mainWindow;
 let entermediakey;
 
 //Config
-const isDev = false;
 const appLogo = "/assets/images/emrlogo.png";
 const trayLogo = "/assets/images/em20.png";
 
@@ -49,7 +52,14 @@ const currentVersion = process.env.npm_package_version;
 
 //Handle logs with electron-logs
 log.initialize();
-console.log = log.log;
+var console = {};
+console.log = function (...args) {
+  if (mainWindow) {
+    mainWindow.webContents.send("electron-log", args);
+    // turn on "Preserve log" in the browser console settings to see the logs
+  }
+  log.log.apply(this, args);
+};
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require("electron-squirrel-startup")) {
@@ -71,20 +81,8 @@ const createWindow = () => {
     },
   });
 
-  // ipcMain.handle("dialog:openDirectory", async () => {
-  //   const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-  //     properties: ["openDirectory"],
-  //   });
-  //   if (canceled) {
-  //     return;
-  //   } else {
-  //     return filePaths[0];
-  //   }
-  // });
-
   var homeUrl = store.get("homeUrl");
   app.allowRendererProcessReuse = false;
-  //console.log("Searched " + homeUrl)
   if (!homeUrl) {
     openWorkspacePicker(selectWorkspaceForm);
   } else {
@@ -106,23 +104,18 @@ const createWindow = () => {
 
   // Events
   mainWindow.on("minimize", (event) => {
-    //if (!isDev) {
     event.preventDefault();
     mainWindow.hide();
-    //}
   });
 
   mainWindow.on("close", (event) => {
-    //if (!isDev) {
     if (!app.isQuiting) {
       event.preventDefault();
-      //mainWindow.hide();
       mainWindow.removeAllListeners("close");
       mainWindow = null;
       app.quit();
     }
     return false;
-    //}
   });
 
   mainWindow.on("window-all-closed", () => {
@@ -135,11 +128,10 @@ const createWindow = () => {
 
 if (!isDev) {
   const gotTheLock = app.getVersion();
-  // .requestSingleInstanceLock();
   if (!gotTheLock) {
     app.quit();
   } else {
-    app.on("second-instance", (event, commandLine, workingDirectory) => {
+    app.on("second-instance", (_, commandLine) => {
       if (mainWindow) {
         mainWindow.show();
       }
@@ -198,7 +190,6 @@ function openWorkspacePicker(pickerURL) {
   mainWindow.once("ready-to-show", () => {
     var workspaces = store.get("workspaces");
     mainWindow.webContents.send("loadworkspaces", {
-      ...{},
       ...workspaces,
     });
   });
@@ -523,8 +514,6 @@ ipcMain.on("uploadFolder", (event, options) => {
   let inSourcepath = options["sourcepath"];
   let inMediadbUrl = options["mediadburl"];
   entermediakey = options["entermediakey"];
-  //let defaultpath = store.get("uploaddefaultpath");
-  let defaultpath = "";
 
   dialog
     .showOpenDialog(mainWindow, {
@@ -542,6 +531,7 @@ ipcMain.on("uploadFolder", (event, options) => {
     })
     .catch((err) => {
       console.log(err);
+      mainWindow.webContents.send("electron-error", err);
     });
 });
 
@@ -600,7 +590,10 @@ function submitForm(form, formurl, formCompleted) {
         formCompleted();
       }
     })
-    .catch((err) => console.error(err));
+    .catch((err) => {
+      mainWindow.webContents.send("electron-error", err);
+      console.error(err);
+    });
 }
 
 function runJavaScript(code) {
@@ -861,6 +854,7 @@ async function pullFolderList(categorypath, callback, args = null) {
         var categories = res.data.categories;
         if (categories.length > 0) {
           addExtraFoldersToList(categories);
+          console.log(categories);
           if (args && args.length > 0) {
             callback(categories, ...args);
           } else {
@@ -869,9 +863,10 @@ async function pullFolderList(categorypath, callback, args = null) {
         }
       }
     })
-    .catch(function (error) {
+    .catch(function (err) {
       console.log("Error loading: " + url);
-      console.log(error);
+      mainWindow.webContents.send("electron-error", err);
+      console.log(err);
     });
 }
 
@@ -1012,9 +1007,10 @@ const downloadFolderRecursive = async function (
         throw new Error("No data found");
       }
     })
-    .catch(function () {
+    .catch(function (err) {
       downloadCounter.setTotal(0);
       console.log("Error on download Folder: " + category.path);
+      mainWindow.webContents.send("electron-error", err);
     });
 };
 
@@ -1181,7 +1177,6 @@ class UploadManager {
             callbacks.onCompleted(response.data);
           }
         } catch (error) {
-          console.log("catch:1096", error);
           if (axios.isCancel(error)) {
             if (typeof callbacks.onCancel === "function") {
               callbacks.onCancel();
@@ -1336,10 +1331,11 @@ async function uploadFilesRecursive(categories, index = 0) {
         throw new Error("No data found");
       }
     })
-    .catch(function (e) {
+    .catch(function (err) {
       uploadCounter.setTotal(0);
       console.log("Error on uploadFilesRecursive: " + category.path);
-      console.log(e);
+      mainWindow.webContents.send("electron-error", err);
+      console.log(err);
     });
 }
 
@@ -1394,9 +1390,10 @@ function trashFilesRecursive(categories, index = 0) {
         throw new Error("No data found");
       }
     })
-    .catch(function () {
+    .catch(function (err) {
       trashFilesRecursive(categories, index + 1);
       console.log("Error on trashFilesRecursive: " + category.path);
+      mainWindow.webContents.send("electron-error", err);
     });
 }
 
@@ -1565,6 +1562,7 @@ class DownloadManager {
         onError(err);
         onCancel();
         console.error(err);
+        mainWindow.webContents.send("electron-error", err);
         return;
       }
     }
@@ -2081,9 +2079,9 @@ ipcMain.on("start-upload", async (event, options) => {
       },
     };
     await uploadManager.uploadFile(item);
-  } catch (error) {
-    console.error("Error during upload:", error);
-    // Handle upload errors appropriately (e.g., send error message to renderer)
+  } catch (err) {
+    console.error("Error during upload:", err);
+    mainWindow.webContents.send("electron-error", err);
   }
 });
 

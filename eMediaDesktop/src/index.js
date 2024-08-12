@@ -869,8 +869,12 @@ async function pullFolderList(categorypath, callback, args = null) {
       if (res.data !== undefined) {
         var categories = res.data.categories;
         if (categories.length >= 0) {
+          if (!fs.existsSync(userHomePath + categories[0].path)) {
+            fs.mkdirSync(userHomePath + categories[0].path, {
+              recursive: true,
+            });
+          }
           addExtraFoldersToList(categories, categorypath);
-          console.log({ categories, categorypath });
           if (args && args.length > 0) {
             callback(categories, ...args);
           } else {

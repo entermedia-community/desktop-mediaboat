@@ -8,6 +8,7 @@ const {
   Menu,
   Tray,
   shell,
+  ipcRenderer,
 } = require("electron");
 // let { session } = require("electron");
 const path = require("path");
@@ -118,6 +119,10 @@ const createWindow = () => {
     return false;
   });
 
+  mainWindow.on("closed", function () {
+    mainWindow = null;
+  });
+
   mainWindow.on("window-all-closed", () => {
     console.log("Closing Main Window... ");
     if (process.platform !== "darwin") {
@@ -174,7 +179,7 @@ app.on("before-quit", () => {
 app.on("activate", () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
+  if (mainWindow === null || BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });
@@ -205,6 +210,57 @@ function openWorkspace(homeUrl) {
   store.set("mediadburl", ""); //reset on restart
   checkSession(mainWindow);
 }
+
+ipcMain.on("getWorkDir", () => {
+  mainWindow.webContents.send("work-dir", {
+    workDir: store.get("workDir"),
+    workDirEntity: store.get("workDirEntity"),
+  });
+});
+
+ipcMain.on("setWorkDirEntity", (_, { entity }) => {
+  store.set("workDirEntity", entity);
+});
+
+function scanDirectory(directory, maxLevel = 2) {
+  var files = fs.readdirSync(directory);
+  var folders = {};
+  files.forEach((file) => {
+    if (file.startsWith(".")) return;
+    let filepath = path.join(directory, file);
+    let stats = fs.statSync(filepath);
+    if (stats.isDirectory() && maxLevel > 0) {
+      folders[file] = scanDirectory(filepath, maxLevel - 1);
+    }
+  });
+  return folders;
+}
+
+ipcMain.on("select-dirs", async (_, arg) => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory"],
+    defaultPath: arg.currentPath,
+  });
+  var rootPath = result.filePaths[0];
+  scanHotFolders(rootPath);
+});
+
+function scanHotFolders(rootPath) {
+  var children = scanDirectory(rootPath);
+  var folderTree = {
+    [path.basename(rootPath)]: children,
+  };
+  store.set("workDir", rootPath);
+  mainWindow.webContents.send("selected-dirs", {
+    rootPath: rootPath,
+    folderTree: folderTree,
+  });
+}
+
+ipcMain.on("scanHotFolders", (_, options) => {
+  var rootPath = options["rootPath"];
+  scanHotFolders(rootPath);
+});
 
 ipcMain.on("setHomeUrl", (event, url) => {
   var workspaces = store.get("workspaces");
@@ -924,7 +980,7 @@ class DownloadCounter extends EventEmitter {
 
 const downloadCounter = new DownloadCounter();
 
-// const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)); // test
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)); // test
 
 const downloadFolderRecursive = async function (
   categories,

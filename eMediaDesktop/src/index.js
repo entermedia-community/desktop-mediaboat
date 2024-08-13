@@ -1163,7 +1163,7 @@ ipcMain.on("fetchFoldersPush", (_, options) => {
 });
 
 ipcMain.on("openFolder", (_, options) => {
-  if (!options["path"].startsWith(userHomePath)) {
+  if (!options["path"].startsWith("/")) {
     options["path"] = userHomePath + options["path"];
   }
   openFolder(options["path"]);

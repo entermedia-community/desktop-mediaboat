@@ -222,7 +222,7 @@ ipcMain.on("setWorkDirEntity", (_, { entity }) => {
   store.set("workDirEntity", entity);
 });
 
-function scanDirectory(directory, maxLevel = 2) {
+function scanDirectory(directory, maxLevel = 1) {
   var files = fs.readdirSync(directory);
   var folders = {};
   files.forEach((file) => {
@@ -246,10 +246,7 @@ ipcMain.on("select-dirs", async (_, arg) => {
 });
 
 function scanHotFolders(rootPath) {
-  var children = scanDirectory(rootPath);
-  var folderTree = {
-    [path.basename(rootPath)]: children,
-  };
+  var folderTree = scanDirectory(rootPath);
   store.set("workDir", rootPath);
   mainWindow.webContents.send("selected-dirs", {
     rootPath: rootPath,

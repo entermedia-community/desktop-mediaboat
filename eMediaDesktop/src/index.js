@@ -30,15 +30,15 @@ const userHomePath = app.getPath("home") + "/eMedia/";
 
 const isDev = process.env.NODE_ENV === "development";
 
-if (isDev) {
-  try {
-    require("electron-reloader")(module, {
-      ignore: ["dist", "Activity", "build", "asset"],
-    });
-  } catch (err) {
-    mainWindow.webContents.send("electron-error", err);
-  }
-}
+// if (isDev) {
+//   try {
+//     require("electron-reloader")(module, {
+//       ignore: ["dist", "Activity", "build", "asset"],
+//     });
+//   } catch (err) {
+//     mainWindow.webContents.send("electron-error", err);
+//   }
+// }
 
 let mainWindow;
 let entermediakey;
@@ -262,23 +262,62 @@ function openWorkspace(homeUrl) {
 }
 
 ipcMain.on("getWorkDir", () => {
-  var rootPath = store.get("workDir");
+  const rootPath = store.get("workDir");
   scanHotFolders(rootPath);
 });
 
-ipcMain.on("setWorkDirEntity", (_, { entity }) => {
-  store.set("workDirEntity", entity);
+ipcMain.on("setWorkDirEntity", (_, { entityId }) => {
+  store.set("workDirEntity", entityId);
 });
 
-function scanDirectory(directory, maxLevel = 1) {
+function getDirectoryStats(dirPath) {
+  let totalFiles = 0;
+  let totalFolders = -1;
+  let totalSize = 0;
+
+  function traverseDirectory(currentPath) {
+    const items = fs.readdirSync(currentPath);
+    totalFolders++;
+    items.forEach((item) => {
+      if (item.startsWith(".")) return;
+      const fullPath = path.join(currentPath, item);
+      const stats = fs.statSync(fullPath);
+      if (stats.isDirectory()) {
+        traverseDirectory(fullPath);
+      } else if (stats.isFile()) {
+        totalFiles++;
+        totalSize += stats.size;
+      }
+    });
+  }
+  traverseDirectory(dirPath);
+  return {
+    totalFiles,
+    totalFolders,
+    totalSize,
+  };
+}
+
+function scanDirectoryWithStats(directory, maxLevel = 1) {
+  if (maxLevel <= 0) return {};
   var files = fs.readdirSync(directory);
   var folders = {};
   files.forEach((file) => {
     if (file.startsWith(".")) return;
     let filepath = path.join(directory, file);
     let stats = fs.statSync(filepath);
-    if (stats.isDirectory() && maxLevel > 0) {
-      folders[file] = scanDirectory(filepath, maxLevel - 1);
+    if (stats.isDirectory()) {
+      var { totalFiles, totalFolders, totalSize } = getDirectoryStats(filepath);
+      folders[file] = {};
+      folders[file]["totalSize"] = totalSize;
+      folders[file]["totalFiles"] = totalFiles;
+      folders[file]["totalFolders"] = totalFolders;
+      if (maxLevel > 1) {
+        folders[file]["subfolders"] = scanDirectoryWithStats(
+          filepath,
+          maxLevel - 1
+        );
+      }
     }
   });
   return folders;
@@ -294,9 +333,40 @@ ipcMain.on("select-dirs", async (_, arg) => {
 });
 
 function scanHotFolders(rootPath) {
-  var folderTree = scanDirectory(rootPath);
   store.set("workDir", rootPath);
   var workDirEntity = store.get("workDirEntity");
+  if (!workDirEntity) {
+    return;
+  }
+  var folderTree = scanDirectoryWithStats(rootPath);
+  var folderNames = Object.keys(folderTree);
+  // var formData = new FormData();
+  // formData.append("moduleid", workDirEntity);
+  // console.log(workDirEntity);
+  // folderNames.forEach((folder) => {
+  //   formData.append("name", folder);
+  // });
+  var data = {
+    moduleid: workDirEntity,
+    name: folderNames,
+  };
+  var url =
+    getMediaDbUrl() +
+    "/services/module/asset/entity/bulk/scanfornew.json?moduleid=" +
+    workDirEntity;
+  axios
+    .post(url, data, {
+      headers: {
+        ...connectionOptions.headers,
+        "Content-Type": "multipart/form-data",
+      },
+    })
+    .then(function (res) {
+      console.log(res);
+    })
+    .catch(function (err) {
+      log.error(err);
+    });
   mainWindow.webContents.send("selected-dirs", {
     rootPath: rootPath,
     folderTree: folderTree,

@@ -26,7 +26,7 @@ const extName = require("ext-name");
 // const { exec } = require("child_process");
 var fileWatcher = require("chokidar");
 
-const userHomePath = app.getPath("home") + "/eMedia/";
+const defaultWorkDirectory = app.getPath("home") + "/eMedia/";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -340,6 +340,7 @@ function scanHotFolders(rootPath) {
   }
   var folderTree = scanDirectoryWithStats(rootPath);
   var folderNames = Object.keys(folderTree);
+
   var data = {
     moduleid: workDirEntity,
     name: folderNames,
@@ -356,20 +357,73 @@ function scanHotFolders(rootPath) {
     })
     .then(function (res) {
       console.log(res.data);
+
+      mainWindow.webContents.send("selected-dirs", {
+        rootPath: rootPath,
+        folderTree: folderTree,
+        workDirEntity: workDirEntity,
+        newFolders: res.data.newfolders,
+        existingFolders: res.data.existingfolders
+      });
     })
     .catch(function (err) {
       log.error(err);
   });
-  mainWindow.webContents.send("selected-dirs", {
-    rootPath: rootPath,
-    folderTree: folderTree,
-    workDirEntity: workDirEntity,
+}
+
+function uploadHotFolders(rootPath, selectedFolders) {
+  store.set("workDir", rootPath);
+  var workDirEntity = store.get("workDirEntity");
+  if (!workDirEntity) {
+    return;
+  }
+  var folderTree = scanDirectoryWithStats(rootPath);
+  var folderNames = Object.keys(folderTree);
+
+  var data = {
+    moduleid: workDirEntity,
+    name: folderNames,
+  };
+  var url =
+    getMediaDbUrl() +
+    "/services/module/asset/entity/bulk/createentities.json?moduleid=" + workDirEntity;
+
+  var tempWorkDirectory = path.resolve(rootPath, "..");
+  axios
+    .post(url, data, {
+      headers: {
+        ...connectionOptions.headers
+      },
+    })
+    .then(function (res) {
+      console.log(res.data);
+      var existingFolders = res.data.existingFolders;
+      existingFolders.forEach((folder) => {
+        pullFolderList(tempWorkDirectory, folder.path, uploadFilesRecursive);
+      }); 
+
+      /*mainWindow.webContents.send("selected-dirs", {
+        rootPath: rootPath,
+        folderTree: folderTree,
+        workDirEntity: workDirEntity,
+        newFolders: res.data.newfolders,
+        existingFolders: res.data.existingfolders
+      });*/
+    })
+    .catch(function (err) {
+      log.error(err);
   });
 }
 
 ipcMain.on("scanHotFolders", (_, options) => {
   var rootPath = options["rootPath"];
-  scanHotFolders(rootPath);
+  scanHotFolders(rootPath, false);
+});
+
+ipcMain.on("importHotFolders", (_, options) => {
+  var rootPath = options["rootPath"];
+  var selectedFolders = options["selectedFolders"];
+  uploadHotFolders(rootPath, selectedFolders);
 });
 
 ipcMain.on("setHomeUrl", (event, url) => {
@@ -452,7 +506,7 @@ function setMainMenu(mainWindow) {
         {
           label: "Local Drive",
           click() {
-            shell.openPath(userHomePath);
+            shell.openPath(defaultWorkDirectory);
           },
         },
         {
@@ -625,7 +679,7 @@ function startFilesUpload(filePaths, inSourcepath, inMediadbUrl, options) {
     var fileSizeInBytes = stats.size;
     totalsize = +fileSizeInBytes;
   });
-  let filenamefinal = filePaths[0].replace(userHomePath, ""); //remove user home
+  let filenamefinal = filePaths[0].replace(defaultWorkDirectory, ""); //remove user home
   let sourcepath = inSourcepath + "/" + computerName + filenamefinal;
   let categorypath = path.dirname(sourcepath);
   let form1 = new FormData();
@@ -657,7 +711,7 @@ function startFilesUpload(filePaths, inSourcepath, inMediadbUrl, options) {
 function loopFiles(filePaths, savingPath, inMediadbUrl) {
   filePaths.forEach(function (filename) {
     const file = fs.createReadStream(filename);
-    let filenamefinal = filename.replace(userHomePath, ""); //remove user home
+    let filenamefinal = filename.replace(defaultWorkDirectory, ""); //remove user home
     let sourcepath = savingPath + filenamefinal;
     let form = new FormData();
     form.append("sourcepath", sourcepath);
@@ -707,7 +761,7 @@ function startFolderUpload(
   inMediadbUrl,
   options
 ) {
-  //let directoryfinal = directory.replace(userHomePath, ''); //remove user home
+  //let directoryfinal = directory.replace(defaultWorkDirectory, ''); //remove user home
   let dirname = path.basename(startingdirectory);
   console.log(dirname);
 
@@ -776,7 +830,7 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
       let stats = fs.statSync(filepath);
       if (stats.isDirectory()) {
         console.log("Subdirectory found: " + filepath);
-        let filenamefinal = filepath.replace(userHomePath, ""); //remove user home
+        let filenamefinal = filepath.replace(defaultWorkDirectory, ""); //remove user home
         loopDirectory(filepath, savingPath, inMediadbUrl);
       } else {
         let fileSizeInBytes = stats.size;
@@ -801,7 +855,7 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
       filepath = path.basename(filepath);
 
       filepath = filepath.replace(":", "");
-      let filenamefinal = filepath.replace(userHomePath, ""); //remove user home
+      let filenamefinal = filepath.replace(defaultWorkDirectory, ""); //remove user home
       let sourcepath = path.join(savingPath, filenamefinal);
       sourcepath = sourcepath.split(path.sep).join(path.posix.sep);
 
@@ -958,12 +1012,12 @@ function addExtraFoldersToList(categories, categoryPath) {
   var filter = null;
   if (categories.length === 0) {
     if (!categoryPath) return;
-    rootPath = path.dirname(userHomePath + categoryPath);
+    rootPath = path.dirname(defaultWorkDirectory + categoryPath);
     rootLevel = categoryPath.split("/").length;
     shouldUpdateTree = false;
-    filter = path.basename(userHomePath + categoryPath);
+    filter = path.basename(defaultWorkDirectory + categoryPath);
   } else {
-    rootPath = userHomePath + categories[0].path;
+    rootPath = defaultWorkDirectory + categories[0].path;
     rootLevel = parseInt(categories[0].level);
   }
   var localPaths = [];
@@ -975,7 +1029,7 @@ function addExtraFoldersToList(categories, categoryPath) {
       if (filter && fullpath.indexOf(filter) === -1) return;
       let stats = fs.statSync(fullpath);
       if (stats.isDirectory(fullpath)) {
-        var categoryPath = fullpath.substring(userHomePath.length);
+        var categoryPath = fullpath.substring(defaultWorkDirectory.length);
         var isExtra =
           categories.find((c) => c.path === categoryPath) === undefined;
         var _files = fs.readdirSync(fullpath);
@@ -1018,7 +1072,7 @@ function addExtraFoldersToList(categories, categoryPath) {
   return newCategories;
 }
 
-async function pullFolderList(categorypath, callback, args = null) {
+async function pullFolderList(rootPath, categorypath, callback, args = null) {
   var url =
     getMediaDbUrl() + "/services/module/asset/entity/pullfolderlist.json";
   axios
@@ -1035,8 +1089,8 @@ async function pullFolderList(categorypath, callback, args = null) {
       if (res.data !== undefined) {
         var categories = res.data.categories;
         if (categories.length >= 0) {
-          if (!fs.existsSync(userHomePath + categories[0].path)) {
-            fs.mkdirSync(userHomePath + categories[0].path, {
+          if (!fs.existsSync(rootPath + categories[0].path)) {
+            fs.mkdirSync(rootPath + categories[0].path, {
               recursive: true,
             });
           }
@@ -1057,7 +1111,7 @@ async function pullFolderList(categorypath, callback, args = null) {
 }
 
 ipcMain.on("downloadAll", (_, options) => {
-  pullFolderList(options["categorypath"], downloadFolderRecursive, [
+  pullFolderList(defaultWorkDirectory, options["categorypath"], downloadFolderRecursive, [
     0,
     options["scanOnly"],
   ]);
@@ -1128,7 +1182,7 @@ const downloadFolderRecursive = async function (
   }
 
   var category = categories[index];
-  var fetchpath = userHomePath + category.path;
+  var fetchpath = defaultWorkDirectory + category.path;
   var data = {};
 
   if (fs.existsSync(fetchpath)) {
@@ -1230,7 +1284,7 @@ use orders as centarl manager?
 */
 
 ipcMain.on("fetchFiles", (_, options) => {
-  var fetchpath = userHomePath + options["categorypath"];
+  var fetchpath = defaultWorkDirectory + options["categorypath"];
   var data = {};
   if (!fs.existsSync(fetchpath)) {
     fs.mkdirSync(fetchpath, { recursive: true });
@@ -1244,7 +1298,7 @@ ipcMain.on("fetchFiles", (_, options) => {
 });
 
 ipcMain.on("fetchFilesPush", (_, options) => {
-  var fetchpath = userHomePath + options["categorypath"];
+  var fetchpath = defaultWorkDirectory + options["categorypath"];
   var data = {};
   if (fs.existsSync(fetchpath)) {
     data = readDirectory(fetchpath, true);
@@ -1259,7 +1313,7 @@ ipcMain.on("fetchFilesPush", (_, options) => {
 });
 
 ipcMain.on("fetchFoldersPush", (_, options) => {
-  var fetchpath = userHomePath + options["categorypath"];
+  var fetchpath = defaultWorkDirectory + options["categorypath"];
   var data = {};
   if (fs.existsSync(fetchpath)) {
     data = readDirectories(fetchpath);
@@ -1274,14 +1328,14 @@ ipcMain.on("fetchFoldersPush", (_, options) => {
 
 ipcMain.on("openFolder", (_, options) => {
   if (!options["path"].startsWith("/")) {
-    options["path"] = userHomePath + options["path"];
+    options["path"] = defaultWorkDirectory + options["path"];
   }
   openFolder(options["path"]);
 });
 
 ipcMain.on("folderSelected", (_, options) => {
-  if (!options["currentPath"].startsWith(userHomePath)) {
-    options["currentPath"] = userHomePath + options["path"];
+  if (!options["currentPath"].startsWith(defaultWorkDirectory)) {
+    options["currentPath"] = defaultWorkDirectory + options["path"];
   }
 
   // mainWindow.selectAPI.selectFolder().then((result) => {
@@ -1435,7 +1489,7 @@ class UploadCounter extends EventEmitter {
 }
 
 ipcMain.on("uploadAll", async (_, options) => {
-  pullFolderList(options["categorypath"], uploadFilesRecursive);
+  pullFolderList(defaultWorkDirectory, options["categorypath"], uploadFilesRecursive);
 });
 
 var batchUploadManager = new UploadManager(mainWindow);
@@ -1486,7 +1540,7 @@ async function uploadFilesRecursive(categories, index = 0) {
   }
 
   var category = categories[index];
-  var fetchpath = userHomePath + category.path;
+  var fetchpath = defaultWorkDirectory + category.path;
 
   var data = {};
   if (fs.existsSync(fetchpath)) {
@@ -1526,7 +1580,7 @@ async function uploadFilesRecursive(categories, index = 0) {
 }
 
 ipcMain.on("trashExtraFiles", async (_, options) => {
-  pullFolderList(options["categorypath"], trashFilesRecursive);
+  pullFolderList(defaultWorkDirectory, options["categorypath"], trashFilesRecursive);
 });
 
 function trashFilesRecursive(categories, index = 0) {
@@ -1536,8 +1590,8 @@ function trashFilesRecursive(categories, index = 0) {
   }
 
   var category = categories[index];
-  var fetchpath = userHomePath + category.path;
-  var trashRoot = userHomePath + "_Trash/";
+  var fetchpath = defaultWorkDirectory + category.path;
+  var trashRoot = defaultWorkDirectory + "_Trash/";
   var data = {};
 
   if (fs.existsSync(fetchpath)) {
@@ -1604,7 +1658,7 @@ ipcMain.on("fetchfilesupload", async (event, { assetid, file }) => {
     downloadPath:
       parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
     donwloadFilePath: file,
-    localFolderPath: userHomePath + file.categorypath,
+    localFolderPath: defaultWorkDirectory + file.categorypath,
     header: connectionOptions.headers,
     onStarted: () => {
       //mainWindow.webContents.send(`download-started-${orderitemid}`);
@@ -1650,7 +1704,7 @@ function fetchfilesdownload(assetid, file, batchMode = false) {
     downloadPath:
       parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
     donwloadFilePath: file,
-    localFolderPath: userHomePath + file.categorypath,
+    localFolderPath: defaultWorkDirectory + file.categorypath,
     header: connectionOptions.headers,
     onStarted: () => {
       //mainWindow.webContents.send(`download-started-${orderitemid}`);

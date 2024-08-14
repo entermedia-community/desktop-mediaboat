@@ -340,12 +340,6 @@ function scanHotFolders(rootPath) {
   }
   var folderTree = scanDirectoryWithStats(rootPath);
   var folderNames = Object.keys(folderTree);
-  // var formData = new FormData();
-  // formData.append("moduleid", workDirEntity);
-  // console.log(workDirEntity);
-  // folderNames.forEach((folder) => {
-  //   formData.append("name", folder);
-  // });
   var data = {
     moduleid: workDirEntity,
     name: folderNames,
@@ -357,16 +351,15 @@ function scanHotFolders(rootPath) {
   axios
     .post(url, data, {
       headers: {
-        ...connectionOptions.headers,
-        "Content-Type": "multipart/form-data",
+        ...connectionOptions.headers
       },
     })
     .then(function (res) {
-      console.log(res);
+      console.log(res.data);
     })
     .catch(function (err) {
       log.error(err);
-    });
+  });
   mainWindow.webContents.send("selected-dirs", {
     rootPath: rootPath,
     folderTree: folderTree,

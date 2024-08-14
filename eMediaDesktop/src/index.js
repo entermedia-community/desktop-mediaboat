@@ -24,6 +24,7 @@ const { EventEmitter } = require("events");
 const axios = require("axios");
 const extName = require("ext-name");
 // const { exec } = require("child_process");
+var fileWatcher = require("chokidar");
 
 const userHomePath = app.getPath("home") + "/eMedia/";
 
@@ -65,6 +66,50 @@ console.log = function (...args) {
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require("electron-squirrel-startup")) {
   app.quit();
+}
+
+function StartWatcher(workPath) {
+  var watcher = fileWatcher.watch(workPath, {
+    ignored: /[\/\\]\./,
+    persistent: true,
+  });
+
+  watcher
+    .on("add", (p) => {
+      // var subfolder = p.replace(workPath, "");
+      // var depth = subfolder.split("/").length;
+      // console.log({ depth });
+    })
+    .on("addDir", (p) => {
+      var subfolder = p.replace(workPath, "");
+      var depth = subfolder.split("/").length;
+      if (depth === 2) {
+        mainWindow.webContents.send("new-hot-folder", {
+          path: p,
+          name: path.basename(p),
+        });
+      }
+    })
+    .on("change", (p) => {
+      // console.log("File", p, "has been changed");
+    })
+    .on("unlink", (p) => {
+      // console.log("File", p, "has been removed");
+    })
+    .on("unlinkDir", (p) => {
+      var subfolder = p.replace(workPath, "");
+      var depth = subfolder.split("/").length;
+      if (depth === 2) {
+        mainWindow.webContents.send("unlink-hot-folder", path.basename(p));
+      }
+    })
+    .on("error", (error) => {
+      console.log("Error happened", error);
+      console.log("object");
+    })
+    .on("ready", () => {
+      console.log("Watching for changes on", workPath);
+    });
 }
 
 const createWindow = () => {
@@ -129,6 +174,11 @@ const createWindow = () => {
       app.quit();
     }
   });
+
+  var workDir = store.get("workDir");
+  if (workDir) {
+    StartWatcher(workDir);
+  }
 };
 
 if (!isDev) {
@@ -212,10 +262,8 @@ function openWorkspace(homeUrl) {
 }
 
 ipcMain.on("getWorkDir", () => {
-  mainWindow.webContents.send("work-dir", {
-    workDir: store.get("workDir"),
-    workDirEntity: store.get("workDirEntity"),
-  });
+  var rootPath = store.get("workDir");
+  scanHotFolders(rootPath);
 });
 
 ipcMain.on("setWorkDirEntity", (_, { entity }) => {
@@ -248,9 +296,11 @@ ipcMain.on("select-dirs", async (_, arg) => {
 function scanHotFolders(rootPath) {
   var folderTree = scanDirectory(rootPath);
   store.set("workDir", rootPath);
+  var workDirEntity = store.get("workDirEntity");
   mainWindow.webContents.send("selected-dirs", {
     rootPath: rootPath,
     folderTree: folderTree,
+    workDirEntity: workDirEntity,
   });
 }
 

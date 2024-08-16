@@ -350,6 +350,8 @@ ipcMain.on("select-dirs", async (_, arg) => {
   });
   let rootPath = result.filePaths[0];
   store.set("workDir", rootPath);
+  store.set("workDirEntity", "");
+  mainWindow.webContents.send("no-workDirEntity");
   StartWatcher(rootPath);
 });
 
@@ -402,16 +404,20 @@ ipcMain.on("scanHotFolders", (_, rootPath) => {
 
 ipcMain.on(
   "importHotFolders",
-  (_, { rootPath, workDirEntity, selectedFolders }) => {
+  (_, { rootPath, workDirEntity, selectedFolders, requiredFields }) => {
     if (!rootPath || !workDirEntity) {
       console.log("No rootPath or workDirEntity");
       return;
     }
 
-    const data = {
-      moduleid: workDirEntity,
-      name: selectedFolders,
-    };
+    const formData = new FormData();
+    formData.append("moduleid", workDirEntity);
+    selectedFolders.forEach((folder) => {
+      formData.append("name", folder);
+    });
+    requiredFields.forEach((field) => {
+      formData.append(field.name, field.value || "");
+    });
 
     const url =
       getMediaDbUrl() +
@@ -420,8 +426,9 @@ ipcMain.on(
     const tempWorkDirectory = path.resolve(rootPath, "..");
 
     axios
-      .post(url, data, {
+      .post(url, formData, {
         headers: {
+          "Content-Type": `multipart/form-data`,
           ...connectionOptions.headers,
         },
       })

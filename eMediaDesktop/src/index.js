@@ -8,7 +8,6 @@ const {
   Menu,
   Tray,
   shell,
-  ipcRenderer,
 } = require("electron");
 // let { session } = require("electron");
 const path = require("path");
@@ -17,16 +16,18 @@ const FormData = require("form-data");
 // const os = require("os");
 // const computerName = os.hostname();
 const Store = require("electron-store");
-var URL = require("url");
-var querystring = require("querystring");
-var fs = require("fs");
+const URL = require("url");
+const querystring = require("querystring");
+const fs = require("fs");
 const { EventEmitter } = require("events");
 const axios = require("axios");
 const extName = require("ext-name");
 // const { exec } = require("child_process");
-var fileWatcher = require("chokidar");
+const fileWatcher = require("chokidar");
 
 const defaultWorkDirectory = app.getPath("home") + "/eMedia/";
+
+let connectionOptions = {};
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -49,12 +50,13 @@ const trayLogo = "/assets/images/em20.png";
 
 const store = new Store();
 const selectWorkspaceForm = `file://${__dirname}/selectHome.html`;
+const configWindow = `file://${__dirname}/config.html`;
 
 const currentVersion = process.env.npm_package_version;
 
 //Handle logs with electron-logs
 log.initialize();
-var console = {};
+let console = {};
 console.log = function (...args) {
   if (mainWindow) {
     mainWindow.webContents.send("electron-log", args);
@@ -68,44 +70,36 @@ if (require("electron-squirrel-startup")) {
   app.quit();
 }
 
-function StartWatcher(workPath) {
-  var watcher = fileWatcher.watch(workPath, {
+function triggerHotScan(workDir) {
+  let subfolder = p.replace(workDir, "");
+  let depth = subfolder.split("/").length;
+  if (depth >= 2) {
+    scanHotFolders(workDir);
+  }
+}
+
+let watcher;
+async function StartWatcher(workPath) {
+  if (watcher) {
+    await watcher.close();
+  }
+  if (!fs.existsSync(workPath)) {
+    return;
+  }
+  watcher = fileWatcher.watch(workPath, {
     ignored: /[\/\\]\./,
     persistent: true,
+    ignoreInitial: true,
+    followSymlinks: false,
   });
 
   watcher
-    .on("add", (p) => {
-      // var subfolder = p.replace(workPath, "");
-      // var depth = subfolder.split("/").length;
-      // console.log({ depth });
-    })
-    .on("addDir", (p) => {
-      var subfolder = p.replace(workPath, "");
-      var depth = subfolder.split("/").length;
-      if (depth === 2) {
-        mainWindow.webContents.send("new-hot-folder", {
-          path: p,
-          name: path.basename(p),
-        });
-      }
-    })
-    .on("change", (p) => {
-      // console.log("File", p, "has been changed");
-    })
-    .on("unlink", (p) => {
-      // console.log("File", p, "has been removed");
-    })
-    .on("unlinkDir", (p) => {
-      var subfolder = p.replace(workPath, "");
-      var depth = subfolder.split("/").length;
-      if (depth === 2) {
-        mainWindow.webContents.send("unlink-hot-folder", path.basename(p));
-      }
-    })
+    .on("add", () => triggerHotScan(workPath))
+    .on("addDir", () => triggerHotScan(workPath))
+    .on("unlink", () => triggerHotScan(workPath))
+    .on("unlinkDir", () => triggerHotScan(workPath))
     .on("error", (error) => {
-      console.log("Error happened", error);
-      console.log("object");
+      console.log("Chokidar error:", error);
     })
     .on("ready", () => {
       console.log("Watching for changes on", workPath);
@@ -127,7 +121,7 @@ const createWindow = () => {
     },
   });
 
-  var homeUrl = store.get("homeUrl");
+  const homeUrl = store.get("homeUrl");
   app.allowRendererProcessReuse = false;
   if (!homeUrl) {
     openWorkspacePicker(selectWorkspaceForm);
@@ -175,7 +169,7 @@ const createWindow = () => {
     }
   });
 
-  var workDir = store.get("workDir");
+  const workDir = store.get("workDir");
   if (workDir) {
     StartWatcher(workDir);
   }
@@ -243,7 +237,7 @@ function openWorkspacePicker(pickerURL) {
   mainWindow.loadURL(pickerURL);
   checkSession(mainWindow);
   mainWindow.once("ready-to-show", () => {
-    var workspaces = store.get("workspaces");
+    const workspaces = store.get("workspaces");
     mainWindow.webContents.send("loadworkspaces", {
       ...workspaces,
     });
@@ -251,23 +245,49 @@ function openWorkspacePicker(pickerURL) {
 }
 
 function openWorkspace(homeUrl) {
-  var parsedUrl = URL.parse(homeUrl, true);
-  var qs_ = querystring.stringify(parsedUrl.query) + "desktop=true";
-  var finalUrl = homeUrl.split("?").shift();
+  let parsedUrl = URL.parse(homeUrl, true);
+  let qs_ = querystring.stringify(parsedUrl.query) + "desktop=true";
+  let finalUrl = homeUrl.split("?").shift();
   finalUrl = finalUrl.trim() + "?" + qs_;
   console.log("Loading: ", finalUrl);
   mainWindow.loadURL(finalUrl);
-  store.set("mediadburl", ""); //reset on restart
   checkSession(mainWindow);
 }
 
+ipcMain.on("setHomeUrl", (_, url) => {
+  const workspaces = store.get("workspaces");
+  if (workspaces) {
+    const exists = workspaces.includes(url);
+    if (!exists) {
+      workspaces.push(url);
+    }
+    store.set("workspaces", workspaces);
+  } else {
+    store.set("workspaces", [url]);
+  }
+  store.set("homeUrl", url);
+  openWorkspace(url);
+});
+
+ipcMain.on("setConnectionOptions", (_, options) => {
+  connectionOptions = options;
+  store.set("mediadburl", options.mediadb);
+  mainWindow.webContents.send("desktopReady");
+});
+
 ipcMain.on("getWorkDir", () => {
-  const rootPath = store.get("workDir");
-  scanHotFolders(rootPath);
+  const workDir = store.get("workDir");
+  const workDirEntity = store.get("workDirEntity");
+  mainWindow.webContents.send("set-workDir", {
+    workDir: workDir,
+    workDirEntity: workDirEntity,
+  });
 });
 
 ipcMain.on("setWorkDirEntity", (_, { entityId }) => {
   store.set("workDirEntity", entityId);
+  const rootPath = store.get("workDir");
+  scanHotFolders(rootPath, entityId);
 });
 
 function getDirectoryStats(dirPath) {
@@ -300,14 +320,14 @@ function getDirectoryStats(dirPath) {
 
 function scanDirectoryWithStats(directory, maxLevel = 1) {
   if (maxLevel <= 0) return {};
-  var files = fs.readdirSync(directory);
-  var folders = {};
+  let files = fs.readdirSync(directory);
+  let folders = {};
   files.forEach((file) => {
     if (file.startsWith(".")) return;
     let filepath = path.join(directory, file);
     let stats = fs.statSync(filepath);
     if (stats.isDirectory()) {
-      var { totalFiles, totalFolders, totalSize } = getDirectoryStats(filepath);
+      let { totalFiles, totalFolders, totalSize } = getDirectoryStats(filepath);
       folders[file] = {};
       folders[file]["totalSize"] = totalSize;
       folders[file]["totalFiles"] = totalFiles;
@@ -328,124 +348,100 @@ ipcMain.on("select-dirs", async (_, arg) => {
     properties: ["openDirectory"],
     defaultPath: arg.currentPath,
   });
-  var rootPath = result.filePaths[0];
-  scanHotFolders(rootPath);
+  let rootPath = result.filePaths[0];
+  store.set("workDir", rootPath);
+  StartWatcher(rootPath);
 });
 
-function scanHotFolders(rootPath) {
-  store.set("workDir", rootPath);
-  var workDirEntity = store.get("workDirEntity");
-  if (!workDirEntity) {
+function scanHotFolders(rootPath, workDirEntity = null) {
+  if (!rootPath) {
+    mainWindow.webContents.send("no-workDir");
     return;
   }
-  var folderTree = scanDirectoryWithStats(rootPath);
-  var folderNames = Object.keys(folderTree);
+  if (!workDirEntity) {
+    workDirEntity = store.get("workDirEntity");
+    if (!workDirEntity) {
+      mainWindow.webContents.send("no-workDirEntity");
+      return;
+    }
+  }
+  const folderTree = scanDirectoryWithStats(rootPath);
+  const folderNames = Object.keys(folderTree);
 
-  var data = {
+  const data = {
     moduleid: workDirEntity,
     name: folderNames,
   };
-  var url =
-    getMediaDbUrl() +
-    "/services/module/asset/entity/bulk/scanfornew.json?moduleid=" +
-    workDirEntity;
+
+  const url =
+    getMediaDbUrl() + "/services/module/asset/entity/bulk/scanfornew.json";
+
   axios
     .post(url, data, {
       headers: {
-        ...connectionOptions.headers
+        ...connectionOptions.headers,
       },
     })
     .then(function (res) {
-      console.log(res.data);
-
       mainWindow.webContents.send("selected-dirs", {
         rootPath: rootPath,
         folderTree: folderTree,
         workDirEntity: workDirEntity,
         newFolders: res.data.newfolders,
-        existingFolders: res.data.existingfolders
+        existingFolders: res.data.existingfolders,
       });
     })
     .catch(function (err) {
-      log.error(err);
-  });
+      console.log(err);
+    });
 }
 
-function uploadHotFolders(rootPath, selectedFolders) {
-  store.set("workDir", rootPath);
-  var workDirEntity = store.get("workDirEntity");
-  if (!workDirEntity) {
-    return;
-  }
-  var folderTree = scanDirectoryWithStats(rootPath);
-  var folderNames = Object.keys(folderTree);
-
-  var data = {
-    moduleid: workDirEntity,
-    name: folderNames,
-  };
-  var url =
-    getMediaDbUrl() +
-    "/services/module/asset/entity/bulk/createentities.json?moduleid=" + workDirEntity;
-
-  var tempWorkDirectory = path.resolve(rootPath, "..");
-  axios
-    .post(url, data, {
-      headers: {
-        ...connectionOptions.headers
-      },
-    })
-    .then(function (res) {
-      console.log(res.data);
-      var existingFolders = res.data.existingFolders;
-      existingFolders.forEach((folder) => {
-        pullFolderList(tempWorkDirectory, folder.path, uploadFilesRecursive);
-      }); 
-
-      /*mainWindow.webContents.send("selected-dirs", {
-        rootPath: rootPath,
-        folderTree: folderTree,
-        workDirEntity: workDirEntity,
-        newFolders: res.data.newfolders,
-        existingFolders: res.data.existingfolders
-      });*/
-    })
-    .catch(function (err) {
-      log.error(err);
-  });
-}
-
-ipcMain.on("scanHotFolders", (_, options) => {
-  var rootPath = options["rootPath"];
-  scanHotFolders(rootPath, false);
+ipcMain.on("scanHotFolders", (_, rootPath) => {
+  scanHotFolders(rootPath);
 });
 
-ipcMain.on("importHotFolders", (_, options) => {
-  var rootPath = options["rootPath"];
-  var selectedFolders = options["selectedFolders"];
-  uploadHotFolders(rootPath, selectedFolders);
-});
-
-ipcMain.on("setHomeUrl", (event, url) => {
-  var workspaces = store.get("workspaces");
-  if (workspaces) {
-    const exists = workspaces.includes(url);
-    if (!exists) {
-      workspaces.push(url);
+ipcMain.on(
+  "importHotFolders",
+  (_, { rootPath, workDirEntity, selectedFolders }) => {
+    if (!rootPath || !workDirEntity) {
+      console.log("No rootPath or workDirEntity");
+      return;
     }
-    store.set("workspaces", workspaces);
-  } else {
-    store.set("workspaces", [url]);
-  }
-  store.set("homeUrl", url);
-  store.set("mediadburl", "");
-  openWorkspace(url);
-});
 
-var connectionOptions = {};
-ipcMain.on("setConnectionOptions", (_, options) => {
-  connectionOptions = options;
-});
+    const data = {
+      moduleid: workDirEntity,
+      name: selectedFolders,
+    };
+
+    const url =
+      getMediaDbUrl() +
+      "/services/module/asset/entity/bulk/createentities.json";
+
+    const tempWorkDirectory = path.resolve(rootPath, "..");
+
+    axios
+      .post(url, data, {
+        headers: {
+          ...connectionOptions.headers,
+        },
+      })
+      .then(function (res) {
+        let existingFolders = res.data.existingfolders;
+        existingFolders.forEach((folder) => {
+          fetchSubFolderContent(
+            tempWorkDirectory,
+            folder.path,
+            uploadFilesRecursive,
+            [0, { type: "hotFolder", name: folder.name }],
+            true
+          );
+        });
+      })
+      .catch(function (err) {
+        log.error(err);
+      });
+  }
+);
 
 function setMainMenu(mainWindow) {
   const template = [
@@ -616,117 +612,10 @@ function DrawTray(mainWin) {
     },
   });
   this.tray.setToolTip("eMedia Library");
-  var contextMenu = Menu.buildFromTemplate(this.trayMenu);
+  let contextMenu = Menu.buildFromTemplate(this.trayMenu);
   this.tray.setContextMenu(contextMenu);
 }
 
-//Include all Workspace Functions
-/*
-function UpdateTray(mainWin, workspaces) {
-  newTrayMenu = [];
-  newTrayMenu.push({
-    label: "Show App",
-    click: () => {
-      mainWin.show();
-    },
-  });
-  workspaces.forEach((ws) => {
-    newTrayMenu.push({
-      label: ws.label,
-      click: () => {
-        mainWin.show();
-        mainWin.loadURL(ws.url);
-      },
-    });
-  });
-  this.trayMenu = newTrayMenu;
-  DrawTray();
-}
-
-ipcMain.on("uploadFiles", (event, options) => {
-  console.log("uploadFiles called", options);
-  let inSourcepath = options["sourcepath"];
-  let inMediadbUrl = options["mediadburl"];
-  entermediakey = options["entermediakey"];
-
-  let defaultpath = store.get("uploaddefaultpath");
-  dialog
-    .showOpenDialog(mainWindow, {
-      defaultPath: defaultpath,
-      properties: ["openFile", "multiSelections"],
-    })
-    .then((result) => {
-      if (result === undefined) return;
-      console.log(result);
-      const filePaths = result.filePaths;
-      if (filePaths.length > 0) {
-        const totalfiles = filePaths.length;
-        var directory = filePaths[0];
-        store.set("uploaddefaultpath", path.dirname(directory));
-        startFilesUpload(filePaths, inSourcepath, inMediadbUrl, options);
-      }
-    });
-});
-
-
-function startFilesUpload(filePaths, inSourcepath, inMediadbUrl, options) {
-  let filecount = 0;
-  let totalsize = 0;
-
-  //get Filesizes
-  filePaths.forEach(function (filename) {
-    var stats = fs.statSync(filename);
-    var fileSizeInBytes = stats.size;
-    totalsize = +fileSizeInBytes;
-  });
-  let filenamefinal = filePaths[0].replace(defaultWorkDirectory, ""); //remove user home
-  let sourcepath = inSourcepath + "/" + computerName + filenamefinal;
-  let categorypath = path.dirname(sourcepath);
-  let form1 = new FormData();
-
-  if (options["moduleid"] != null && options["entityid"] != null) {
-    form1.append("moduleid", options["moduleid"]);
-    form1.append("entityid", options["entityid"]);
-  }
-  //May need stronger path cleanup
-  categorypath = categorypath.replace(":", "");
-  categorypath = categorypath.split(path.sep).join(path.posix.sep);
-  //--
-  console.log("Category: " + categorypath);
-  form1.append("sourcepath", categorypath);
-  submitForm(
-    form1,
-    inMediadbUrl + "/services/module/userupload/uploadstart.json",
-    function () {
-      let savingPath = inSourcepath + "/" + computerName;
-      savingPath = savingPath.replace(":", "");
-      savingPath = savingPath.split(path.sep).join(path.posix.sep);
-      loopFiles(filePaths, savingPath, inMediadbUrl);
-      runJavaScript('$("#sidebarUserUploads").trigger("click");');
-      runJavaScript('$(window).trigger("ajaxautoreload");');
-    }
-  );
-}
-
-function loopFiles(filePaths, savingPath, inMediadbUrl) {
-  filePaths.forEach(function (filename) {
-    const file = fs.createReadStream(filename);
-    let filenamefinal = filename.replace(defaultWorkDirectory, ""); //remove user home
-    let sourcepath = savingPath + filenamefinal;
-    let form = new FormData();
-    form.append("sourcepath", sourcepath);
-    form.append("file", file);
-    console.log("Uploading: " + sourcepath);
-    submitForm(
-      form,
-      inMediadbUrl + "/services/module/asset/create",
-      function () {}
-    );
-    //Todo if false Exeption
-    //filecount++;
-  });
-}
-*/
 ipcMain.on("uploadFolder", (event, options) => {
   console.log("uploadFolder called", options);
 
@@ -742,7 +631,7 @@ ipcMain.on("uploadFolder", (event, options) => {
     .then((result) => {
       //console.log(result.canceled)
       //console.log(result.filePaths)
-      var directory = result.filePaths[0];
+      let directory = result.filePaths[0];
       if (directory != undefined) {
         store.set("uploaddefaultpath", directory);
         console.log("Directory selected:" + directory);
@@ -882,7 +771,6 @@ ipcMain.on("selectFolder", (event, options) => {
   entermediakey = options["entermediakey"];
   downloadpaths = options["downloadpaths"];
   console.log("Download paths ", downloadpaths);
-  let defaultpath = store.get("downloaddefaultpath");
   downloadpaths.forEach(function (downloadpath) {
     downloadfile("https://em11.entermediadb.org" + downloadpath.url);
   });
@@ -929,21 +817,21 @@ function openFolder(path) {
 // Read folders of the files.
 
 function getFilesizeInBytes(filename) {
-  var stats = fs.statSync(filename);
-  var fileSizeInBytes = stats.size;
+  let stats = fs.statSync(filename);
+  let fileSizeInBytes = stats.size;
   return fileSizeInBytes;
 }
 
 function readDirectory(directory, append = false) {
-  var filePaths = [];
-  var folderPaths = [];
-  var files = fs.readdirSync(directory);
+  let filePaths = [];
+  let folderPaths = [];
+  let files = fs.readdirSync(directory);
   files.forEach((file) => {
     if (file.startsWith(".")) return;
     let filepath = path.join(directory, file);
     let stats = fs.statSync(filepath);
     if (stats.isDirectory()) {
-      var subfolderPaths = {};
+      let subfolderPaths = {};
       if (append) {
         subfolderPaths = readDirectory(filepath, true);
       }
@@ -959,14 +847,14 @@ function readDirectory(directory, append = false) {
 }
 
 function readDirectories(directory) {
-  var folderPaths = [];
-  var files = fs.readdirSync(directory);
+  let folderPaths = [];
+  let files = fs.readdirSync(directory);
   files.forEach((file) => {
     if (file.startsWith(".")) return;
     let filepath = path.join(directory, file);
     let stats = fs.statSync(filepath);
     if (stats.isDirectory(filepath)) {
-      var subfolderPaths = {};
+      let subfolderPaths = {};
       subfolderPaths = readDirectories(filepath);
       folderPaths.push({ path: file, subfolders: subfolderPaths });
     }
@@ -1006,10 +894,10 @@ function deSanitizePath(path) {
 }
 
 function addExtraFoldersToList(categories, categoryPath) {
-  var rootPath;
-  var rootLevel;
-  var shouldUpdateTree = true;
-  var filter = null;
+  let rootPath;
+  let rootLevel;
+  let shouldUpdateTree = true;
+  let filter = null;
   if (categories.length === 0) {
     if (!categoryPath) return;
     rootPath = path.dirname(defaultWorkDirectory + categoryPath);
@@ -1020,20 +908,20 @@ function addExtraFoldersToList(categories, categoryPath) {
     rootPath = defaultWorkDirectory + categories[0].path;
     rootLevel = parseInt(categories[0].level);
   }
-  var localPaths = [];
+  let localPaths = [];
   function readDirs(root, index, level) {
-    var files = fs.readdirSync(root);
+    let files = fs.readdirSync(root);
     files.forEach((file) => {
       if (file.startsWith(".")) return;
       let fullpath = path.join(root, file);
       if (filter && fullpath.indexOf(filter) === -1) return;
       let stats = fs.statSync(fullpath);
       if (stats.isDirectory(fullpath)) {
-        var categoryPath = fullpath.substring(defaultWorkDirectory.length);
-        var isExtra =
+        let categoryPath = fullpath.substring(defaultWorkDirectory.length);
+        let isExtra =
           categories.find((c) => c.path === categoryPath) === undefined;
-        var _files = fs.readdirSync(fullpath);
-        var hasFiles = _files.some((f) => !f.startsWith("."));
+        let _files = fs.readdirSync(fullpath);
+        let hasFiles = _files.some((f) => !f.startsWith("."));
         if (isExtra && hasFiles) {
           localPaths.push({
             level: level + 1,
@@ -1048,9 +936,9 @@ function addExtraFoldersToList(categories, categoryPath) {
   if (localPaths.length === 0) return categories;
   localPaths.sort((a, b) => a.level - b.level);
   localPaths.forEach((lp) => {
-    var level = lp.level;
-    var parent = lp.path.split("/").slice(0, -1).join("/");
-    var categoryIndex = categories.findIndex(
+    let level = lp.level;
+    let parent = lp.path.split("/").slice(0, -1).join("/");
+    let categoryIndex = categories.findIndex(
       (c) => parseInt(c.level) === level - 1 && c.path === parent
     );
     categories.splice(categoryIndex + 1, 0, {
@@ -1060,7 +948,7 @@ function addExtraFoldersToList(categories, categoryPath) {
       isExtra: true,
     });
   });
-  var newCategories = categories.map((c, i) => {
+  let newCategories = categories.map((c, i) => {
     c.index = String(i);
     c.id = c.id ? c.id : "fake-id-" + String(i) + "-" + Date.now();
     c.level = String(c.level);
@@ -1072,8 +960,14 @@ function addExtraFoldersToList(categories, categoryPath) {
   return newCategories;
 }
 
-async function pullFolderList(rootPath, categorypath, callback, args = null) {
-  var url =
+async function fetchSubFolderContent(
+  rootPath,
+  categorypath,
+  callback,
+  args = null,
+  ignoreExtra = false
+) {
+  const url =
     getMediaDbUrl() + "/services/module/asset/entity/pullfolderlist.json";
   axios
     .post(
@@ -1087,19 +981,26 @@ async function pullFolderList(rootPath, categorypath, callback, args = null) {
     )
     .then(function (res) {
       if (res.data !== undefined) {
-        var categories = res.data.categories;
-        if (categories.length >= 0) {
-          if (!fs.existsSync(rootPath + categories[0].path)) {
+        const categories = res.data.categories;
+        if (categories && categories.length >= 0) {
+          if (
+            categories.length > 0 &&
+            !fs.existsSync(rootPath + categories[0].path)
+          ) {
             fs.mkdirSync(rootPath + categories[0].path, {
               recursive: true,
             });
           }
-          addExtraFoldersToList(categories, categorypath);
+          if (!ignoreExtra) {
+            addExtraFoldersToList(categories, categorypath);
+          }
           if (args && args.length > 0) {
             callback(categories, ...args);
           } else {
             callback(categories);
           }
+        } else {
+          console.log({ categories });
         }
       }
     })
@@ -1110,11 +1011,13 @@ async function pullFolderList(rootPath, categorypath, callback, args = null) {
     });
 }
 
-ipcMain.on("downloadAll", (_, options) => {
-  pullFolderList(defaultWorkDirectory, options["categorypath"], downloadFolderRecursive, [
-    0,
-    options["scanOnly"],
-  ]);
+ipcMain.on("downloadAll", (_, { categorypath, scanOnly = false }) => {
+  fetchSubFolderContent(
+    defaultWorkDirectory,
+    categorypath,
+    downloadFolderRecursive,
+    [0, scanOnly]
+  );
 });
 
 class DownloadCounter extends EventEmitter {
@@ -1181,9 +1084,9 @@ const downloadFolderRecursive = async function (
     downloadCounter.on("completed", startNextDownload);
   }
 
-  var category = categories[index];
-  var fetchpath = defaultWorkDirectory + category.path;
-  var data = {};
+  let category = categories[index];
+  let fetchpath = defaultWorkDirectory + category.path;
+  let data = {};
 
   if (fs.existsSync(fetchpath)) {
     data = readDirectory(fetchpath, true);
@@ -1191,7 +1094,7 @@ const downloadFolderRecursive = async function (
 
   data.categorypath = category.path;
 
-  var downloadfolderurl =
+  let downloadfolderurl =
     getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json";
   await axios
     .post(downloadfolderurl, data, {
@@ -1199,30 +1102,30 @@ const downloadFolderRecursive = async function (
     })
     .then(function (res) {
       if (res.data !== undefined) {
-        var filestodownload = res.data.filestodownload;
-        var filestoupload = res.data.filestoupload;
+        let filestodownload = res.data.filestodownload;
+        let filestoupload = res.data.filestoupload;
         if (filestodownload !== undefined) {
           if (!scanOnly) {
             downloadCounter.setTotal(filestodownload.length);
           }
           if (!scanOnly) {
             filestodownload.forEach((item) => {
-              var file = {
+              let file = {
                 itemexportname: category.path + "/" + item.path,
                 itemdownloadurl: item.url,
                 categorypath: category.path,
               };
-              var assetid = item.id;
+              let assetid = item.id;
               console.log("Downloading: " + file.itemexportname);
               fetchfilesdownload(assetid, file, true);
             });
           } else {
             //?!: TODO: track extra files
-            var folderDownloadSize = 0;
+            let folderDownloadSize = 0;
             filestodownload.forEach((item) => {
               folderDownloadSize += parseInt(item.size);
             });
-            var folderUploadSize = 0;
+            let folderUploadSize = 0;
             filestoupload.forEach((item) => {
               folderUploadSize += parseInt(item.size);
             });
@@ -1255,19 +1158,10 @@ const downloadFolderRecursive = async function (
 };
 
 function getMediaDbUrl() {
-  var mediadburl = store.get("mediadburl");
+  const mediadburl = store.get("mediadburl");
   if (!mediadburl) {
-    const parsedUrl = URL.parse(store.get("homeUrl"), true);
-    if (parsedUrl.protocol !== undefined && parsedUrl.host !== undefined) {
-      mediadburl =
-        parsedUrl.protocol +
-        "//" +
-        parsedUrl.host +
-        "/" +
-        connectionOptions.mediadb;
-      console.log("mediadburl set to: " + mediadburl);
-      store.set("mediadburl", mediadburl);
-    }
+    console.log("No MediaDB URL found");
+    mainWindow.webContents.send("electron-error", "No MediaDB URL found");
   }
   return mediadburl;
 }
@@ -1284,8 +1178,8 @@ use orders as centarl manager?
 */
 
 ipcMain.on("fetchFiles", (_, options) => {
-  var fetchpath = defaultWorkDirectory + options["categorypath"];
-  var data = {};
+  let fetchpath = defaultWorkDirectory + options["categorypath"];
+  let data = {};
   if (!fs.existsSync(fetchpath)) {
     fs.mkdirSync(fetchpath, { recursive: true });
   }
@@ -1298,8 +1192,8 @@ ipcMain.on("fetchFiles", (_, options) => {
 });
 
 ipcMain.on("fetchFilesPush", (_, options) => {
-  var fetchpath = defaultWorkDirectory + options["categorypath"];
-  var data = {};
+  let fetchpath = defaultWorkDirectory + options["categorypath"];
+  let data = {};
   if (fs.existsSync(fetchpath)) {
     data = readDirectory(fetchpath, true);
   }
@@ -1313,8 +1207,8 @@ ipcMain.on("fetchFilesPush", (_, options) => {
 });
 
 ipcMain.on("fetchFoldersPush", (_, options) => {
-  var fetchpath = defaultWorkDirectory + options["categorypath"];
-  var data = {};
+  let fetchpath = defaultWorkDirectory + options["categorypath"];
+  let data = {};
   if (fs.existsSync(fetchpath)) {
     data = readDirectories(fetchpath);
   }
@@ -1488,8 +1382,12 @@ class UploadCounter extends EventEmitter {
   }
 }
 
-ipcMain.on("uploadAll", async (_, options) => {
-  pullFolderList(defaultWorkDirectory, options["categorypath"], uploadFilesRecursive);
+ipcMain.on("uploadAll", async (_, { categorypath }) => {
+  fetchSubFolderContent(
+    defaultWorkDirectory,
+    categorypath,
+    uploadFilesRecursive
+  );
 });
 
 var batchUploadManager = new UploadManager(mainWindow);
@@ -1502,7 +1400,9 @@ function batchUpload(id, filePath, options) {
     jsonData: options,
     onStarted: () => {},
     onCancel: () => {},
-    onProgress: () => {},
+    onProgress: () => {
+      //TODO: send progress
+    },
     onCompleted: () => {
       uploadCounter.incrementCompleted();
     },
@@ -1512,9 +1412,9 @@ function batchUpload(id, filePath, options) {
   });
 }
 
-async function uploadFilesRecursive(categories, index = 0) {
+async function uploadFilesRecursive(categories, index = 0, options = {}) {
   if (index >= categories.length) {
-    mainWindow.webContents.send("upload-all-complete");
+    mainWindow.webContents.send("upload-all-complete", options);
     uploadCounter.removeAllListeners("completed");
     return;
   }
@@ -1522,12 +1422,13 @@ async function uploadFilesRecursive(categories, index = 0) {
   const startNextUpload = async () => {
     if (categories.length > index) {
       index++;
-      await uploadFilesRecursive(categories, index);
       mainWindow.webContents.send("upload-next", {
         index: index,
+        ...options,
       });
+      await uploadFilesRecursive(categories, index, options);
     } else {
-      mainWindow.webContents.send("upload-all-complete");
+      mainWindow.webContents.send("upload-all-complete", options);
       uploadCounter.removeAllListeners("completed");
     }
   };
@@ -1535,14 +1436,15 @@ async function uploadFilesRecursive(categories, index = 0) {
   if (index === 0) {
     mainWindow.webContents.send("upload-next", {
       index: index,
+      ...options,
     });
     uploadCounter.on("completed", startNextUpload);
   }
 
-  var category = categories[index];
-  var fetchpath = defaultWorkDirectory + category.path;
+  let category = categories[index];
+  let fetchpath = defaultWorkDirectory + category.path;
 
-  var data = {};
+  let data = {};
   if (fs.existsSync(fetchpath)) {
     data = readDirectory(fetchpath, true);
   }
@@ -1555,11 +1457,11 @@ async function uploadFilesRecursive(categories, index = 0) {
     )
     .then(function (res) {
       if (res.data !== undefined) {
-        var filestoupload = res.data.filestoupload;
+        let filestoupload = res.data.filestoupload;
         if (filestoupload !== undefined) {
           uploadCounter.setTotal(filestoupload.length);
           filestoupload.forEach((item, idx) => {
-            var filepath = fetchpath + "/" + item.path;
+            let filepath = fetchpath + "/" + item.path;
             batchUpload(idx, filepath, {
               sourcepath: category.path + "/" + item.path,
             });
@@ -1579,8 +1481,12 @@ async function uploadFilesRecursive(categories, index = 0) {
     });
 }
 
-ipcMain.on("trashExtraFiles", async (_, options) => {
-  pullFolderList(defaultWorkDirectory, options["categorypath"], trashFilesRecursive);
+ipcMain.on("trashExtraFiles", async (_, { categorypath }) => {
+  fetchSubFolderContent(
+    defaultWorkDirectory,
+    categorypath,
+    trashFilesRecursive
+  );
 });
 
 function trashFilesRecursive(categories, index = 0) {
@@ -1589,10 +1495,10 @@ function trashFilesRecursive(categories, index = 0) {
     return;
   }
 
-  var category = categories[index];
-  var fetchpath = defaultWorkDirectory + category.path;
-  var trashRoot = defaultWorkDirectory + "_Trash/";
-  var data = {};
+  let category = categories[index];
+  let fetchpath = defaultWorkDirectory + category.path;
+  let trashRoot = defaultWorkDirectory + "_Trash/";
+  let data = {};
 
   if (fs.existsSync(fetchpath)) {
     data = readDirectory(fetchpath, true);
@@ -1610,13 +1516,13 @@ function trashFilesRecursive(categories, index = 0) {
     )
     .then(function (res) {
       if (res.data !== undefined) {
-        var filestodelete = res.data.filestoupload;
+        let filestodelete = res.data.filestoupload;
         if (filestodelete) {
           filestodelete.forEach((item) => {
             if (!fs.existsSync(trashRoot + category.path)) {
               fs.mkdirSync(trashRoot + category.path, { recursive: true });
             }
-            var filepath = category.path + "/" + item.path;
+            let filepath = category.path + "/" + item.path;
             if (fs.existsSync(trashRoot + filepath)) {
               filepath = category.path + "/" + Date.now() + "_" + item.path;
             }
@@ -1638,8 +1544,8 @@ function trashFilesRecursive(categories, index = 0) {
 }
 
 ipcMain.on("pickFolder", (_, options) => {
-  var fetchpath = pickFolder();
-  var data = {};
+  let fetchpath = pickFolder();
+  let data = {};
   if (fs.existsSync(fetchpath)) {
     data = readDirectory(fetchpath);
   }
@@ -1651,7 +1557,7 @@ ipcMain.on("pickFolder", (_, options) => {
 });
 
 ipcMain.on("fetchfilesupload", async (event, { assetid, file }) => {
-  var parsedUrl = URL.parse(store.get("homeUrl"), true);
+  const parsedUrl = URL.parse(store.get("homeUrl"), true);
 
   const items = {
     downloadItemId: assetid,
@@ -1697,7 +1603,7 @@ ipcMain.on("fetchfilesdownload", async (_, { assetid, file }) => {
 });
 
 function fetchfilesdownload(assetid, file, batchMode = false) {
-  var parsedUrl = URL.parse(store.get("homeUrl"), true);
+  const parsedUrl = URL.parse(store.get("homeUrl"), true);
 
   const items = {
     downloadItemId: assetid,
@@ -1794,7 +1700,7 @@ class DownloadManager {
           properties: ["openDirectory", "createDirectory"],
         });
         this.haveDefaultDownlaodPath = true;
-        var directory = result[0];
+        let directory = result[0];
         if (directory != undefined) {
           store.set("downloadDefaultPath", directory);
         }
@@ -1807,7 +1713,7 @@ class DownloadManager {
       }
     }
 
-    var fileDownloadedPath = "";
+    let fileDownloadedPath = "";
 
     if (localFolderPath != null) {
       fileDownloadedPath = localFolderPath;
@@ -2247,7 +2153,7 @@ ipcMain.on("cancel-download", (event, { orderitemid }) => {
 });
 
 ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
-  var parsedUrl = URL.parse(store.get("homeUrl"), true);
+  const parsedUrl = URL.parse(store.get("homeUrl"), true);
   const items = {
     downloadItemId: orderitemid,
     downloadPath:

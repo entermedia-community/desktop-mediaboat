@@ -70,7 +70,7 @@ if (require("electron-squirrel-startup")) {
   app.quit();
 }
 
-function triggerHotScan(workDir) {
+function triggerHotScan(p, workDir) {
   let subfolder = p.replace(workDir, "");
   let depth = subfolder.split("/").length;
   if (depth >= 2) {
@@ -94,10 +94,10 @@ async function StartWatcher(workPath) {
   });
 
   watcher
-    .on("add", () => triggerHotScan(workPath))
-    .on("addDir", () => triggerHotScan(workPath))
-    .on("unlink", () => triggerHotScan(workPath))
-    .on("unlinkDir", () => triggerHotScan(workPath))
+    .on("add", (p) => triggerHotScan(p, workPath))
+    .on("addDir", (p) => triggerHotScan(p, workPath))
+    .on("unlink", (p) => triggerHotScan(p, workPath))
+    .on("unlinkDir", (p) => triggerHotScan(p, workPath))
     .on("error", (error) => {
       console.log("Chokidar error:", error);
     })

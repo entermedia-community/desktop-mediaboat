@@ -254,6 +254,27 @@ function openWorkspace(homeUrl) {
   checkSession(mainWindow);
 }
 
+function createChildWindow() {
+  childWindow = new BrowserWindow({
+    width: 1000,
+    height: 700,
+    modal: true,
+    show: false,
+    parent: mainWindow,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+      enableRemoteModule: true,
+    },
+  });
+
+  childWindow.loadFile(configWindow);
+
+  childWindow.once("ready-to-show", () => {
+    childWindow.show();
+  });
+}
+
 ipcMain.on("setHomeUrl", (_, url) => {
   const workspaces = store.get("workspaces");
   if (workspaces) {
@@ -350,7 +371,7 @@ ipcMain.on("select-dirs", async (_, arg) => {
   });
   let rootPath = result.filePaths[0];
   store.set("workDir", rootPath);
-  store.set("workDirEntity", "");
+  store.delete("workDirEntity");
   mainWindow.webContents.send("no-workDirEntity");
   StartWatcher(rootPath);
 });
@@ -385,12 +406,19 @@ function scanHotFolders(rootPath, workDirEntity = null) {
       },
     })
     .then(function (res) {
+      const existingFolders = res.data.existingfolders;
+      folderNames.forEach((folder) => {
+        const f = existingFolders.find((e) => e.name === folder);
+        if (f) {
+          folderTree[folder].id = "f-" + f.id;
+        }
+      });
       mainWindow.webContents.send("selected-dirs", {
         rootPath: rootPath,
         folderTree: folderTree,
         workDirEntity: workDirEntity,
         newFolders: res.data.newfolders,
-        existingFolders: res.data.existingfolders,
+        existingFolders: existingFolders,
       });
     })
     .catch(function (err) {
@@ -434,12 +462,20 @@ ipcMain.on(
       })
       .then(function (res) {
         let existingFolders = res.data.existingfolders;
+        if (existingFolders.length === 0) {
+          return;
+        }
+        mainWindow.webContents.send(
+          "created-hot-folders",
+          existingFolders.map((f) => ({ name: f.name, id: f.id }))
+        );
+
         existingFolders.forEach((folder) => {
           fetchSubFolderContent(
             tempWorkDirectory,
             folder.path,
             uploadFilesRecursive,
-            [0, { type: "hotFolder", name: folder.name }],
+            [0, { type: "hotFolder", name: folder.name, entityId: folder.id }],
             true
           );
         });
@@ -525,7 +561,7 @@ function setMainMenu(mainWindow) {
         {
           label: "Local Drive",
           click() {
-            shell.openPath(defaultWorkDirectory);
+            createChildWindow();
           },
         },
         {
@@ -1090,7 +1126,6 @@ const downloadFolderRecursive = async function (
   const startNextDownload = async () => {
     if (categories.length > index) {
       index++;
-      // await sleep(3000);
       await downloadFolderRecursive(categories, index, false);
       mainWindow.webContents.send("download-next", {
         index: index,
@@ -1264,9 +1299,10 @@ ipcMain.on("folderSelected", (_, options) => {
   // });
 });
 
+const abortController = new AbortController();
 class UploadManager {
   constructor(window_, maxConcurrentUploads = 4) {
-    this.uploads = new Map();
+    this.progress = new Map();
     this.uploadQueue = [];
     this.maxConcurrentUploads = maxConcurrentUploads;
     this.currentUploads = 0;
@@ -1275,7 +1311,7 @@ class UploadManager {
   }
 
   async uploadFile({
-    uploadItemId,
+    uploadEntityId,
     jsonData,
     filePath,
     onStarted,
@@ -1289,7 +1325,7 @@ class UploadManager {
     formData.append("jsonrequest", JSON.stringify(jsonData));
     formData.append("file", fs.createReadStream(filePath));
 
-    const uploadPromise = this.createUploadPromise(uploadItemId, formData, {
+    const uploadPromise = this.createUploadPromise(uploadEntityId, formData, {
       onStarted,
       onProgress,
       onCancel,
@@ -1306,32 +1342,49 @@ class UploadManager {
     this.totalUploadsCount++;
   }
 
-  createUploadPromise(uploadItemId, formData, callbacks) {
+  createUploadPromise(uploadEntityId, formData, callbacks) {
     return {
       start: async () => {
         try {
           if (typeof callbacks.onStarted === "function") {
-            callbacks.onStarted();
+            callbacks.onStarted(uploadEntityId);
+          }
+
+          let progress = this.progress.get(uploadEntityId);
+          if (!progress) {
+            progress = {
+              loaded: 0,
+              total: 0,
+            };
+            this.progress.set(uploadEntityId, progress);
           }
 
           const response = await axios.post(
             getMediaDbUrl() + "/services/module/asset/create",
             formData,
             {
+              signal: abortController.signal,
               headers: connectionOptions.headers,
               onUploadProgress: (progressEvent) => {
-                const progress = Math.round(
-                  (progressEvent.loaded / progressEvent.total) * 100
-                );
+                if (!progressEvent.lengthComputable) {
+                  return;
+                }
+                progress.total += progressEvent.total;
+                progress.loaded += progressEvent.loaded;
+                this.progress.set(uploadEntityId, progress);
                 if (typeof callbacks.onProgress === "function") {
-                  callbacks.onProgress(progress);
+                  callbacks.onProgress({
+                    id: uploadEntityId,
+                    loaded: progress.loaded,
+                    total: progress.total,
+                  });
                 }
               },
             }
           );
 
           if (typeof callbacks.onCompleted === "function") {
-            callbacks.onCompleted(response.data);
+            callbacks.onCompleted(uploadEntityId);
           }
         } catch (error) {
           if (axios.isCancel(error)) {
@@ -1340,19 +1393,21 @@ class UploadManager {
             }
           } else {
             if (typeof callbacks.onError === "function") {
-              callbacks.onError(error);
+              callbacks.onError(uploadEntityId, error);
             }
           }
         } finally {
-          console.log("Finally upload promise");
           this.currentUploads--;
           this.totalUploadsCount--;
           this.processQueue();
         }
       },
       cancel: () => {
-        this.currentUploads--;
-        this.uploads.delete(uploadItemId);
+        abortController.abort();
+        this.currentUploads = 0;
+        this.uploadQueue = [];
+        this.totalUploadsCount = 0;
+        this.progress.clear();
         if (typeof callbacks.onCancel === "function") {
           callbacks.onCancel();
         }
@@ -1368,15 +1423,19 @@ class UploadManager {
       const nextUpload = this.uploadQueue.shift();
       this.currentUploads++;
       nextUpload.start();
+    } else if (this.uploadQueue.length === 0 && this.currentUploads === 0) {
+      this.progress.clear();
+      mainWindow.webContents.send("upload-all-complete");
     }
   }
 
-  cancelUpload(uploadItemId) {
-    const upload = this.uploads.get(uploadItemId);
-    if (upload) {
-      upload.cancel();
-      this.uploads.delete(uploadItemId);
-    }
+  cancelUpload() {
+    abortController.abort();
+    this.currentUploads = 0;
+    this.uploadQueue = [];
+    this.totalUploadsCount = 0;
+    this.progress.clear();
+    mainWindow.webContents.send("upload-all-complete");
   }
 }
 
@@ -1405,62 +1464,65 @@ class UploadCounter extends EventEmitter {
   }
 }
 
-ipcMain.on("uploadAll", async (_, { categorypath }) => {
+ipcMain.on("uploadAll", async (_, { categorypath, entityId }) => {
   fetchSubFolderContent(
     defaultWorkDirectory,
     categorypath,
-    uploadFilesRecursive
+    uploadFilesRecursive,
+    [0, { entityId: entityId }]
   );
 });
 
 var batchUploadManager = new UploadManager(mainWindow);
 var uploadCounter = new UploadCounter();
 
-function batchUpload(id, filePath, options) {
-  batchUploadManager.uploadFile({
-    uploadItemId: id,
-    filePath: filePath,
-    jsonData: options,
-    onStarted: () => {},
-    onCancel: () => {},
-    onProgress: () => {
-      //TODO: send progress
-    },
-    onCompleted: () => {
-      uploadCounter.incrementCompleted();
-    },
-    onError: () => {
-      uploadCounter.incrementCompleted();
-    },
-  });
-}
+ipcMain.on("abortUpload", () => {
+  batchUploadManager.cancelUpload();
+});
+
+const defaultUploadEvents = {
+  onStarted: (id) => {
+    mainWindow.webContents.send("upload-start", id);
+  },
+  onCancel: () => {
+    mainWindow.webContents.send("upload-all-complete");
+  },
+  onProgress: ({ id, loaded, total }) => {
+    const progress = Math.round((loaded / total) * 100);
+    mainWindow.webContents.send("upload-progress", {
+      id,
+      progress,
+      loaded,
+      total,
+    });
+  },
+  onCompleted: (id) => {
+    uploadCounter.incrementCompleted();
+    mainWindow.webContents.send("upload-complete", id);
+  },
+  onError: (id, err) => {
+    uploadCounter.incrementCompleted();
+    mainWindow.webContents.send("upload-error", { id, error: err });
+  },
+};
 
 async function uploadFilesRecursive(categories, index = 0, options = {}) {
   if (index >= categories.length) {
-    mainWindow.webContents.send("upload-all-complete", options);
     uploadCounter.removeAllListeners("completed");
+    mainWindow.webContents.send("upload-all-complete");
     return;
   }
 
   const startNextUpload = async () => {
     if (categories.length > index) {
-      index++;
-      mainWindow.webContents.send("upload-next", {
-        index: index,
-        ...options,
-      });
-      await uploadFilesRecursive(categories, index, options);
+      await uploadFilesRecursive(categories, index + 1, options);
     } else {
-      mainWindow.webContents.send("upload-all-complete", options);
       uploadCounter.removeAllListeners("completed");
+      mainWindow.webContents.send("upload-all-complete");
     }
   };
 
   if (index === 0) {
-    mainWindow.webContents.send("upload-next", {
-      index: index,
-      ...options,
-    });
     uploadCounter.on("completed", startNextUpload);
   }
 
@@ -1472,6 +1534,7 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
     data = readDirectory(fetchpath, true);
   }
   data.categorypath = category.path;
+  data.entityid = options["entityId"];
   await axios
     .post(
       getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json",
@@ -1481,12 +1544,22 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
     .then(function (res) {
       if (res.data !== undefined) {
         let filestoupload = res.data.filestoupload;
+        console.log({ filestoupload });
         if (filestoupload !== undefined) {
           uploadCounter.setTotal(filestoupload.length);
-          filestoupload.forEach((item, idx) => {
+          if (filestoupload.length === 0) {
+            mainWindow.webContents.send("upload-complete", options["entityId"]);
+            return;
+          }
+          filestoupload.forEach((item) => {
             let filepath = fetchpath + "/" + item.path;
-            batchUpload(idx, filepath, {
-              sourcepath: category.path + "/" + item.path,
+            batchUploadManager.uploadFile({
+              uploadEntityId: options["entityId"],
+              filePath: filepath,
+              jsonData: {
+                sourcepath: category.path + "/" + item.path,
+              },
+              ...defaultUploadEvents,
             });
           });
         } else {
@@ -2211,57 +2284,6 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
   };
   downloadManager.downloadFile(items);
 });
-
-// -------- Upload -------
-const uploadManager = new UploadManager(mainWindow);
-
-// Listen for the "start-upload" event from the renderer process
-ipcMain.on("start-upload", async (event, options) => {
-  try {
-    // Initiate the upload process using the upload manager
-    const uploadItemId = options["itemid"];
-    const item = {
-      uploadItemId: uploadItemId,
-      jsonData: options,
-      filePath: options["abspath"],
-      onStarted: () => {
-        // Send an event to the renderer process indicating upload started
-        mainWindow.webContents.send(`upload-started-${uploadItemId}`);
-      },
-      onCancel: () => {
-        // Send an event to the renderer process indicating upload cancelled
-        mainWindow.webContents.send(`upload-cancelled-${uploadItemId}`);
-      },
-      onProgress: (progress) => {
-        // Send an event to the renderer process with upload progress information
-        mainWindow.webContents.send(`upload-progress-${uploadItemId}`, {
-          progress,
-        });
-      },
-      onCompleted: (data) => {
-        // Send an event to the renderer process with upload completion data
-        mainWindow.webContents.send(`upload-completed-${uploadItemId}`, data);
-      },
-      onError: (err) => {
-        // Send an event to the renderer process with upload error information
-        mainWindow.webContents.send(`upload-error-${uploadItemId}`, err);
-      },
-    };
-    await uploadManager.uploadFile(item);
-  } catch (err) {
-    console.error("Error during upload:", err);
-    mainWindow.webContents.send("electron-error", err);
-  }
-});
-
-// Listen for the "cancel-upload" event from the renderer process
-ipcMain.on("cancel-upload", (event, { uploadItemId }) => {
-  // Attempt to cancel the upload using the upload manager
-  uploadManager.cancelUpload(uploadItemId);
-});
-/**
- *  ipcRenderer.send('onOpenFile', {path});
- */
 
 ipcMain.on("onOpenFile", (event, path) => {
   let downloadpath = app.getPath("downloads");

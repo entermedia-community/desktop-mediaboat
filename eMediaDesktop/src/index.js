@@ -410,7 +410,7 @@ function scanHotFolders(rootPath, workDirEntity = null) {
       folderNames.forEach((folder) => {
         const f = existingFolders.find((e) => e.name === folder);
         if (f) {
-          folderTree[folder].id = "f-" + f.id;
+          folderTree[folder].id = f.id;
         }
       });
       mainWindow.webContents.send("selected-dirs", {

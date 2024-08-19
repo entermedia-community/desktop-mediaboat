@@ -1498,7 +1498,7 @@ const defaultUploadEvents = {
   },
   onCompleted: (id) => {
     uploadCounter.incrementCompleted();
-    mainWindow.webContents.send("upload-complete", id);
+    mainWindow.webContents.send("upload-single-complete", id);
   },
   onError: (id, err) => {
     uploadCounter.incrementCompleted();
@@ -1548,7 +1548,10 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
         if (filestoupload !== undefined) {
           uploadCounter.setTotal(filestoupload.length);
           if (filestoupload.length === 0) {
-            mainWindow.webContents.send("upload-complete", options["entityId"]);
+            mainWindow.webContents.send(
+              "upload-single-complete",
+              options["entityId"]
+            );
             return;
           }
           filestoupload.forEach((item) => {

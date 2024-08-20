@@ -30,7 +30,7 @@ const isDev = process.env.NODE_ENV === "development";
 if (isDev) {
   try {
     require("electron-reloader")(module, {
-      ignore: ["dist", "Activity", "build", "asset"],
+      ignore: ["dist", "build", "node_modules"],
     });
   } catch (err) {
     mainWindow.webContents.send("electron-error", err);
@@ -38,11 +38,11 @@ if (isDev) {
 }
 
 let mainWindow;
-let entermediakey;
+let entermediaKey;
 
 //Config
-const appLogo = "/assets/images/emrlogo.png";
-const trayLogo = "/assets/images/em20.png";
+const appLogo = "/assets/images/icon.png";
+const trayLogo = "/assets/images/em.png";
 
 const store = new Store();
 const welcomeForm = `file://${__dirname}/config.html`;
@@ -683,7 +683,7 @@ ipcMain.on("uploadFolder", (event, options) => {
   //uploadFolder(options);
   let inSourcepath = options["sourcepath"];
   let inMediadbUrl = options["mediadburl"];
-  entermediakey = options["entermediakey"];
+  entermediaKey = options["entermediakey"];
 
   dialog
     .showOpenDialog(mainWindow, {
@@ -744,14 +744,14 @@ function startFolderUpload(
 
 function submitForm(form, formurl, formCompleted) {
   const q = URL.parse(formurl, true);
-  //entermediakey = "cristobalmd542602d7e0ba09a4e08c0a6234578650c08d0ba08d";
+  //entermediaKey = "cristobalmd542602d7e0ba09a4e08c0a6234578650c08d0ba08d";
   console.log("submitForm Sending Form: " + formurl);
 
   fetch(formurl, {
     method: "POST",
     body: form,
     useSessionCookie: true,
-    headers: { "X-tokentype": "entermedia", "X-token": entermediakey },
+    headers: { "X-tokentype": "entermedia", "X-token": entermediaKey },
   })
     .then(function (res) {
       //console.log(res);  //EnterMedia always return 200, need to check for error on body: ToDo: Catch EM real error.
@@ -829,7 +829,7 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
 ipcMain.on("selectFolder", (event, options) => {
   console.log("selectFolder called", options);
   //function selectFolder(inKey, downloadpaths) {
-  entermediakey = options["entermediakey"];
+  entermediaKey = options["entermediakey"];
   downloadpaths = options["downloadpaths"];
   console.log("Download paths ", downloadpaths);
   downloadpaths.forEach(function (downloadpath) {
@@ -1440,8 +1440,8 @@ ipcMain.on("uploadAll", async (_, { categorypath, entityId }) => {
   );
 });
 
-var batchUploadManager = new UploadManager(mainWindow);
-var uploadCounter = new UploadCounter();
+const batchUploadManager = new UploadManager(mainWindow);
+const uploadCounter = new UploadCounter();
 
 ipcMain.on("abortUpload", () => {
   batchUploadManager.cancelUpload();

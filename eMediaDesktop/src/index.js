@@ -264,6 +264,16 @@ ipcMain.on("addWorkspace", (_, workspace) => {
   mainWindow.webContents.send("workspace-added", workspace);
 });
 
+ipcMain.on("deleteWorkspace", (_, url) => {
+  let workspaces = store.get("workspaces") || [];
+  workspaces = workspaces.filter((w) => w.url !== url);
+  store.set("workspaces", workspaces);
+  const homeUrl = store.get("homeUrl");
+  if (homeUrl === url) {
+    store.delete("homeUrl");
+  }
+});
+
 function openWorkspace(homeUrl) {
   let parsedUrl = URL.parse(homeUrl, true);
   let qs_ = querystring.stringify(parsedUrl.query) + "desktop=true";
@@ -538,12 +548,6 @@ function setMainMenu(mainWindow) {
       label: "Browser",
       submenu: [
         {
-          label: "Back",
-          click() {
-            mainWindow.webContents.goBack();
-          },
-        },
-        {
           label: "Refresh",
           accelerator: "F5",
           click() {
@@ -554,7 +558,7 @@ function setMainMenu(mainWindow) {
           type: "separator",
         },
         {
-          label: "Code Inspector",
+          label: "Inspect Element",
           accelerator: "CmdOrCtrl+Shift+I",
           click() {
             mainWindow.webContents.openDevTools();

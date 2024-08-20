@@ -1,18 +1,21 @@
 const { ipcRenderer } = require("electron");
 
 function renderSaved(url, name, drive, logo) {
-  var el = `<div class="df aic card saved" data-url="${url}" data-drive="${drive}">`;
+  var el = `<div class="df aic card saved" data-url="${url}" data-drive="${drive}" title="${url}">`;
   if (logo) {
-    el += `<img src="${logo}" alt="${name}" />`;
+    el += `<img src="${logo}" alt="${name}" onerror="this.onerror=null;this.src='assets/images/default-logo.png'" />`;
   }
   if (name) {
     el += `<div><h3>${name}</h3></div>`;
+  } else {
+    el += `<div><small>${url}</small></div>`;
   }
   el += `<button class="delete">
     <img src="assets/images/trash.svg" alt="Delete" style="width: 16px; height: 16px" />
   </button></div>`;
   return el;
 }
+
 $(document).ready(function () {
   ipcRenderer.send("configInit");
   ipcRenderer.on(
@@ -49,8 +52,16 @@ $(document).ready(function () {
   });
   jQuery(document).on("click", ".delete", function (e) {
     e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this workspace?")) {
+      return;
+    }
+    var url = $(this).parent().data("url");
     $(this).parent().remove();
-    console.log("object");
+    if ($("#saved").children().length === 0) {
+      $("#savedLibraries").hide();
+    }
+    if (!url) return;
+    ipcRenderer.send("deleteWorkspace", url);
   });
   jQuery(document).on("click", "#addBtn", function () {
     $("#addBtns").hide();

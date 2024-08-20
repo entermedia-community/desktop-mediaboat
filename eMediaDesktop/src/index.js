@@ -9,12 +9,9 @@ const {
   Tray,
   shell,
 } = require("electron");
-// let { session } = require("electron");
 const path = require("path");
 const log = require("electron-log");
 const FormData = require("form-data");
-// const os = require("os");
-// const computerName = os.hostname();
 const Store = require("electron-store");
 const URL = require("url");
 const querystring = require("querystring");
@@ -22,24 +19,23 @@ const fs = require("fs");
 const { EventEmitter } = require("events");
 const axios = require("axios");
 const extName = require("ext-name");
-// const { exec } = require("child_process");
 const fileWatcher = require("chokidar");
 
-const defaultWorkDirectory = app.getPath("home") + "/eMedia/";
+let defaultWorkDirectory = app.getPath("home") + "/eMedia/";
 
 let connectionOptions = {};
 
 const isDev = process.env.NODE_ENV === "development";
 
-// if (isDev) {
-//   try {
-//     require("electron-reloader")(module, {
-//       ignore: ["dist", "Activity", "build", "asset"],
-//     });
-//   } catch (err) {
-//     mainWindow.webContents.send("electron-error", err);
-//   }
-// }
+if (isDev) {
+  try {
+    require("electron-reloader")(module, {
+      ignore: ["dist", "Activity", "build", "asset"],
+    });
+  } catch (err) {
+    mainWindow.webContents.send("electron-error", err);
+  }
+}
 
 let mainWindow;
 let entermediakey;
@@ -49,8 +45,7 @@ const appLogo = "/assets/images/emrlogo.png";
 const trayLogo = "/assets/images/em20.png";
 
 const store = new Store();
-const selectWorkspaceForm = `file://${__dirname}/selectHome.html`;
-const configWindow = `file://${__dirname}/config.html`;
+const welcomeForm = `file://${__dirname}/config.html`;
 
 const currentVersion = process.env.npm_package_version;
 
@@ -122,16 +117,17 @@ const createWindow = () => {
   });
 
   const homeUrl = store.get("homeUrl");
+  const localDrive = store.get("localDrive");
   app.allowRendererProcessReuse = false;
-  if (!homeUrl) {
-    openWorkspacePicker(selectWorkspaceForm);
+  if (!homeUrl || !localDrive) {
+    openWorkspacePicker(welcomeForm);
   } else {
     openWorkspace(homeUrl);
   }
   // Open the DevTools.
-  if (isDev) {
-    mainWindow.webContents.openDevTools();
-  }
+  // if (isDev) {
+  //   mainWindow.webContents.openDevTools();
+  // }
 
   // Main Menu
   setMainMenu(mainWindow);
@@ -236,13 +232,37 @@ function checkSession(win) {
 function openWorkspacePicker(pickerURL) {
   mainWindow.loadURL(pickerURL);
   checkSession(mainWindow);
-  mainWindow.once("ready-to-show", () => {
-    const workspaces = store.get("workspaces");
-    mainWindow.webContents.send("loadworkspaces", {
-      ...workspaces,
-    });
-  });
 }
+
+ipcMain.on("configInit", () => {
+  const welcomeDone = store.get("welcomeDone");
+  const workspaces = store.get("workspaces");
+  mainWindow.webContents.send("config-init", {
+    welcomeDone: welcomeDone,
+    workspaces,
+    defaultLocalDrive: defaultWorkDirectory,
+  });
+});
+
+ipcMain.on("welcomeDone", () => {
+  store.set("welcomeDone", true);
+});
+
+ipcMain.on("addWorkspace", (_, workspace) => {
+  let workspaces = store.get("workspaces") || [];
+  workspaces = workspaces.filter((w) => w.url);
+  if (workspaces) {
+    const exists = workspaces.find((w) => w.url === workspace.url);
+    if (!exists) {
+      workspaces.push(workspace);
+    }
+    store.set("workspaces", workspaces);
+  } else {
+    store.set("workspaces", [workspace]);
+  }
+  defaultWorkDirectory = workspace.drive;
+  mainWindow.webContents.send("workspace-added", workspace);
+});
 
 function openWorkspace(homeUrl) {
   let parsedUrl = URL.parse(homeUrl, true);
@@ -253,42 +273,6 @@ function openWorkspace(homeUrl) {
   mainWindow.loadURL(finalUrl);
   checkSession(mainWindow);
 }
-
-function createChildWindow() {
-  childWindow = new BrowserWindow({
-    width: 1000,
-    height: 700,
-    modal: true,
-    show: false,
-    parent: mainWindow,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      enableRemoteModule: true,
-    },
-  });
-
-  childWindow.loadFile(configWindow);
-
-  childWindow.once("ready-to-show", () => {
-    childWindow.show();
-  });
-}
-
-ipcMain.on("setHomeUrl", (_, url) => {
-  const workspaces = store.get("workspaces");
-  if (workspaces) {
-    const exists = workspaces.includes(url);
-    if (!exists) {
-      workspaces.push(url);
-    }
-    store.set("workspaces", workspaces);
-  } else {
-    store.set("workspaces", [url]);
-  }
-  store.set("homeUrl", url);
-  openWorkspace(url);
-});
 
 ipcMain.on("setConnectionOptions", (_, options) => {
   connectionOptions = options;
@@ -374,6 +358,28 @@ ipcMain.on("select-dirs", async (_, arg) => {
   store.delete("workDirEntity");
   mainWindow.webContents.send("no-workDirEntity");
   StartWatcher(rootPath);
+});
+
+ipcMain.on("configDir", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory"],
+    defaultPath: defaultWorkDirectory,
+  });
+  let rootPath = result.filePaths[0];
+  mainWindow.webContents.send("config-dir", rootPath);
+});
+
+ipcMain.on("openWorkspace", (_, { url, drive }) => {
+  if (drive === "demo") {
+    drive = app.getPath("home") + "/eMedia/Demo/";
+  }
+  if (!drive.endsWith("/")) {
+    drive += "/";
+  }
+  defaultWorkDirectory = drive;
+  store.set("localDrive", drive);
+  store.set("homeUrl", url);
+  openWorkspace(url);
 });
 
 function scanHotFolders(rootPath, workDirEntity = null) {
@@ -492,9 +498,10 @@ function setMainMenu(mainWindow) {
       label: "Workspace",
       submenu: [
         {
-          label: "Change Workspace",
+          label: "Preferences",
+          accelerator: "CmdOrCtrl+,",
           click() {
-            openWorkspacePicker(selectWorkspaceForm);
+            openWorkspacePicker(welcomeForm);
           },
         },
         {
@@ -558,15 +565,6 @@ function setMainMenu(mainWindow) {
     {
       label: "Window",
       submenu: [
-        {
-          label: "Local Drive",
-          click() {
-            createChildWindow();
-          },
-        },
-        {
-          type: "separator",
-        },
         {
           label: "Minimize",
           accelerator: "CmdOrCtrl+M",
@@ -839,21 +837,6 @@ ipcMain.on("selectFolder", (event, options) => {
 
 function openFile(path) {
   console.log("Opening: " + path);
-  /*
-  exec("open", [path] , (error, stdout, stderr) => {
-    if (error) {
-        console.log(`error: ${error.message}`);
-        return;
-    }
-    if (stderr) {
-        console.log(`stderr: ${stderr}`);
-        return;
-    }
-    console.log(`stdout: ${stdout}`);
-});
-
-
-   */
   shell.openPath(path).then((error) => {
     console.log(error);
   });
@@ -1178,7 +1161,6 @@ const downloadFolderRecursive = async function (
               fetchfilesdownload(assetid, file, true);
             });
           } else {
-            //?!: TODO: track extra files
             let folderDownloadSize = 0;
             filestodownload.forEach((item) => {
               folderDownloadSize += parseInt(item.size);
@@ -1223,17 +1205,6 @@ function getMediaDbUrl() {
   }
   return mediadburl;
 }
-
-/*
-readirectory recursibly 
-render indented list on Import screen
-initiate with root path
-have controls to lauch sync of the subfolders
-have status of current, missing and already synced
-Nice to haves:
-Downlad all, Cancel, run on the background?
-use orders as centarl manager?
-*/
 
 ipcMain.on("fetchFiles", (_, options) => {
   let fetchpath = defaultWorkDirectory + options["categorypath"];
@@ -1289,14 +1260,6 @@ ipcMain.on("folderSelected", (_, options) => {
   if (!options["currentPath"].startsWith(defaultWorkDirectory)) {
     options["currentPath"] = defaultWorkDirectory + options["path"];
   }
-
-  // mainWindow.selectAPI.selectFolder().then((result) => {
-  //   console.log(result);
-  //   mainWindow.webContents.send("folder-selected", {
-  //     previousPath: options["currentPath"],
-  //     currentPath: result,
-  //   });
-  // });
 });
 
 const abortController = new AbortController();
@@ -2151,90 +2114,6 @@ const getFilenameFromMime = (name, mime) => {
 
 const downloadManager = new DownloadManager(mainWindow);
 
-/**
- * // Function to initiate a download from the renderer process
- *   function initiateDownload(orderitemid, file, headers) {
- *     // Send an IPC event to the main process with download details
- *     mainWindow.webContents.send('start-download', {
- *       orderitemid,
- *       file,
- *       headers,
- *     });
- *   }
- *
- *   // Function to handle download progress updates received from the main process
- *   function handleDownloadProgress(event, { orderitemid, loaded, total }) {
- *     // Update the UI element representing download progress for the specific orderitemid (e.g., progress bar)
- *     console.log(`Download ${orderitemid} progress: ${loaded}/${total}`);
- *     // Replace with your specific UI framework logic to update the progress bar
- *     // document.getElementById(`download-progress-${orderitemid}`).value = loaded / total;
- *   }
- *
- *   // Function to handle download completion received from the main process
- *   function handleDownloadCompleted(event, filePath) {
- *     console.log(`Download completed: ${filePath}`);
- *     // Handle successful download completion (e.g., display success message)
- *     // You might update UI or perform actions based on the downloaded file
- *   }
- *
- *   // Function to handle download cancellation/abortion received from the main process
- *   function handleDownloadCancelled(event, orderitemid) {
- *     console.log(`Download ${orderitemid} cancelled/aborted`);
- *     // Handle download cancellation (e.g., display cancellation message)
- *     // You might reset UI elements related to the cancelled download
- *   }
- *
- *   // Function to handle download errors received from the main process
- *   function handleDownloadError(event, error) {
- *     console.error('Download error:', error);
- *     // Handle download errors (e.g., display error message to the user)
- *   }
- *
- *   // Function to handle download pause received from the main process
- *   function handleDownloadPaused(event, orderitemid) {
- *     console.log(`Download ${orderitemid} paused`);
- *     // Handle download pausing (e.g., update UI to indicate pause)
- *   }
- *
- *   // Function to handle download resume received from the main process
- *   function handleDownloadResumed(event, orderitemid) {
- *     console.log(`Download ${orderitemid} resumed`);
- *     // Handle download resuming (e.g., update UI to indicate resume)
- *   }
- *
- *   // Register listeners for IPC events from the main process
- *   ipcRenderer.on('download-started-${orderitemid}', () => {
- *     console.log(`Download ${orderitemid} started`);
- *     // You might update UI to indicate download has started (e.g., show a loading indicator)
- *   });
- *
- *   ipcRenderer.on('download-progress-${orderitemid}', handleDownloadProgress);
- *   ipcRenderer.on('download-finished-${orderitemid}', handleDownloadCompleted);
- *   ipcRenderer.on('download-abort-${orderitemid}', handleDownloadCancelled);
- *   ipcRenderer.on('download-error-${orderitemid}', handleDownloadError);
- *   ipcRenderer.on('download-pause-${orderitemid}', handleDownloadPaused);
- *   ipcRenderer.on('download-resume-${orderitemid}', handleDownloadResumed);
- *
- *   // Example usage: initiate a download with order ID, file information, and headers
- *   const fileInfo = { itemdownloadurl: '/path/to/file.zip' };
- *   const headers = { 'Authorization': 'Bearer your_auth_token' };
- *   initiateDownload('download-123', fileInfo, headers);
- *
- *   // Example usage: pause/resume/cancel download by ID (replace with button clicks or user actions)
- *   function pauseDownload(orderitemid) {
- *     mainWindow.webContents.send('pause-download', { orderitemid });
- *   }
- *
- *   function resumeDownload(orderitemid) {
- *     mainWindow.webContents.send('resume-download', { orderitemid });
- *   }
- *
- *   function cancelDownload(orderitemid) {
- *     mainWindow.webContents.send('cancel-download', { orderitemid });
- *   }
- *
- */
-
 ipcMain.on("pause-download", (event, { orderitemid }) => {
   downloadManager.pauseDownload(orderitemid);
 });
@@ -2292,27 +2171,6 @@ ipcMain.on("onOpenFile", (event, path) => {
   let downloadpath = app.getPath("downloads");
   openFile(downloadpath + "/" + path.itemexportname);
 });
-
-/**
- * // Send an IPC message to the main process requesting to read a directory
- *
- * const sendReadDirRequest = (path) => {
- *   ipcRenderer.send('readDir', { path, onScan: (fileList) => {
- *     console.log('Received files from main process:', fileList.files);
- *     console.log('Received folder from main process:', fileList.folders);
- *     // Handle the directory listing data here (e.g., display in a UI element)
- *   }});
- * };
- *
- * // Example usage (assuming you have a button to trigger the read directory)
- *
- * const readDirButton = document.getElementById('read-dir-button');
- * readDirButton.addEventListener('click', () => {
- *   const directoryPath = '/path/to/your/directory';
- *   sendReadDirRequest(directoryPath);
- * });
- *
- */
 
 ipcMain.on("readDir", (event, { path }) => {
   const files = readDirectory(path); // Call the function to read the directory

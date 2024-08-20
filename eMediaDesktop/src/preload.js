@@ -7,5 +7,8 @@ process.once("loaded", () => {
         currentPath: evt.data.currentPath,
       });
     }
+    if (evt.data.type === "configDir") {
+      ipcRenderer.send("configDir");
+    }
   });
 });

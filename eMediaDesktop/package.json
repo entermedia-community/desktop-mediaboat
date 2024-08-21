@@ -82,6 +82,7 @@
       "perMachine": true
     },
     "mac": {
+      "icon": "build/icons",
       "identity": "tech@entermediadb.org"
     }
   }

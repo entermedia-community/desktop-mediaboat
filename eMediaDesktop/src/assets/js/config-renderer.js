@@ -3,16 +3,15 @@ const { ipcRenderer } = require("electron");
 function renderSaved(url, name, drive, logo) {
   var el = `<div class="df aic card saved" data-url="${url}" data-drive="${drive}" title="${url}">`;
   if (logo) {
-    el += `<img src="${logo}" alt="${name}" onerror="this.onerror=null;this.src='assets/images/default-logo.png'" />`;
+    el += `<img src="${logo}" alt="${name}" onerror="this.onerror=null;this.src='assets/images/default-logo.png'"/>`;
   }
   if (name) {
     el += `<div><h3>${name}</h3></div>`;
   } else {
     el += `<div><small>${url}</small></div>`;
   }
-  el += `<button class="delete">
-    <img src="assets/images/trash.svg" alt="Delete" style="width: 16px; height: 16px" />
-  </button></div>`;
+  el +=
+    '<button class="edit"><img src="assets/images/edit.svg" alt="Edit" style="width: 16px; height: 16px"/></button><button class="delete"><img src="assets/images/trash.svg" alt="Delete" style="width: 16px; height: 16px"/></button></div>';
   return el;
 }
 
@@ -33,10 +32,10 @@ $(document).ready(function () {
           $("#savedLibraries").hide();
         } else {
           $("#savedLibraries").show();
+          var saved = $("#savedLibraries").find("#saved");
+          saved.empty();
           workspaces.forEach(({ url, name, drive, logo }) => {
-            $("#savedLibraries")
-              .find("#saved")
-              .append(renderSaved(url, name, drive, logo));
+            saved.append(renderSaved(url, name, drive, logo));
           });
         }
       } else {
@@ -63,13 +62,28 @@ $(document).ready(function () {
     if (!url) return;
     ipcRenderer.send("deleteWorkspace", url);
   });
+  jQuery(document).on("click", ".edit", function (e) {
+    e.stopPropagation();
+    var url = $(this).parent().data("url");
+    var drive = $(this).parent().data("drive");
+    var name = $(this).parent().find("h3").text();
+    $("#url").val(url);
+    $("#name").val(name);
+    $("#localDrive").val(drive);
+    $("#addBtns").hide();
+    $("#add").text("Edit");
+    $("#urlForm").addClass("show");
+  });
   jQuery(document).on("click", "#addBtn", function () {
     $("#addBtns").hide();
+    $("#add").text("+ Add");
     $("#urlForm").addClass("show");
   });
   jQuery(document).on("click", "#cancel", function () {
-    $("#addBtns").show();
     $("#urlForm").removeClass("show");
+    $("#url").val("");
+    $("#name").val("");
+    $("#addBtns").show();
   });
   jQuery(document).on("click", "#add", function () {
     var url = $("#url").val();
@@ -90,12 +104,15 @@ $(document).ready(function () {
     ipcRenderer.send("addWorkspace", { url, name, drive, logo });
   });
 
-  ipcRenderer.on("workspace-added", (_, { url, name, drive, logo }) => {
+  ipcRenderer.on("workspaces-updated", (_, workspaces) => {
+    $("#savedLibraries").show();
+    var saved = $("#savedLibraries").find("#saved");
+    saved.empty();
+    workspaces.forEach(({ url, name, drive, logo }) => {
+      saved.append(renderSaved(url, name, drive, logo));
+    });
     $("#addBtns").show();
     $("#urlForm").removeClass("show");
-    $("#savedLibraries")
-      .find("#saved")
-      .append(renderSaved(url, name, drive, logo));
   });
   jQuery(document).on("click", "#localDrive", function (e) {
     e.preventDefault();

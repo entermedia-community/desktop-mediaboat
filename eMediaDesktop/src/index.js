@@ -249,20 +249,24 @@ ipcMain.on("welcomeDone", () => {
   store.set("welcomeDone", true);
 });
 
-ipcMain.on("addWorkspace", (_, workspace) => {
+ipcMain.on("addWorkspace", (_, newWorkspace) => {
   let workspaces = store.get("workspaces") || [];
   workspaces = workspaces.filter((w) => w.url);
-  if (workspaces) {
-    const exists = workspaces.find((w) => w.url === workspace.url);
-    if (!exists) {
-      workspaces.push(workspace);
-    }
-    store.set("workspaces", workspaces);
+  const editMode = workspaces.find((w) => w.url === newWorkspace.url);
+  if (!editMode) {
+    workspaces.push(newWorkspace);
   } else {
-    store.set("workspaces", [workspace]);
+    workspaces = workspaces.map((w) => {
+      if (w.url === newWorkspace.url) {
+        return newWorkspace;
+      }
+      return w;
+    });
   }
-  defaultWorkDirectory = workspace.drive;
-  mainWindow.webContents.send("workspace-added", workspace);
+  store.set("workspaces", workspaces);
+
+  defaultWorkDirectory = newWorkspace.drive;
+  mainWindow.webContents.send("workspaces-updated", workspaces);
 });
 
 ipcMain.on("deleteWorkspace", (_, url) => {

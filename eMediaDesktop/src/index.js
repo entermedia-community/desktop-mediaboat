@@ -122,6 +122,7 @@ const createWindow = () => {
   if (!homeUrl || !localDrive) {
     openWorkspacePicker(welcomeForm);
   } else {
+    defaultWorkDirectory = localDrive;
     openWorkspace(homeUrl);
   }
   // Open the DevTools.

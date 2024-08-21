@@ -264,8 +264,9 @@ ipcMain.on("addWorkspace", (_, newWorkspace) => {
     });
   }
   store.set("workspaces", workspaces);
-
-  defaultWorkDirectory = newWorkspace.drive;
+  if (newWorkspace.url === store.get("homeUrl")) {
+    defaultWorkDirectory = newWorkspace.drive;
+  }
   mainWindow.webContents.send("workspaces-updated", workspaces);
 });
 

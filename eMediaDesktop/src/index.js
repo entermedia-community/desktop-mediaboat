@@ -14,7 +14,6 @@ const log = require("electron-log");
 const FormData = require("form-data");
 const Store = require("electron-store");
 const URL = require("url");
-const querystring = require("querystring");
 const fs = require("fs");
 const { EventEmitter } = require("events");
 const axios = require("axios");
@@ -53,9 +52,11 @@ const currentVersion = process.env.npm_package_version;
 log.initialize();
 let console = {};
 console.log = function (...args) {
-  if (mainWindow) {
+  if (!mainWindow) {
+    return;
+  }
+  if (mainWindow.webContents) {
     mainWindow.webContents.send("electron-log", args);
-    // turn on "Preserve log" in the browser console settings to see the logs
   }
   log.log.apply(this, args);
 };
@@ -132,9 +133,6 @@ const createWindow = () => {
 
   // Main Menu
   setMainMenu(mainWindow);
-
-  // Session
-  checkSession(mainWindow);
 
   // tray
   CreateTray([], mainWindow);
@@ -225,14 +223,8 @@ app.on("activate", () => {
   }
 });
 
-function checkSession(win) {
-  session = win.webContents.session;
-  //console.log(session.defaultSession);
-}
-
 function openWorkspacePicker(pickerURL) {
   mainWindow.loadURL(pickerURL);
-  checkSession(mainWindow);
 }
 
 ipcMain.on("configInit", () => {
@@ -281,13 +273,7 @@ ipcMain.on("deleteWorkspace", (_, url) => {
 });
 
 function openWorkspace(homeUrl) {
-  let parsedUrl = URL.parse(homeUrl, true);
-  let qs_ = querystring.stringify(parsedUrl.query) + "desktop=true";
-  let finalUrl = homeUrl.split("?").shift();
-  finalUrl = finalUrl.trim() + "?" + qs_;
-  console.log("Loading: ", finalUrl);
-  mainWindow.loadURL(finalUrl);
-  checkSession(mainWindow);
+  mainWindow.loadURL(homeUrl);
 }
 
 ipcMain.on("setConnectionOptions", (_, options) => {
@@ -387,7 +373,7 @@ ipcMain.on("configDir", async () => {
 
 ipcMain.on("openWorkspace", (_, { url, drive }) => {
   if (drive === "demo") {
-    drive = app.getPath("home") + "/eMedia/Demo/";
+    drive = app.getPath("home") + "/eMedia/";
   }
   if (!drive.endsWith("/")) {
     drive += "/";
@@ -396,6 +382,10 @@ ipcMain.on("openWorkspace", (_, { url, drive }) => {
   store.set("localDrive", drive);
   store.set("homeUrl", url);
   openWorkspace(url);
+});
+
+ipcMain.on("openExternal", (_, url) => {
+  shell.openExternal(url);
 });
 
 function scanHotFolders(rootPath, workDirEntity = null) {

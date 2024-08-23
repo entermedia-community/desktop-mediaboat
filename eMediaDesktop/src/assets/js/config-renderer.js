@@ -21,7 +21,7 @@ $(document).ready(function () {
     "config-init",
     (_, { workspaces, defaultLocalDrive, welcomeDone = false }) => {
       if (welcomeDone) {
-        document.title = "Configure Workspace";
+        document.title = "Library Settings";
         $("#localDrive").val(defaultLocalDrive);
         $("#demos").addClass("show");
         setTimeout(() => {
@@ -48,6 +48,7 @@ $(document).ready(function () {
   jQuery("#next").click(function () {
     ipcRenderer.send("welcomeDone");
     $("#demos").addClass("show");
+    $("#welcome").remove();
   });
   jQuery(document).on("click", ".delete", function (e) {
     e.stopPropagation();
@@ -130,5 +131,10 @@ $(document).ready(function () {
     var url = $(this).data("url");
     var drive = $(this).data("drive");
     ipcRenderer.send("openWorkspace", { url, drive });
+  });
+  jQuery(document).on("click", ".external-link", function (e) {
+    e.preventDefault();
+    var url = $(this).attr("href");
+    ipcRenderer.send("openExternal", url);
   });
 });

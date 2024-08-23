@@ -86,6 +86,9 @@ code {
 .aie {
   align-items: end;
 }
+.jcs {
+  justify-content: start;
+}
 .jcb {
   justify-content: space-between;
 }
@@ -122,8 +125,8 @@ code {
   z-index: 1000;
 }
 button.btn {
-  background: transparent;
-  border: 2px solid #ffffff;
+  background: #204ccf;
+  border: 2px solid #204ccf;
   color: #ffffff;
   padding: 8px 20px;
   font-size: 1.2rem;
@@ -138,24 +141,28 @@ button.btn {
   transition: 0.3s ease;
 }
 button.btn.text {
-  border: none;
+  border-color: transparent;
   background: transparent;
-  margin: 0;
+}
+button.btn.text:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+button.btn#addBtn {
+  border-color: #204ccf;
+  background-color: #204ccf;
 }
 button.btn#add,
 button.btn#cancel {
   min-width: auto;
-}
-button.btn#cancel {
-  font-size: 1rem;
+  margin: 8px 0;
 }
 button.btn img {
   margin-left: 12px;
   width: 20px;
 }
 button.btn:hover {
-  background: #ffffff;
-  color: #252525;
+  background: #204ccf;
+  color: #ffffff;
 }
 button.btn:hover img {
   filter: invert(1);
@@ -182,6 +189,7 @@ button.btn:active {
   justify-content: center;
   margin: 0 auto;
   pointer-events: none;
+  max-width: 1040px;
 }
 #urlForm.show {
   pointer-events: all;
@@ -198,6 +206,7 @@ button.btn:active {
   border: 0;
   width: 100%;
   height: 36px;
+  margin-bottom: 8px;
 }
 div.right {
   display: block;

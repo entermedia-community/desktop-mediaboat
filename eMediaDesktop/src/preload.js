@@ -4,7 +4,7 @@ process.once("loaded", () => {
   window.addEventListener("message", (evt) => {
     if (evt.data.type === "select-dirs") {
       ipcRenderer.send("select-dirs", {
-        currentPath: evt.data.currentPath,
+        currentPath: evt.data.currentPath || undefined,
       });
     }
     if (evt.data.type === "configDir") {

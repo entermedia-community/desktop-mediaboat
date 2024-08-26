@@ -13,16 +13,22 @@ const path = require("path");
 const log = require("electron-log");
 const FormData = require("form-data");
 const Store = require("electron-store");
-const URL = require("url");
+const URLp = require("url");
 const fs = require("fs");
 const { EventEmitter } = require("events");
 const axios = require("axios");
 const extName = require("ext-name");
 const fileWatcher = require("chokidar");
+const OS = require("os");
+const computerName = OS.userInfo().username + OS.hostname();
 
 let defaultWorkDirectory = app.getPath("home") + "/eMedia/";
 
-let connectionOptions = {};
+let connectionOptions = {
+  headers: {
+    "X-computername": computerName,
+  },
+};
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -64,42 +70,6 @@ console.log = function (...args) {
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require("electron-squirrel-startup")) {
   app.quit();
-}
-
-function triggerHotScan(p, workDir) {
-  let subfolder = p.replace(workDir, "");
-  let depth = subfolder.split("/").length;
-  if (depth >= 2) {
-    scanHotFolders(workDir);
-  }
-}
-
-let watcher;
-async function StartWatcher(workPath) {
-  if (watcher) {
-    await watcher.close();
-  }
-  if (!fs.existsSync(workPath)) {
-    return;
-  }
-  watcher = fileWatcher.watch(workPath, {
-    ignored: /[\/\\]\./,
-    persistent: true,
-    ignoreInitial: true,
-    followSymlinks: false,
-  });
-
-  watcher
-    .on("add", (p) => triggerHotScan(p, workPath))
-    .on("addDir", (p) => triggerHotScan(p, workPath))
-    .on("unlink", (p) => triggerHotScan(p, workPath))
-    .on("unlinkDir", (p) => triggerHotScan(p, workPath))
-    .on("error", (error) => {
-      console.log("Chokidar error:", error);
-    })
-    .on("ready", () => {
-      console.log("Watching for changes on", workPath);
-    });
 }
 
 const createWindow = () => {
@@ -163,11 +133,6 @@ const createWindow = () => {
       app.quit();
     }
   });
-
-  const workDir = store.get("workDir");
-  if (workDir) {
-    StartWatcher(workDir);
-  }
 };
 
 if (!isDev) {
@@ -273,28 +238,113 @@ ipcMain.on("deleteWorkspace", (_, url) => {
 });
 
 function openWorkspace(homeUrl) {
-  mainWindow.loadURL(homeUrl);
+  const url = new URL(homeUrl);
+  url.searchParams.append("desktopname", computerName);
+  log.info("Opening Workspace: ", url.toString());
+  mainWindow.loadURL(url.toString());
 }
 
 ipcMain.on("setConnectionOptions", (_, options) => {
-  connectionOptions = options;
+  connectionOptions = {
+    ...options,
+    headers: {
+      ...options.headers,
+      "X-computername": computerName,
+    },
+  };
   store.set("mediadburl", options.mediadb);
   mainWindow.webContents.send("desktopReady");
 });
 
-ipcMain.on("getWorkDir", () => {
-  const workDir = store.get("workDir");
-  const workDirEntity = store.get("workDirEntity");
-  mainWindow.webContents.send("set-workDir", {
-    workDir: workDir,
-    workDirEntity: workDirEntity,
-  });
-});
+function triggerHotScan(p, workDir) {
+  let subfolder = p.replace(workDir, "");
+  let depth = subfolder.split("/").length;
+  if (depth >= 2) {
+    scanHotFolders(workDir);
+  }
+}
 
-ipcMain.on("setWorkDirEntity", (_, { entityId }) => {
-  store.set("workDirEntity", entityId);
-  const rootPath = store.get("workDir");
-  scanHotFolders(rootPath, entityId);
+let watcher;
+async function StartWatcher(workPath) {
+  if (watcher) {
+    await watcher.close();
+  }
+  if (!fs.existsSync(workPath)) {
+    return;
+  }
+  watcher = fileWatcher.watch(workPath, {
+    ignored: /[\/\\]\./,
+    persistent: true,
+    ignoreInitial: true,
+    followSymlinks: false,
+  });
+
+  watcher
+    .on("add", (p) => triggerHotScan(p, workPath))
+    .on("addDir", (p) => triggerHotScan(p, workPath))
+    .on("unlink", (p) => triggerHotScan(p, workPath))
+    .on("unlinkDir", (p) => triggerHotScan(p, workPath))
+    .on("error", (error) => {
+      console.log("Chokidar error:", error);
+    })
+    .on("ready", () => {
+      console.log("Watching for changes on", workPath);
+    });
+}
+
+// function scanDirectory(directory, lastScan=false) {
+//   let filePaths = [];
+//   let folderPaths = [];
+//   let files = fs.readdirSync(directory);
+//   files.forEach((file) => {
+//     if (file.startsWith(".")) return;
+//     let filepath = path.join(directory, file);
+//     let stat = fs.statSync(filepath);
+//     if (lastScan && stat.mtimeMs < lastScan) return;
+//     if (stat.isDirectory()) {
+//       let subfolderPaths = {};
+//       if (append) {
+//         subfolderPaths = scanDirectory(filepath, true);
+//       }
+//       folderPaths.push({ path: file, subfolders: subfolderPaths });
+//     } else {
+//       filePaths.push({ path: file, size: stat.size, abspath: filepath });
+//     }
+//   });
+//   return {
+//     files: filePaths,
+//     folders: folderPaths,
+//   };
+// }
+
+ipcMain.on("setModule", (_, { selectedModule, desktopId }) => {
+  const absPaths = store.get("moduleSources");
+  let absPath = absPaths[selectedModule.moduleid];
+  if (!absPath) {
+    absPath = path.join(defaultWorkDirectory, selectedModule.modulename);
+    store.set("moduleSources", {
+      ...absPaths,
+      [selectedModule.moduleid]: absPath,
+    });
+  }
+  // const formData = new FormData();
+  // formData.append("field", "desktopid");
+  // formData.append("desktopid.value", desktopId);
+  // formData.append("field", "moduleid");
+  // formData.append("moduleid.value", selectedModule.moduleid);
+  // formData.append("field", "localpath");
+  // formData.append("localpath.value", absPath);
+  // // formData.append("field", "lastscan");
+  // // formData.append("lastscan.value", Date.now());
+
+  const contents = scanDirectory(absPath);
+
+  // axios
+  //   .post(getMediaDbUrl() + "")
+  //   .then((res) => {})
+  //   .catch((err) => {});
+
+  mainWindow.webContents.send("set-module-contents", contents);
 });
 
 function getDirectoryStats(dirPath) {
@@ -355,11 +405,12 @@ ipcMain.on("select-dirs", async (_, arg) => {
     properties: ["openDirectory"],
     defaultPath: arg.currentPath,
   });
-  let rootPath = result.filePaths[0];
-  store.set("workDir", rootPath);
-  store.delete("workDirEntity");
-  mainWindow.webContents.send("no-workDirEntity");
-  StartWatcher(rootPath);
+  const selectedFolderPath = result.filePaths[0];
+  const folderName = path.basename(selectedFolderPath);
+  mainWindow.webContents.send("selected-dirs", {
+    name: folderName,
+    path: selectedFolderPath,
+  });
 });
 
 ipcMain.on("configDir", async () => {
@@ -677,7 +728,7 @@ ipcMain.on("uploadFolder", (event, options) => {
   console.log("uploadFolder called", options);
 
   //uploadFolder(options);
-  let inSourcepath = options["sourcepath"];
+  let inSourcepath = options["absPath"];
   let inMediadbUrl = options["mediadburl"];
   entermediaKey = options["entermediakey"];
 
@@ -724,7 +775,7 @@ function startFolderUpload(
   //categorypath = inSourcepath + "/" + dirname;
   let savingPath = inSourcepath + "/" + dirname;
   console.log("Upload start to category:" + savingPath);
-  form1.append("sourcepath", savingPath);
+  form1.append("absPath", savingPath);
   //form.append('totalfilesize', totalsize); Todo: loop over files first
   //console.log(form);
   submitForm(
@@ -739,7 +790,7 @@ function startFolderUpload(
 }
 
 function submitForm(form, formurl, formCompleted) {
-  const q = URL.parse(formurl, true);
+  const q = URLp.parse(formurl, true);
   //entermediaKey = "cristobalmd542602d7e0ba09a4e08c0a6234578650c08d0ba08d";
   console.log("submitForm Sending Form: " + formurl);
 
@@ -802,13 +853,13 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
 
       filepath = filepath.replace(":", "");
       let filenamefinal = filepath.replace(defaultWorkDirectory, ""); //remove user home
-      let sourcepath = path.join(savingPath, filenamefinal);
-      sourcepath = sourcepath.split(path.sep).join(path.posix.sep);
+      let absPath = path.join(savingPath, filenamefinal);
+      absPath = absPath.split(path.sep).join(path.posix.sep);
 
       let form = new FormData();
-      form.append("sourcepath", sourcepath);
+      form.append("absPath", absPath);
       form.append("file", filestream);
-      console.log("Uploading: " + sourcepath);
+      console.log("Uploading: " + absPath);
       submitForm(
         form,
         inMediadbUrl + "/services/module/asset/create",
@@ -1200,8 +1251,8 @@ const downloadFolderRecursive = async function (
 function getMediaDbUrl() {
   const mediadburl = store.get("mediadburl");
   if (!mediadburl) {
-    console.log("No MediaDB URL found");
-    mainWindow.webContents.send("electron-error", "No MediaDB URL found");
+    console.log("No MediaDB URLp found");
+    mainWindow.webContents.send("electron-error", "No MediaDB URLp found");
   }
   return mediadburl;
 }
@@ -1523,7 +1574,7 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
               uploadEntityId: options["entityId"],
               filePath: filepath,
               jsonData: {
-                sourcepath: category.path + "/" + item.path,
+                absPath: category.path + "/" + item.path,
               },
               ...defaultUploadEvents,
             });
@@ -1619,7 +1670,7 @@ ipcMain.on("pickFolder", (_, options) => {
 });
 
 ipcMain.on("fetchfilesupload", async (event, { assetid, file }) => {
-  const parsedUrl = URL.parse(store.get("homeUrl"), true);
+  const parsedUrl = URLp.parse(store.get("homeUrl"), true);
 
   const items = {
     downloadItemId: assetid,
@@ -1665,7 +1716,7 @@ ipcMain.on("fetchfilesdownload", async (_, { assetid, file }) => {
 });
 
 function fetchfilesdownload(assetid, file, batchMode = false) {
-  const parsedUrl = URL.parse(store.get("homeUrl"), true);
+  const parsedUrl = URLp.parse(store.get("homeUrl"), true);
 
   const items = {
     downloadItemId: assetid,
@@ -2131,7 +2182,7 @@ ipcMain.on("cancel-download", (event, { orderitemid }) => {
 });
 
 ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
-  const parsedUrl = URL.parse(store.get("homeUrl"), true);
+  const parsedUrl = URLp.parse(store.get("homeUrl"), true);
   const items = {
     downloadItemId: orderitemid,
     downloadPath:

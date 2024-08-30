@@ -275,40 +275,38 @@ ipcMain.on("setConnectionOptions", (_, options) => {
   mainWindow.webContents.send("desktopReady");
 });
 
-function triggerHotScan(p, workDir) {
-  let subfolder = p.replace(workDir, "");
-  let depth = subfolder.split("/").length;
-  if (depth >= 2) {
-    scanHotFolders(workDir);
-  }
-}
-
 let watcher;
+const watchedPaths = [];
 async function StartWatcher(workPath) {
-  if (watcher) {
-    await watcher.close();
-  }
   if (!fs.existsSync(workPath)) {
     return;
   }
-  watcher = fileWatcher.watch(workPath, {
-    ignored: /[\/\\]\./,
-    persistent: true,
-    ignoreInitial: true,
-    followSymlinks: false,
-  });
+  if (!watcher) {
+    watcher = fileWatcher.watch(workPath, {
+      ignored: /[\/\\]\./,
+      persistent: true,
+      ignoreInitial: true,
+      followSymlinks: false,
+    });
+  } else {
+    watcher.add(workPath);
+  }
 
   watcher
-    .on("add", (p) => triggerHotScan(p, workPath))
-    .on("addDir", (p) => triggerHotScan(p, workPath))
-    .on("unlink", (p) => triggerHotScan(p, workPath))
-    .on("unlinkDir", (p) => triggerHotScan(p, workPath))
+    .on("add", (p) => {
+      mainWindow.webContents.send("file-added", p);
+    })
+    // .on("addDir", (p) => (p))
+    // .on("unlink", (p) => (p))
+    // .on("unlinkDir", (p) => (p))
     .on("error", (error) => {
       console.log("Chokidar error:", error);
     })
     .on("ready", () => {
       console.log("Watching for changes on", workPath);
     });
+
+  watchedPaths.push(workPath);
 }
 
 // function scanDirectory(directory, lastScan=false) {
@@ -535,30 +533,32 @@ function getDirectories(path) {
 
 ipcMain.on("syncAllFolders", (_, syncFolders) => {
   let stats = [];
-  syncFolders.forEach((folder) => {
-    const localPath = folder.localPath;
-    if (!fs.existsSync(localPath)) {
-      return;
-    }
-    stats.push({ id: folder.id, ...getDirectoryStats(localPath) });
-  });
-  mainWindow.webContents.send("stats", stats);
-
   const subfolders = [];
   syncFolders.forEach((folder) => {
-    const directories = getDirectories(folder.localPath);
+    const localPath = folder.localPath;
+    const folderId = folder.id;
+    const categoryPath = folder.categoryPath;
+
+    if (!fs.existsSync(localPath)) {
+      fs.mkdirSync(localPath, { recursive: true });
+    }
+    stats.push({ id: folderId, ...getDirectoryStats(localPath) });
+
+    if (watchedPaths.indexOf(localPath) === -1) {
+      StartWatcher(localPath);
+    }
+
+    const directories = getDirectories(localPath);
     directories.forEach((dir) => {
       subfolders.push({
-        id: folder.id,
+        id: folderId,
         localPath: dir,
-        categoryPath: path.join(
-          folder.categoryPath,
-          dir.replace(folder.localPath, "")
-        ),
-        entityId: folder.id,
+        categoryPath: path.join(categoryPath, dir.replace(localPath, "")),
+        entityId: folderId,
       });
     });
   });
+  mainWindow.webContents.send("stats", stats);
   uploadAutoFolders(subfolders);
 });
 

@@ -13,7 +13,7 @@ const path = require("path");
 const log = require("electron-log");
 const FormData = require("form-data");
 const Store = require("electron-store");
-const URLp = require("url");
+const { parse: parseURL } = require("url");
 const fs = require("fs");
 const { EventEmitter } = require("events");
 const axios = require("axios");
@@ -38,7 +38,7 @@ if (isDev) {
       ignore: ["dist", "build", "node_modules"],
     });
   } catch (err) {
-    mainWindow.webContents.send("electron-error", err);
+    console.error(err);
   }
 }
 
@@ -61,10 +61,25 @@ console.log = function (...args) {
   if (!mainWindow) {
     return;
   }
+  log.log.apply(this, args);
   if (mainWindow.webContents) {
+    if (Array.isArray(args) && args.length === 1) {
+      args = args[0];
+    }
     mainWindow.webContents.send("electron-log", args);
   }
-  log.log.apply(this, args);
+};
+console.error = function (...args) {
+  if (!mainWindow) {
+    return;
+  }
+  log.error.apply(this, args);
+  if (mainWindow.webContents) {
+    if (Array.isArray(args) && args.length === 1) {
+      args = args[0];
+    }
+    mainWindow.webContents.send("electron-error", args);
+  }
 };
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -97,9 +112,9 @@ const createWindow = () => {
     openWorkspace(homeUrl);
   }
   // Open the DevTools.
-  // if (isDev) {
-  //   mainWindow.webContents.openDevTools();
-  // }
+  if (isDev) {
+    mainWindow.webContents.openDevTools();
+  }
 
   // Main Menu
   setMainMenu(mainWindow);
@@ -128,7 +143,6 @@ const createWindow = () => {
   });
 
   mainWindow.on("window-all-closed", () => {
-    console.log("Closing Main Window... ");
     if (process.platform !== "darwin") {
       app.quit();
     }
@@ -167,7 +181,6 @@ if (!isDev) {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on("window-all-closed", () => {
-  console.log("Closing App...");
   if (process.platform !== "darwin") {
     app.quit();
   }
@@ -241,7 +254,13 @@ function openWorkspace(homeUrl) {
   const url = new URL(homeUrl);
   url.searchParams.append("desktopname", computerName);
   log.info("Opening Workspace: ", url.toString());
-  mainWindow.loadURL(url.toString());
+  mainWindow.loadURL(url.toString(), {
+    userAgent:
+      mainWindow.webContents.getUserAgent() + " ComputerName/" + computerName,
+  });
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow.webContents.send("set-local-root", defaultWorkDirectory);
+  });
 }
 
 ipcMain.on("setConnectionOptions", (_, options) => {
@@ -318,7 +337,7 @@ async function StartWatcher(workPath) {
 // }
 
 ipcMain.on("setModule", (_, { selectedModule, desktopId }) => {
-  const absPaths = store.get("moduleSources");
+  let absPaths = store.get("moduleSources") || {};
   let absPath = absPaths[selectedModule.moduleid];
   if (!absPath) {
     absPath = path.join(defaultWorkDirectory, selectedModule.modulename);
@@ -400,17 +419,168 @@ function scanDirectoryWithStats(directory, maxLevel = 1) {
   return folders;
 }
 
+ipcMain.on("refreshStats", (_, directories) => {
+  let stats = {};
+  Object.keys(directories).forEach((id) => {
+    const localPath = directories[id].localPath;
+    if (!fs.existsSync(localPath)) {
+      return;
+    }
+    stats[id] = getDirectoryStats(localPath);
+  });
+  mainWindow.webContents.send("stats", stats);
+});
+
+function getFilesByDirectory(directory) {
+  let filePaths = [];
+  let files = fs.readdirSync(directory);
+  files.forEach((file) => {
+    if (file.startsWith(".")) return;
+    let filepath = path.join(directory, file);
+    let stats = fs.statSync(filepath);
+    if (stats.isFile()) {
+      filePaths.push({ path: file, size: stats.size, abspath: filepath });
+    }
+  });
+  return {
+    files: filePaths,
+  };
+}
+
+async function uploadAutoFolders(folders, index = 0) {
+  if (index >= folders.length) {
+    uploadCounter.removeAllListeners("completed");
+    mainWindow.webContents.send("auto-upload-complete");
+    return;
+  }
+
+  const startNextUpload = async () => {
+    index++;
+    if (folders.length > index) {
+      mainWindow.webContents.send("auto-upload-next", folders[index].id);
+      await uploadAutoFolders(folders, index);
+    } else {
+      uploadCounter.removeAllListeners("completed");
+      mainWindow.webContents.send("auto-upload-complete");
+    }
+  };
+
+  if (index === 0) {
+    mainWindow.webContents.send("auto-upload-next", folders[index].id);
+    uploadCounter.on("completed", startNextUpload);
+  }
+
+  let folder = folders[index];
+  let fetchPath = folder.localPath;
+
+  let data = {};
+  if (fs.existsSync(fetchPath)) {
+    data = getFilesByDirectory(fetchPath, true);
+  }
+  data.categorypath = folder.categoryPath;
+  data.entityid = folder.entityId;
+  await axios
+    .post(
+      getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json",
+      data,
+      { headers: connectionOptions.headers }
+    )
+    .then(function (res) {
+      if (res.data !== undefined) {
+        let filesToUpload = res.data.filestoupload;
+        if (filesToUpload !== undefined) {
+          uploadCounter.setTotal(filesToUpload.length);
+          filesToUpload.forEach((item) => {
+            let filepath = fetchPath + "/" + item.path;
+            batchUploadManager.uploadFile({
+              uploadEntityId: folder.entityId,
+              filePath: filepath,
+              jsonData: {
+                sourcepath: path.join(folder.categoryPath, item.path),
+              },
+              ...defaultUploadEvents,
+            });
+          });
+        } else {
+          throw new Error("No files found");
+        }
+      } else {
+        throw new Error("No data found");
+      }
+    })
+    .catch(function (err) {
+      uploadCounter.setTotal(0);
+      console.error("Error on upload/AutoFolders: " + category.path);
+      console.error(err);
+    });
+}
+
+function getDirectories(path) {
+  const directories = [];
+  directories.push(path);
+  function fetchDirectories(path) {
+    const items = fs.readdirSync(path);
+    items.forEach((item) => {
+      const itemPath = path + "/" + item;
+      const stats = fs.statSync(itemPath);
+      if (stats.isDirectory()) {
+        directories.push(itemPath);
+        directories.concat(fetchDirectories(itemPath));
+      }
+    });
+  }
+  fetchDirectories(path);
+  return directories;
+}
+
+ipcMain.on("syncAllFolders", (_, syncFolders) => {
+  let stats = [];
+  syncFolders.forEach((folder) => {
+    const localPath = folder.localPath;
+    if (!fs.existsSync(localPath)) {
+      return;
+    }
+    stats.push({ id: folder.id, ...getDirectoryStats(localPath) });
+  });
+  mainWindow.webContents.send("stats", stats);
+
+  const subfolders = [];
+  syncFolders.forEach((folder) => {
+    const directories = getDirectories(folder.localPath);
+    directories.forEach((dir) => {
+      subfolders.push({
+        id: folder.id,
+        localPath: dir,
+        categoryPath: path.join(
+          folder.categoryPath,
+          dir.replace(folder.localPath, "")
+        ),
+        entityId: folder.id,
+      });
+    });
+  });
+  uploadAutoFolders(subfolders);
+});
+
 ipcMain.on("select-dirs", async (_, arg) => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ["openDirectory"],
+    properties: ["openDirectory", "multiSelections", "createDirectory"],
     defaultPath: arg.currentPath,
   });
-  const selectedFolderPath = result.filePaths[0];
-  const folderName = path.basename(selectedFolderPath);
-  mainWindow.webContents.send("selected-dirs", {
-    name: folderName,
-    path: selectedFolderPath,
+  const selectedFolderPaths = result.filePaths;
+
+  const folders = [];
+
+  selectedFolderPaths.forEach((selectedFolderPath) => {
+    const folderName = path.basename(selectedFolderPath);
+    const stats = getDirectoryStats(selectedFolderPath);
+    folders.push({
+      name: folderName,
+      path: selectedFolderPath,
+      stats,
+    });
   });
+  mainWindow.webContents.send("selected-dirs", folders);
 });
 
 ipcMain.on("configDir", async () => {
@@ -639,19 +809,6 @@ function setMainMenu(mainWindow) {
     {
       label: "Help",
       submenu: [
-        // {
-        //   label: "Log",
-        //   click() {
-        //     const options = {
-        //       buttons: ["Close"],
-        //       defaultId: 2,
-        //       title: "eMediaBoatLog",
-        //       message: "Logs",
-        //       detail: this.mediaBoatLog,
-        //     };
-        //     dialog.showMessageBox(null, options);
-        //   },
-        // },
         {
           label: "About",
           click() {
@@ -747,8 +904,7 @@ ipcMain.on("uploadFolder", (event, options) => {
       }
     })
     .catch((err) => {
-      console.log(err);
-      mainWindow.webContents.send("electron-error", err);
+      console.error(err);
     });
 });
 
@@ -790,7 +946,7 @@ function startFolderUpload(
 }
 
 function submitForm(form, formurl, formCompleted) {
-  const q = URLp.parse(formurl, true);
+  // const q = parseURL(formurl, true);
   //entermediaKey = "cristobalmd542602d7e0ba09a4e08c0a6234578650c08d0ba08d";
   console.log("submitForm Sending Form: " + formurl);
 
@@ -808,7 +964,6 @@ function submitForm(form, formurl, formCompleted) {
       }
     })
     .catch((err) => {
-      mainWindow.webContents.send("electron-error", err);
       console.error(err);
     });
 }
@@ -894,6 +1049,12 @@ function openFile(path) {
 }
 
 function openFolder(path) {
+  if (path.match(/[\$\.\{\}]/g)) {
+    console.error("Invalid path: " + path);
+    console.log(parseURL("http://www.example.com"));
+    console.log(new URL("http://www.example.com"));
+    return;
+  }
   if (!fs.existsSync(path)) {
     fs.mkdirSync(path, { recursive: true }, (err) => {
       if (err) {
@@ -1098,9 +1259,8 @@ async function fetchSubFolderContent(
       }
     })
     .catch(function (err) {
-      console.log("Error loading: " + url);
-      mainWindow.webContents.send("electron-error", err);
-      console.log(err);
+      console.error("Error loading: " + url);
+      console.error(err);
     });
 }
 
@@ -1181,7 +1341,7 @@ const downloadFolderRecursive = async function (
   let data = {};
 
   if (fs.existsSync(fetchpath)) {
-    data = readDirectory(fetchpath, true);
+    data = readDirectory(fetchpath, false);
   }
 
   data.categorypath = category.path;
@@ -1243,16 +1403,15 @@ const downloadFolderRecursive = async function (
     })
     .catch(function (err) {
       downloadCounter.setTotal(0);
-      console.log("Error on download Folder: " + category.path);
-      mainWindow.webContents.send("electron-error", err);
+      console.error("Error on download Folder: " + category.path);
+      console.error(err);
     });
 };
 
 function getMediaDbUrl() {
   const mediadburl = store.get("mediadburl");
   if (!mediadburl) {
-    console.log("No MediaDB URLp found");
-    mainWindow.webContents.send("electron-error", "No MediaDB URLp found");
+    console.error("No MediaDB url found");
   }
   return mediadburl;
 }
@@ -1588,9 +1747,8 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
     })
     .catch(function (err) {
       uploadCounter.setTotal(0);
-      console.log("Error on uploadFilesRecursive: " + category.path);
-      mainWindow.webContents.send("electron-error", err);
-      console.log(err);
+      console.error("Error on uploadFilesRecursive: " + category.path);
+      console.error(err);
     });
 }
 
@@ -1651,8 +1809,8 @@ function trashFilesRecursive(categories, index = 0) {
     })
     .catch(function (err) {
       trashFilesRecursive(categories, index + 1);
-      console.log("Error on trashFilesRecursive: " + category.path);
-      mainWindow.webContents.send("electron-error", err);
+      console.error("Error on trashFilesRecursive: " + category.path);
+      console.error(err);
     });
 }
 
@@ -1670,7 +1828,7 @@ ipcMain.on("pickFolder", (_, options) => {
 });
 
 ipcMain.on("fetchfilesupload", async (event, { assetid, file }) => {
-  const parsedUrl = URLp.parse(store.get("homeUrl"), true);
+  const parsedUrl = parseURL(store.get("homeUrl"), true);
 
   const items = {
     downloadItemId: assetid,
@@ -1716,7 +1874,7 @@ ipcMain.on("fetchfilesdownload", async (_, { assetid, file }) => {
 });
 
 function fetchfilesdownload(assetid, file, batchMode = false) {
-  const parsedUrl = URLp.parse(store.get("homeUrl"), true);
+  const parsedUrl = parseURL(store.get("homeUrl"), true);
 
   const items = {
     downloadItemId: assetid,
@@ -1821,7 +1979,6 @@ class DownloadManager {
         onError(err);
         onCancel();
         console.error(err);
-        mainWindow.webContents.send("electron-error", err);
         return;
       }
     }
@@ -2182,7 +2339,7 @@ ipcMain.on("cancel-download", (event, { orderitemid }) => {
 });
 
 ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
-  const parsedUrl = URLp.parse(store.get("homeUrl"), true);
+  const parsedUrl = parseURL(store.get("homeUrl"), true);
   const items = {
     downloadItemId: orderitemid,
     downloadPath:

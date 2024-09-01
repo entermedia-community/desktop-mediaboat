@@ -455,7 +455,11 @@ async function uploadAutoFolders(folders, index = 0) {
   const startNextUpload = async () => {
     index++;
     if (folders.length > index) {
-      mainWindow.webContents.send("auto-upload-next", folders[index].id);
+      var f = fs.statSync(folders[index].localPath);
+      mainWindow.webContents.send("auto-upload-next", {
+        id: folders[index].id,
+        size: f.size,
+      });
       await uploadAutoFolders(folders, index);
     } else {
       uploadCounter.removeAllListeners("completed");
@@ -464,7 +468,11 @@ async function uploadAutoFolders(folders, index = 0) {
   };
 
   if (index === 0) {
-    mainWindow.webContents.send("auto-upload-next", folders[index].id);
+    var f = fs.statSync(folders[index].localPath);
+    mainWindow.webContents.send("auto-upload-next", {
+      id: folders[index].id,
+      size: f.size,
+    });
     uploadCounter.on("completed", startNextUpload);
   }
 
@@ -496,7 +504,20 @@ async function uploadAutoFolders(folders, index = 0) {
               jsonData: {
                 sourcepath: path.join(folder.categoryPath, item.path),
               },
-              ...defaultUploadEvents,
+              onProgress: ({ loaded }) => {
+                console.log("Progress: " + loaded);
+                mainWindow.webContents.send("auto-upload-progress", loaded);
+              },
+              onCompleted: () => {
+                uploadCounter.incrementCompleted();
+              },
+              onError: (id, err) => {
+                uploadCounter.incrementCompleted();
+                mainWindow.webContents.send("auto-upload-error", {
+                  id,
+                  error: err,
+                });
+              },
             });
           });
         } else {
@@ -532,17 +553,18 @@ function getDirectories(path) {
 }
 
 ipcMain.on("syncAllFolders", (_, syncFolders) => {
-  let stats = [];
   const subfolders = [];
+  const ids = [];
   syncFolders.forEach((folder) => {
     const localPath = folder.localPath;
     const folderId = folder.id;
     const categoryPath = folder.categoryPath;
 
+    ids.push(folderId);
+
     if (!fs.existsSync(localPath)) {
       fs.mkdirSync(localPath, { recursive: true });
     }
-    stats.push({ id: folderId, ...getDirectoryStats(localPath) });
 
     if (watchedPaths.indexOf(localPath) === -1) {
       StartWatcher(localPath);
@@ -558,7 +580,7 @@ ipcMain.on("syncAllFolders", (_, syncFolders) => {
       });
     });
   });
-  mainWindow.webContents.send("stats", stats);
+  mainWindow.webContents.send("scan-completed", ids);
   uploadAutoFolders(subfolders);
 });
 
@@ -1532,7 +1554,7 @@ class UploadManager {
             this.progress.set(uploadEntityId, progress);
           }
 
-          const response = await axios.post(
+          await axios.post(
             getMediaDbUrl() + "/services/module/asset/create",
             formData,
             {
@@ -1566,7 +1588,11 @@ class UploadManager {
             }
           } else {
             if (typeof callbacks.onError === "function") {
-              callbacks.onError(uploadEntityId, error);
+              console.log(error);
+              callbacks.onError(
+                uploadEntityId,
+                error.message || JSON.stringify(error) || "Unknown error"
+              );
             }
           }
         } finally {
@@ -1608,7 +1634,7 @@ class UploadManager {
     this.uploadQueue = [];
     this.totalUploadsCount = 0;
     this.progress.clear();
-    mainWindow.webContents.send("upload-all-complete");
+    mainWindow.webContents.send("upload-aborted");
   }
 }
 
@@ -1768,7 +1794,6 @@ function trashFilesRecursive(categories, index = 0) {
 
   let category = categories[index];
   let fetchpath = defaultWorkDirectory + category.path;
-  let trashRoot = defaultWorkDirectory + "_Trash/";
   let data = {};
 
   if (fs.existsSync(fetchpath)) {
@@ -1790,14 +1815,10 @@ function trashFilesRecursive(categories, index = 0) {
         let filestodelete = res.data.filestoupload;
         if (filestodelete) {
           filestodelete.forEach((item) => {
-            if (!fs.existsSync(trashRoot + category.path)) {
-              fs.mkdirSync(trashRoot + category.path, { recursive: true });
+            const localPath = path.join(fetchpath, item.path);
+            if (fs.existsSync(localPath)) {
+              shell.trashItem(localPath);
             }
-            let filepath = category.path + "/" + item.path;
-            if (fs.existsSync(trashRoot + filepath)) {
-              filepath = category.path + "/" + Date.now() + "_" + item.path;
-            }
-            fs.renameSync(fetchpath + "/" + item.path, trashRoot + filepath);
           });
           trashFilesRecursive(categories, index + 1);
         } else {

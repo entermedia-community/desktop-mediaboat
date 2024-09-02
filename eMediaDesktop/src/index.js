@@ -9,6 +9,8 @@ const {
   Tray,
   shell,
 } = require("electron");
+const rp = require("request-promise");
+const mime = require("mime-types");
 const path = require("path");
 const log = require("electron-log");
 const FormData = require("form-data");
@@ -254,10 +256,11 @@ function openWorkspace(homeUrl) {
   const url = new URL(homeUrl);
   url.searchParams.append("desktopname", computerName);
   log.info("Opening Workspace: ", url.toString());
-  mainWindow.loadURL(url.toString(), {
-    userAgent:
-      mainWindow.webContents.getUserAgent() + " ComputerName/" + computerName,
-  });
+  let userAgent = mainWindow.webContents.getUserAgent();
+  if (userAgent.indexOf("ComputerName") === -1) {
+    userAgent = userAgent + " ComputerName/" + computerName;
+  }
+  mainWindow.loadURL(url.toString(), { userAgent });
   mainWindow.webContents.on("did-finish-load", () => {
     mainWindow.webContents.send("set-local-root", defaultWorkDirectory);
   });
@@ -1335,6 +1338,7 @@ const downloadFolderRecursive = async function (
     } else {
       mainWindow.webContents.send("download-all-complete");
       downloadCounter.removeAllListeners("completed");
+      openFolder(defaultWorkDirectory + categories[0].path);
     }
     return;
   }
@@ -1349,6 +1353,7 @@ const downloadFolderRecursive = async function (
     } else {
       mainWindow.webContents.send("download-all-complete");
       downloadCounter.removeAllListeners("completed");
+      openFolder(defaultWorkDirectory + categories[0].path);
     }
   };
   if (index === 0 && !scanOnly) {
@@ -1497,7 +1502,6 @@ ipcMain.on("folderSelected", (_, options) => {
 const abortController = new AbortController();
 class UploadManager {
   constructor(window_, maxConcurrentUploads = 4) {
-    this.progress = new Map();
     this.uploadQueue = [];
     this.maxConcurrentUploads = maxConcurrentUploads;
     this.currentUploads = 0;
@@ -1515,18 +1519,20 @@ class UploadManager {
     onCompleted,
     onError,
   }) {
-    const formData = new FormData();
-
-    formData.append("jsonrequest", JSON.stringify(jsonData));
-    formData.append("file", fs.createReadStream(filePath));
-
-    const uploadPromise = this.createUploadPromise(uploadEntityId, formData, {
-      onStarted,
-      onProgress,
-      onCancel,
-      onCompleted,
-      onError,
-    });
+    const uploadPromise = this.createUploadPromise(
+      uploadEntityId,
+      {
+        jsonrequest: JSON.stringify(jsonData),
+        filePath: filePath,
+      },
+      {
+        onStarted,
+        onProgress,
+        onCancel,
+        onCompleted,
+        onError,
+      }
+    );
 
     if (this.currentUploads < this.maxConcurrentUploads) {
       this.currentUploads++;
@@ -1545,42 +1551,41 @@ class UploadManager {
             callbacks.onStarted(uploadEntityId);
           }
 
-          let progress = this.progress.get(uploadEntityId);
-          if (!progress) {
-            progress = {
-              loaded: 0,
-              total: 0,
-            };
-            this.progress.set(uploadEntityId, progress);
-          }
-
-          await axios.post(
-            getMediaDbUrl() + "/services/module/asset/create",
-            formData,
-            {
-              signal: abortController.signal,
-              headers: connectionOptions.headers,
-              onUploadProgress: (progressEvent) => {
-                if (!progressEvent.lengthComputable) {
-                  return;
-                }
-                progress.total += progressEvent.total;
-                progress.loaded += progressEvent.loaded;
-                this.progress.set(uploadEntityId, progress);
-                if (typeof callbacks.onProgress === "function") {
-                  callbacks.onProgress({
-                    id: uploadEntityId,
-                    loaded: progress.loaded,
-                    total: progress.total,
-                  });
-                }
+          let size = fs.statSync(formData.filePath).size;
+          let loaded = 0;
+          const uploadRequest = rp({
+            method: "POST",
+            uri: getMediaDbUrl() + "/services/module/asset/create",
+            formData: {
+              jsonrequest: formData.jsonrequest,
+              file: {
+                value: fs
+                  .createReadStream(formData.filePath)
+                  .on("data", (chunk) => {
+                    loaded += chunk.length;
+                    if (typeof callbacks.onProgress === "function") {
+                      console.log("Progress: ", uploadEntityId, loaded, size);
+                      callbacks.onProgress({
+                        id: uploadEntityId,
+                        loaded,
+                        total: size,
+                      });
+                    }
+                  }),
+                options: {
+                  filename: path.basename(formData.filePath),
+                  contentType: mime.contentType(
+                    path.extname(formData.filePath)
+                  ),
+                },
               },
-            }
-          );
-
-          if (typeof callbacks.onCompleted === "function") {
-            callbacks.onCompleted(uploadEntityId);
-          }
+            },
+            headers: connectionOptions.headers,
+          });
+          abortController.signal.addEventListener("abort", () => {
+            uploadRequest.abort();
+            uploadRequest.cancel();
+          });
         } catch (error) {
           if (axios.isCancel(error)) {
             if (typeof callbacks.onCancel === "function") {
@@ -1606,7 +1611,6 @@ class UploadManager {
         this.currentUploads = 0;
         this.uploadQueue = [];
         this.totalUploadsCount = 0;
-        this.progress.clear();
         if (typeof callbacks.onCancel === "function") {
           callbacks.onCancel();
         }
@@ -1623,7 +1627,6 @@ class UploadManager {
       this.currentUploads++;
       nextUpload.start();
     } else if (this.uploadQueue.length === 0 && this.currentUploads === 0) {
-      this.progress.clear();
       mainWindow.webContents.send("upload-all-complete");
     }
   }
@@ -1633,7 +1636,6 @@ class UploadManager {
     this.currentUploads = 0;
     this.uploadQueue = [];
     this.totalUploadsCount = 0;
-    this.progress.clear();
     mainWindow.webContents.send("upload-aborted");
   }
 }

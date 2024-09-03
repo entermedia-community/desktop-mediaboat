@@ -367,6 +367,183 @@ ipcMain.on("setModule", (_, { selectedModule, desktopId }) => {
   mainWindow.webContents.send("set-module-contents", contents);
 });
 
+class UploadBarrier extends EventEmitter {
+  constructor() {
+    super();
+    this.allowed = true;
+  }
+  allow() {
+    this.allowed = true;
+  }
+  prevent() {
+    this.allowed = false;
+    this.emit("prevented");
+  }
+}
+
+class UploadManager {
+  constructor(barrier, maxConcurrentUploads = 4) {
+    this.uploadQueue = [];
+    this.maxConcurrentUploads = maxConcurrentUploads;
+    this.currentUploads = 0;
+    this.totalUploadsCount = 0;
+    this.barrier = barrier;
+  }
+
+  async uploadFile({
+    uploadEntityId,
+    jsonData,
+    filePath,
+    onStarted,
+    onCancel,
+    onProgress,
+    onCompleted,
+    onError,
+  }) {
+    if (!this.barrier.allowed) {
+      return;
+    }
+    const uploadPromise = this.createUploadPromise(
+      uploadEntityId,
+      {
+        jsonrequest: JSON.stringify(jsonData),
+        filePath: filePath,
+      },
+      {
+        onStarted,
+        onProgress,
+        onCancel,
+        onCompleted,
+        onError,
+      }
+    );
+
+    if (this.currentUploads < this.maxConcurrentUploads) {
+      this.currentUploads++;
+      uploadPromise.start();
+    } else {
+      this.uploadQueue.push(uploadPromise);
+    }
+    this.totalUploadsCount++;
+  }
+
+  createUploadPromise(uploadEntityId, formData, callbacks) {
+    return {
+      start: async () => {
+        try {
+          if (typeof callbacks.onStarted === "function") {
+            callbacks.onStarted(uploadEntityId);
+          }
+
+          let size = fs.statSync(formData.filePath).size;
+          let loaded = 0;
+          const uploadRequest = rp({
+            method: "POST",
+            uri: getMediaDbUrl() + "/services/module/asset/create",
+            formData: {
+              jsonrequest: formData.jsonrequest,
+              file: {
+                value: fs
+                  .createReadStream(formData.filePath)
+                  .on("data", (chunk) => {
+                    loaded += chunk.length;
+                    if (typeof callbacks.onProgress === "function") {
+                      console.log("Progress: ", uploadEntityId, loaded, size);
+                      callbacks.onProgress({
+                        id: uploadEntityId,
+                        loaded,
+                        total: size,
+                      });
+                    }
+                  }),
+                options: {
+                  filename: path.basename(formData.filePath),
+                  contentType: mime.contentType(
+                    path.extname(formData.filePath)
+                  ),
+                },
+              },
+            },
+            headers: connectionOptions.headers,
+          });
+          uploadRequest.then(() => {
+            if (typeof callbacks.onCompleted === "function") {
+              callbacks.onCompleted(uploadEntityId);
+            }
+          });
+          this.barrier.once("prevented", () => {
+            uploadRequest.abort();
+            uploadRequest.cancel();
+          });
+        } catch (error) {
+          if (typeof callbacks.onError === "function") {
+            console.log(error);
+            callbacks.onError(
+              uploadEntityId,
+              error.message || JSON.stringify(error) || "Unknown error"
+            );
+          }
+        } finally {
+          this.currentUploads--;
+          this.totalUploadsCount--;
+          this.processQueue();
+        }
+      },
+      cancel: () => {
+        this.currentUploads = 0;
+        this.uploadQueue = [];
+        this.totalUploadsCount = 0;
+        if (typeof callbacks.onCancel === "function") {
+          callbacks.onCancel();
+        }
+      },
+    };
+  }
+
+  processQueue() {
+    if (
+      this.currentUploads < this.maxConcurrentUploads &&
+      this.uploadQueue.length > 0
+    ) {
+      const nextUpload = this.uploadQueue.shift();
+      this.currentUploads++;
+      nextUpload.start();
+    }
+  }
+
+  cancelUpload() {
+    autoUploadBarrier.prevent();
+    this.currentUploads = 0;
+    this.uploadQueue = [];
+    this.totalUploadsCount = 0;
+  }
+}
+
+class UploadCounter extends EventEmitter {
+  constructor() {
+    super();
+    this.totalUploads = 0;
+    this.completedUploads = 0;
+  }
+
+  setTotal(count) {
+    this.totalUploads = count;
+    this.completedUploads = 0;
+    if (count === 0) {
+      this.emit("completed");
+    }
+  }
+
+  incrementCompleted() {
+    this.completedUploads++;
+    if (this.completedUploads >= this.totalUploads) {
+      this.emit("completed");
+      this.completedUploads = 0;
+      this.totalUploads = 0;
+    }
+  }
+}
+
 function getDirectoryStats(dirPath) {
   let totalFiles = 0;
   let totalFolders = -1;
@@ -448,23 +625,29 @@ function getFilesByDirectory(directory) {
   };
 }
 
+const autoUploadCounter = new UploadCounter();
+const autoUploadBarrier = new UploadBarrier();
+const autoUploadManager = new UploadManager(autoUploadBarrier);
+
 async function uploadAutoFolders(folders, index = 0) {
   if (folders.length === index) {
     mainWindow.webContents.send("auto-upload-complete");
-    uploadCounter.removeAllListeners("completed");
+    autoUploadCounter.removeAllListeners("completed");
     return;
   }
 
-  uploadCounter.once("completed", async () => {
+  autoUploadCounter.once("completed", async () => {
     await uploadAutoFolders(folders, index + 1);
   });
 
-  let folder = folders[index];
-  let fetchPath = folder.localPath;
+  const folder = folders[index];
+  const fetchPath = folder.localPath;
 
   let data = {};
   if (fs.existsSync(fetchPath)) {
     data = getFilesByDirectory(fetchPath, true);
+  } else {
+    data = { files: [] };
   }
   data.categorypath = folder.categoryPath;
   data.entityid = folder.entityId;
@@ -476,34 +659,32 @@ async function uploadAutoFolders(folders, index = 0) {
     )
     .then(function (res) {
       if (res.data !== undefined) {
-        let filesToUpload = res.data.filestoupload;
+        const filesToUpload = res.data.filestoupload;
         if (filesToUpload !== undefined) {
-          uploadCounter.setTotal(filesToUpload.length);
+          autoUploadCounter.setTotal(filesToUpload.length);
           filesToUpload.forEach((item) => {
-            let filepath = fetchPath + "/" + item.path;
-            if (!uploadBarrier.allowed) {
-              uploadBarrier.allow();
+            const filePath = path.join(fetchPath, item.path);
+            if (!autoUploadBarrier.allowed) {
+              autoUploadBarrier.allow();
             }
-            batchUploadManager.uploadFile({
+            autoUploadManager.uploadFile({
               uploadEntityId: folder.entityId,
-              filePath: filepath,
+              filePath: filePath,
               jsonData: {
                 sourcepath: path.join(folder.categoryPath, item.path),
               },
               onProgress: ({ loaded }) => {
-                console.log("Progress: " + loaded);
                 mainWindow.webContents.send("auto-upload-progress", loaded);
               },
               onCompleted: () => {
-                var f = fs.statSync(filepath);
                 mainWindow.webContents.send("auto-upload-next", {
                   id: folder.entityId,
-                  size: f.size,
+                  size: fs.statSync(filePath).size || 0,
                 });
-                uploadCounter.incrementCompleted();
+                autoUploadCounter.incrementCompleted();
               },
               onError: (id, err) => {
-                uploadCounter.incrementCompleted();
+                autoUploadCounter.incrementCompleted();
                 mainWindow.webContents.send("auto-upload-error", {
                   id,
                   error: err,
@@ -519,7 +700,7 @@ async function uploadAutoFolders(folders, index = 0) {
       }
     })
     .catch(function (err) {
-      uploadCounter.setTotal(0);
+      autoUploadCounter.setTotal(0);
       console.error("Error on upload/AutoFolders: " + category.path);
       console.error(err);
     });
@@ -574,6 +755,10 @@ ipcMain.on("syncAllFolders", (_, syncFolders) => {
 
   mainWindow.webContents.send("scan-completed", ids);
   uploadAutoFolders(subfolders);
+});
+
+ipcMain.on("abortAutoUpload", () => {
+  autoUploadManager.cancelUpload();
 });
 
 ipcMain.on("select-dirs", async (_, arg) => {
@@ -1130,12 +1315,8 @@ async function fetchSubFolderContent(
   axios
     .post(
       url,
-      {
-        categorypath: categorypath,
-      },
-      {
-        headers: connectionOptions.headers,
-      }
+      { categorypath: categorypath },
+      { headers: connectionOptions.headers }
     )
     .then(function (res) {
       if (res.data !== undefined) {
@@ -1378,194 +1559,6 @@ ipcMain.on("folderSelected", (_, options) => {
   }
 });
 
-const abortController = new AbortController();
-class UploadBarrier extends EventEmitter {
-  constructor() {
-    super();
-    this.allowed = true;
-  }
-  allow() {
-    this.allowed = true;
-  }
-  prevent() {
-    this.allowed = false;
-    this.emit("prevented");
-  }
-}
-const uploadBarrier = new UploadBarrier();
-class UploadManager {
-  constructor(window_, maxConcurrentUploads = 4) {
-    this.uploadQueue = [];
-    this.maxConcurrentUploads = maxConcurrentUploads;
-    this.currentUploads = 0;
-    this.totalUploadsCount = 0;
-    this.window = window_;
-  }
-
-  async uploadFile({
-    uploadEntityId,
-    jsonData,
-    filePath,
-    onStarted,
-    onCancel,
-    onProgress,
-    onCompleted,
-    onError,
-  }) {
-    if (!uploadBarrier.allowed) {
-      return;
-    }
-    const uploadPromise = this.createUploadPromise(
-      uploadEntityId,
-      {
-        jsonrequest: JSON.stringify(jsonData),
-        filePath: filePath,
-      },
-      {
-        onStarted,
-        onProgress,
-        onCancel,
-        onCompleted,
-        onError,
-      }
-    );
-
-    if (this.currentUploads < this.maxConcurrentUploads) {
-      this.currentUploads++;
-      uploadPromise.start();
-    } else {
-      this.uploadQueue.push(uploadPromise);
-    }
-    this.totalUploadsCount++;
-  }
-
-  createUploadPromise(uploadEntityId, formData, callbacks) {
-    return {
-      start: async () => {
-        try {
-          if (typeof callbacks.onStarted === "function") {
-            callbacks.onStarted(uploadEntityId);
-          }
-
-          let size = fs.statSync(formData.filePath).size;
-          let loaded = 0;
-          const uploadRequest = rp({
-            method: "POST",
-            uri: getMediaDbUrl() + "/services/module/asset/create",
-            formData: {
-              jsonrequest: formData.jsonrequest,
-              file: {
-                value: fs
-                  .createReadStream(formData.filePath)
-                  .on("data", (chunk) => {
-                    loaded += chunk.length;
-                    if (typeof callbacks.onProgress === "function") {
-                      console.log("Progress: ", uploadEntityId, loaded, size);
-                      callbacks.onProgress({
-                        id: uploadEntityId,
-                        loaded,
-                        total: size,
-                      });
-                    }
-                  }),
-                options: {
-                  filename: path.basename(formData.filePath),
-                  contentType: mime.contentType(
-                    path.extname(formData.filePath)
-                  ),
-                },
-              },
-            },
-            headers: connectionOptions.headers,
-          });
-          uploadRequest.then(() => {
-            if (typeof callbacks.onCompleted === "function") {
-              callbacks.onCompleted(uploadEntityId);
-            }
-          });
-          uploadBarrier.once("prevented", () => {
-            uploadRequest.abort();
-            uploadRequest.cancel();
-          });
-        } catch (error) {
-          if (axios.isCancel(error)) {
-            if (typeof callbacks.onCancel === "function") {
-              callbacks.onCancel();
-            }
-          } else {
-            if (typeof callbacks.onError === "function") {
-              console.log(error);
-              callbacks.onError(
-                uploadEntityId,
-                error.message || JSON.stringify(error) || "Unknown error"
-              );
-            }
-          }
-        } finally {
-          this.currentUploads--;
-          this.totalUploadsCount--;
-          this.processQueue();
-        }
-      },
-      cancel: () => {
-        abortController.abort();
-        this.currentUploads = 0;
-        this.uploadQueue = [];
-        this.totalUploadsCount = 0;
-        if (typeof callbacks.onCancel === "function") {
-          callbacks.onCancel();
-        }
-      },
-    };
-  }
-
-  processQueue() {
-    if (
-      this.currentUploads < this.maxConcurrentUploads &&
-      this.uploadQueue.length > 0
-    ) {
-      const nextUpload = this.uploadQueue.shift();
-      this.currentUploads++;
-      nextUpload.start();
-    } else if (this.uploadQueue.length === 0 && this.currentUploads === 0) {
-      mainWindow.webContents.send("upload-all-complete");
-    }
-  }
-
-  cancelUpload() {
-    uploadBarrier.prevent();
-    this.currentUploads = 0;
-    this.uploadQueue = [];
-    this.totalUploadsCount = 0;
-    mainWindow.webContents.send("upload-aborted");
-  }
-}
-
-class UploadCounter extends EventEmitter {
-  constructor() {
-    super();
-    this.totalUploads = 0;
-    this.completedUploads = 0;
-  }
-
-  setTotal(count) {
-    this.totalUploads = count;
-    this.completedUploads = 0;
-    if (count === 0) {
-      this.emit("completed");
-    }
-  }
-
-  incrementCompleted() {
-    this.completedUploads++;
-    if (this.completedUploads >= this.totalUploads) {
-      this.emit("completed");
-      this.completedUploads = 0;
-      this.totalUploads = 0;
-    }
-  }
-}
-
 ipcMain.on("uploadAll", async (_, { categorypath, entityId }) => {
   fetchSubFolderContent(
     defaultWorkDirectory,
@@ -1575,65 +1568,27 @@ ipcMain.on("uploadAll", async (_, { categorypath, entityId }) => {
   );
 });
 
-const batchUploadManager = new UploadManager(mainWindow);
-const uploadCounter = new UploadCounter();
-
-ipcMain.on("abortUpload", () => {
-  batchUploadManager.cancelUpload();
-});
-
-const defaultUploadEvents = {
-  onStarted: (id) => {
-    mainWindow.webContents.send("upload-start", id);
-  },
-  onCancel: () => {
-    mainWindow.webContents.send("upload-all-complete");
-  },
-  onProgress: ({ id, loaded, total }) => {
-    const progress = Math.round((loaded / total) * 100);
-    mainWindow.webContents.send("upload-progress", {
-      id,
-      progress,
-      loaded,
-      total,
-    });
-  },
-  onCompleted: (id) => {
-    uploadCounter.incrementCompleted();
-    mainWindow.webContents.send("upload-single-complete", id);
-  },
-  onError: (id, err) => {
-    uploadCounter.incrementCompleted();
-    mainWindow.webContents.send("upload-error", { id, error: err });
-  },
-};
+const entityUploadCounter = new UploadCounter();
+const entityUploadBarrier = new UploadBarrier();
+const entityUploadManager = new UploadManager(entityUploadBarrier);
 
 async function uploadFilesRecursive(categories, index = 0, options = {}) {
-  if (index >= categories.length) {
-    uploadCounter.removeAllListeners("completed");
-    mainWindow.webContents.send("upload-all-complete");
+  if (categories.length === index) {
+    mainWindow.webContents.send("entity-upload-complete");
+    entityUploadCounter.removeAllListeners("completed");
     return;
   }
 
-  const startNextUpload = async () => {
-    if (categories.length > index) {
-      await uploadFilesRecursive(categories, index + 1, options);
-    } else {
-      uploadCounter.removeAllListeners("completed");
-      mainWindow.webContents.send("upload-all-complete");
-    }
-  };
+  entityUploadCounter.once("completed", async () => {
+    await uploadFilesRecursive(categories, index + 1, options);
+  });
 
-  if (index === 0) {
-    uploadCounter.on("completed", startNextUpload);
-  }
-
-  let category = categories[index];
-  let fetchpath = defaultWorkDirectory + category.path;
+  const category = categories[index];
+  const fetchPath = defaultWorkDirectory + category.path;
 
   let data = {};
-  if (fs.existsSync(fetchpath)) {
-    data = readDirectory(fetchpath, true);
+  if (fs.existsSync(fetchPath)) {
+    data = readDirectory(fetchPath, true);
   }
   data.categorypath = category.path;
   data.entityid = options["entityId"];
@@ -1645,26 +1600,42 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
     )
     .then(function (res) {
       if (res.data !== undefined) {
-        let filestoupload = res.data.filestoupload;
-        console.log({ filestoupload });
-        if (filestoupload !== undefined) {
-          uploadCounter.setTotal(filestoupload.length);
-          if (filestoupload.length === 0) {
-            mainWindow.webContents.send(
-              "upload-single-complete",
-              options["entityId"]
-            );
-            return;
-          }
-          filestoupload.forEach((item) => {
-            let filepath = fetchpath + "/" + item.path;
-            batchUploadManager.uploadFile({
+        const filesToUpload = res.data.filestoupload;
+        if (filesToUpload !== undefined) {
+          entityUploadCounter.setTotal(filesToUpload.length);
+          filesToUpload.forEach((item) => {
+            const filePath = path.join(fetchPath, item.path);
+            if (!entityUploadBarrier.allowed) {
+              entityUploadBarrier.allow();
+            }
+            entityUploadManager.uploadFile({
               uploadEntityId: options["entityId"],
-              filePath: filepath,
+              filePath: filePath,
               jsonData: {
-                absPath: category.path + "/" + item.path,
+                sourcepath: path.join(category.path, item.path),
               },
-              ...defaultUploadEvents,
+              onProgress: ({ id, loaded }) => {
+                console.log("Progress: " + loaded);
+                mainWindow.webContents.send("entity-upload-progress", {
+                  id,
+                  loaded,
+                });
+              },
+              onCompleted: () => {
+                const f = fs.statSync(filePath);
+                mainWindow.webContents.send("entity-upload-next", {
+                  id: folder.entityId,
+                  size: f.size,
+                });
+                entityUploadCounter.incrementCompleted();
+              },
+              onError: (id, err) => {
+                entityUploadCounter.incrementCompleted();
+                mainWindow.webContents.send("entity-upload-error", {
+                  id,
+                  error: err,
+                });
+              },
             });
           });
         } else {
@@ -1675,8 +1646,8 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
       }
     })
     .catch(function (err) {
-      uploadCounter.setTotal(0);
-      console.error("Error on uploadFilesRecursive: " + category.path);
+      entityUploadCounter.setTotal(0);
+      console.error("Error on upload/FilesRecursive: " + category.path);
       console.error(err);
     });
 }

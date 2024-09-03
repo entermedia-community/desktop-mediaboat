@@ -58,30 +58,27 @@ const currentVersion = process.env.npm_package_version;
 
 //Handle logs with electron-logs
 log.initialize();
-let console = {};
-console.log = function (...args) {
-  if (!mainWindow) {
-    return;
-  }
-  log.log.apply(this, args);
-  if (mainWindow.webContents) {
-    if (Array.isArray(args) && args.length === 1) {
-      args = args[0];
+const console = {
+  log: function (...args) {
+    if (!mainWindow) return;
+    log.log.apply(this, args);
+    if (mainWindow.webContents) {
+      if (Array.isArray(args) && args.length === 1) {
+        args = args[0];
+      }
+      mainWindow.webContents.send("electron-log", args);
     }
-    mainWindow.webContents.send("electron-log", args);
-  }
-};
-console.error = function (...args) {
-  if (!mainWindow) {
-    return;
-  }
-  log.error.apply(this, args);
-  if (mainWindow.webContents) {
-    if (Array.isArray(args) && args.length === 1) {
-      args = args[0];
+  },
+  error: function (...args) {
+    if (!mainWindow) return;
+    log.error.apply(this, args);
+    if (mainWindow.webContents) {
+      if (Array.isArray(args) && args.length === 1) {
+        args = args[0];
+      }
+      mainWindow.webContents.send("electron-error", args);
     }
-    mainWindow.webContents.send("electron-error", args);
-  }
+  },
 };
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -449,35 +446,15 @@ function getFilesByDirectory(directory) {
 }
 
 async function uploadAutoFolders(folders, index = 0) {
-  if (index >= folders.length) {
-    uploadCounter.removeAllListeners("completed");
+  if (folders.length === index) {
     mainWindow.webContents.send("auto-upload-complete");
+    uploadCounter.removeAllListeners("completed");
     return;
   }
 
-  const startNextUpload = async () => {
-    index++;
-    if (folders.length > index) {
-      var f = fs.statSync(folders[index].localPath);
-      mainWindow.webContents.send("auto-upload-next", {
-        id: folders[index].id,
-        size: f.size,
-      });
-      await uploadAutoFolders(folders, index);
-    } else {
-      uploadCounter.removeAllListeners("completed");
-      mainWindow.webContents.send("auto-upload-complete");
-    }
-  };
-
-  if (index === 0) {
-    var f = fs.statSync(folders[index].localPath);
-    mainWindow.webContents.send("auto-upload-next", {
-      id: folders[index].id,
-      size: f.size,
-    });
-    uploadCounter.on("completed", startNextUpload);
-  }
+  uploadCounter.once("completed", async () => {
+    await uploadAutoFolders(folders, index + 1);
+  });
 
   let folder = folders[index];
   let fetchPath = folder.localPath;
@@ -501,6 +478,9 @@ async function uploadAutoFolders(folders, index = 0) {
           uploadCounter.setTotal(filesToUpload.length);
           filesToUpload.forEach((item) => {
             let filepath = fetchPath + "/" + item.path;
+            if (!uploadBarrier.allowed) {
+              uploadBarrier.allow();
+            }
             batchUploadManager.uploadFile({
               uploadEntityId: folder.entityId,
               filePath: filepath,
@@ -512,6 +492,11 @@ async function uploadAutoFolders(folders, index = 0) {
                 mainWindow.webContents.send("auto-upload-progress", loaded);
               },
               onCompleted: () => {
+                var f = fs.statSync(filepath);
+                mainWindow.webContents.send("auto-upload-next", {
+                  id: folder.entityId,
+                  size: f.size,
+                });
                 uploadCounter.incrementCompleted();
               },
               onError: (id, err) => {
@@ -583,6 +568,7 @@ ipcMain.on("syncAllFolders", (_, syncFolders) => {
       });
     });
   });
+
   mainWindow.webContents.send("scan-completed", ids);
   uploadAutoFolders(subfolders);
 });
@@ -633,116 +619,6 @@ ipcMain.on("openWorkspace", (_, { url, drive }) => {
 ipcMain.on("openExternal", (_, url) => {
   shell.openExternal(url);
 });
-
-function scanHotFolders(rootPath, workDirEntity = null) {
-  if (!rootPath) {
-    mainWindow.webContents.send("no-workDir");
-    return;
-  }
-  if (!workDirEntity) {
-    workDirEntity = store.get("workDirEntity");
-    if (!workDirEntity) {
-      mainWindow.webContents.send("no-workDirEntity");
-      return;
-    }
-  }
-  const folderTree = scanDirectoryWithStats(rootPath);
-  const folderNames = Object.keys(folderTree);
-
-  const data = {
-    moduleid: workDirEntity,
-    name: folderNames,
-  };
-
-  const url =
-    getMediaDbUrl() + "/services/module/asset/entity/bulk/scanfornew.json";
-
-  axios
-    .post(url, data, {
-      headers: {
-        ...connectionOptions.headers,
-      },
-    })
-    .then(function (res) {
-      const existingFolders = res.data.existingfolders;
-      folderNames.forEach((folder) => {
-        const f = existingFolders.find((e) => e.name === folder);
-        if (f) {
-          folderTree[folder].id = f.id;
-        }
-      });
-      mainWindow.webContents.send("selected-dirs", {
-        rootPath: rootPath,
-        folderTree: folderTree,
-        workDirEntity: workDirEntity,
-        newFolders: res.data.newfolders,
-        existingFolders: existingFolders,
-      });
-    })
-    .catch(function (err) {
-      console.log(err);
-    });
-}
-
-ipcMain.on("scanHotFolders", (_, rootPath) => {
-  scanHotFolders(rootPath);
-});
-
-ipcMain.on(
-  "importHotFolders",
-  (_, { rootPath, workDirEntity, selectedFolders, requiredFields }) => {
-    if (!rootPath || !workDirEntity) {
-      console.log("No rootPath or workDirEntity");
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("moduleid", workDirEntity);
-    selectedFolders.forEach((folder) => {
-      formData.append("name", folder);
-    });
-    requiredFields.forEach((field) => {
-      formData.append(field.name, field.value || "");
-    });
-
-    const url =
-      getMediaDbUrl() +
-      "/services/module/asset/entity/bulk/createentities.json";
-
-    const tempWorkDirectory = path.resolve(rootPath, "..");
-
-    axios
-      .post(url, formData, {
-        headers: {
-          "Content-Type": `multipart/form-data`,
-          ...connectionOptions.headers,
-        },
-      })
-      .then(function (res) {
-        let existingFolders = res.data.existingfolders;
-        if (existingFolders.length === 0) {
-          return;
-        }
-        mainWindow.webContents.send(
-          "created-hot-folders",
-          existingFolders.map((f) => ({ name: f.name, id: f.id }))
-        );
-
-        existingFolders.forEach((folder) => {
-          fetchSubFolderContent(
-            tempWorkDirectory,
-            folder.path,
-            uploadFilesRecursive,
-            [0, { type: "hotFolder", name: folder.name, entityId: folder.id }],
-            true
-          );
-        });
-      })
-      .catch(function (err) {
-        log.error(err);
-      });
-  }
-);
 
 function setMainMenu(mainWindow) {
   const template = [
@@ -1500,6 +1376,20 @@ ipcMain.on("folderSelected", (_, options) => {
 });
 
 const abortController = new AbortController();
+class UploadBarrier extends EventEmitter {
+  constructor() {
+    super();
+    this.allowed = true;
+  }
+  allow() {
+    this.allowed = true;
+  }
+  prevent() {
+    this.allowed = false;
+    this.emit("prevented");
+  }
+}
+const uploadBarrier = new UploadBarrier();
 class UploadManager {
   constructor(window_, maxConcurrentUploads = 4) {
     this.uploadQueue = [];
@@ -1519,6 +1409,9 @@ class UploadManager {
     onCompleted,
     onError,
   }) {
+    if (!uploadBarrier.allowed) {
+      return;
+    }
     const uploadPromise = this.createUploadPromise(
       uploadEntityId,
       {
@@ -1582,7 +1475,12 @@ class UploadManager {
             },
             headers: connectionOptions.headers,
           });
-          abortController.signal.addEventListener("abort", () => {
+          uploadRequest.then(() => {
+            if (typeof callbacks.onCompleted === "function") {
+              callbacks.onCompleted(uploadEntityId);
+            }
+          });
+          uploadBarrier.once("prevented", () => {
             uploadRequest.abort();
             uploadRequest.cancel();
           });
@@ -1632,7 +1530,7 @@ class UploadManager {
   }
 
   cancelUpload() {
-    abortController.abort();
+    uploadBarrier.prevent();
     this.currentUploads = 0;
     this.uploadQueue = [];
     this.totalUploadsCount = 0;

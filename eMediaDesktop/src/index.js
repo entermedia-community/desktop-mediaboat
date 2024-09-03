@@ -186,9 +186,12 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  if (watcher) {
+    watcher.close();
+  }
   if (mainWindow) {
     mainWindow.removeAllListeners("close");
-    mainWindow.close();
+    mainWindow.destroy();
   }
 });
 
@@ -626,8 +629,8 @@ function setMainMenu(mainWindow) {
       label: "Workspace",
       submenu: [
         {
-          label: "Preferences",
-          accelerator: "CmdOrCtrl+,",
+          label: "Libraries",
+          accelerator: "CmdOrCtrl+L",
           click() {
             openWorkspacePicker(welcomeForm);
           },

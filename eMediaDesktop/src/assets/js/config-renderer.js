@@ -1,17 +1,18 @@
 const { ipcRenderer } = require("electron");
 
 function renderSaved(url, name, drive, logo) {
-  var el = `<div class="df aic card saved" data-url="${url}" data-drive="${drive}" title="${url}">`;
+  var el = `<div class="df aic saved" data-url="${url}" data-drive="${drive}" title="${url}">`;
   if (logo) {
     el += `<img src="${logo}" alt="${name}" onerror="this.onerror=null;this.src='assets/images/default-logo.png'"/>`;
   }
-  if (name) {
-    el += `<div><h3>${name}</h3></div>`;
-  } else {
-    el += `<div><small>${url}</small></div>`;
-  }
   el +=
-    '<button class="edit"><img src="assets/images/edit.svg" alt="Edit" style="width: 16px; height: 16px"/></button><button class="delete"><img src="assets/images/trash.svg" alt="Delete" style="width: 16px; height: 16px"/></button></div>';
+    '<button class="edit"><img src="assets/images/edit.svg" alt="Edit" style="width: 16px; height: 16px"/></button><button class="delete"><img src="assets/images/trash.svg" alt="Delete" style="width: 16px; height: 16px"/></button>';
+  if (name) {
+    el += `<h3>${name}</h3>`;
+  } else {
+    el += `<h4>${url}</h4>`;
+  }
+  el += "</div>";
   return el;
 }
 
@@ -128,6 +129,10 @@ $(document).ready(function () {
     $("#localDrive").val(path);
   });
   jQuery(document).on("click", ".card", function () {
+    var url = $(this).data("url");
+    ipcRenderer.send("openWorkspace", { url, drive: "demo" });
+  });
+  jQuery(document).on("click", ".saved", function () {
     var url = $(this).data("url");
     var drive = $(this).data("drive");
     ipcRenderer.send("openWorkspace", { url, drive });

@@ -448,7 +448,6 @@ class UploadManager {
                   .on("data", (chunk) => {
                     loaded += chunk.length;
                     if (typeof callbacks.onProgress === "function") {
-                      console.log("Progress: ", uploadEntityId, loaded, size);
                       callbacks.onProgress({
                         id: uploadEntityId,
                         loaded,
@@ -1618,13 +1617,15 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
                 console.log("Progress: " + loaded);
                 mainWindow.webContents.send("entity-upload-progress", {
                   id,
+                  index: category.index,
                   loaded,
                 });
               },
               onCompleted: () => {
                 const f = fs.statSync(filePath);
                 mainWindow.webContents.send("entity-upload-next", {
-                  id: folder.entityId,
+                  id: options["entityId"],
+                  index: category.index,
                   size: f.size,
                 });
                 entityUploadCounter.incrementCompleted();
@@ -1633,6 +1634,7 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
                 entityUploadCounter.incrementCompleted();
                 mainWindow.webContents.send("entity-upload-error", {
                   id,
+                  index: category.index,
                   error: err,
                 });
               },

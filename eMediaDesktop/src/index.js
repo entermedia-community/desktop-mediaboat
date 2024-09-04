@@ -511,7 +511,7 @@ class UploadManager {
   }
 
   cancelUpload() {
-    autoUploadBarrier.prevent();
+    this.barrier.prevent();
     this.currentUploads = 0;
     this.uploadQueue = [];
     this.totalUploadsCount = 0;
@@ -758,6 +758,10 @@ ipcMain.on("syncAllFolders", (_, syncFolders) => {
 
 ipcMain.on("abortAutoUpload", () => {
   autoUploadManager.cancelUpload();
+});
+
+ipcMain.on("abortUpload", () => {
+  entityUploadManager.cancelUpload();
 });
 
 ipcMain.on("select-dirs", async (_, arg) => {

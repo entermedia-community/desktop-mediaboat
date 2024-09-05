@@ -1,7 +1,7 @@
 {
   "name": "emedia-library",
   "productName": "eMedia Library",
-  "version": "2.2.7",
+  "version": "2.2.8",
   "description": "eMedia Library",
   "main": "src/index.js",
   "homepage": "https://github.com/entermedia-community/desktop-mediaboat",

@@ -8,6 +8,7 @@ const {
   Menu,
   Tray,
   shell,
+  screen,
 } = require("electron");
 const rp = require("request-promise");
 const mime = require("mime-types");
@@ -87,10 +88,16 @@ if (require("electron-squirrel-startup")) {
 }
 
 const createWindow = () => {
-  // Create the browser window.
+  let bounds = store.get("lastBounds");
+  if (!bounds) {
+    const display = screen.getPrimaryDisplay();
+    bounds = display.bounds;
+  }
   mainWindow = new BrowserWindow({
-    width: 1920,
-    height: 1024,
+    x: bounds.x + 50,
+    y: bounds.y + 50,
+    width: bounds.width,
+    height: bounds.height,
     icon: __dirname + appLogo,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -190,6 +197,8 @@ app.on("before-quit", () => {
     watcher.close();
   }
   if (mainWindow) {
+    const bounds = mainWindow.getBounds();
+    store.set("lastBounds", bounds);
     mainWindow.removeAllListeners("close");
     mainWindow.destroy();
   }
@@ -265,6 +274,23 @@ function openWorkspace(homeUrl) {
     mainWindow.webContents.send("set-local-root", defaultWorkDirectory);
   });
 }
+
+ipcMain.on("changeLocalDrive", (_, newRoot) => {
+  if (fs.existsSync(newRoot)) {
+    const currentHome = store.get("homeUrl");
+    let workspaces = store.get("workspaces") || [];
+    workspaces = workspaces.map((w) => {
+      if (w.url === currentHome) {
+        w.drive = newRoot;
+      }
+      return w;
+    });
+    store.set("workspaces", workspaces);
+    store.set("localDrive", newRoot);
+    defaultWorkDirectory = newRoot;
+    mainWindow.webContents.send("set-local-root", defaultWorkDirectory);
+  }
+});
 
 ipcMain.on("setConnectionOptions", (_, options) => {
   connectionOptions = {
@@ -785,9 +811,21 @@ ipcMain.on("select-dirs", async (_, arg) => {
   mainWindow.webContents.send("selected-dirs", folders);
 });
 
+ipcMain.on("dir-picker", async (_, arg) => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory", "createDirectory"],
+    defaultPath: arg.currentPath,
+  });
+  let rootPath = result.filePaths[0];
+  mainWindow.webContents.send("dir-picked", {
+    path: rootPath,
+    targetDiv: arg.targetDiv,
+  });
+});
+
 ipcMain.on("configDir", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ["openDirectory"],
+    properties: ["openDirectory", "createDirectory"],
     defaultPath: defaultWorkDirectory,
   });
   let rootPath = result.filePaths[0];

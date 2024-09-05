@@ -6,9 +6,13 @@ process.once("loaded", () => {
       ipcRenderer.send("select-dirs", {
         currentPath: evt.data.currentPath || undefined,
       });
-    }
-    if (evt.data.type === "configDir") {
+    } else if (evt.data.type === "configDir") {
       ipcRenderer.send("configDir");
+    } else if (evt.data.type === "dir-picker") {
+      ipcRenderer.send("dir-picker", {
+        targetDiv: evt.data.targetDiv,
+        currentPath: evt.data.currentPath || undefined,
+      });
     }
   });
 });

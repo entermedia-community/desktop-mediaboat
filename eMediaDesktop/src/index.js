@@ -317,51 +317,64 @@ async function StartWatcher(workPath) {
       ignoreInitial: true,
       followSymlinks: false,
     });
+    watcher
+      .on("add", (p) => {
+        mainWindow.webContents.send("auto-file-added", p);
+      })
+      .on("error", (error) => {
+        console.log("Chokidar error:", error);
+      })
+      .on("ready", () => {
+        console.log("Watching for changes on", workPath);
+      });
   } else {
     watcher.add(workPath);
   }
 
-  watcher
-    .on("add", (p) => {
-      mainWindow.webContents.send("file-added", p);
-    })
-    // .on("addDir", (p) => (p))
-    // .on("unlink", (p) => (p))
-    // .on("unlinkDir", (p) => (p))
-    .on("error", (error) => {
-      console.log("Chokidar error:", error);
-    })
-    .on("ready", () => {
-      console.log("Watching for changes on", workPath);
-    });
-
   watchedPaths.push(workPath);
 }
 
-// function scanDirectory(directory, lastScan=false) {
-//   let filePaths = [];
-//   let folderPaths = [];
-//   let files = fs.readdirSync(directory);
-//   files.forEach((file) => {
-//     if (file.startsWith(".")) return;
-//     let filepath = path.join(directory, file);
-//     let stat = fs.statSync(filepath);
-//     if (lastScan && stat.mtimeMs < lastScan) return;
-//     if (stat.isDirectory()) {
-//       let subfolderPaths = {};
-//       if (append) {
-//         subfolderPaths = scanDirectory(filepath, true);
-//       }
-//       folderPaths.push({ path: file, subfolders: subfolderPaths });
-//     } else {
-//       filePaths.push({ path: file, size: stat.size, abspath: filepath });
-//     }
-//   });
-//   return {
-//     files: filePaths,
-//     folders: folderPaths,
-//   };
-// }
+let batchWatcher;
+const currentlyWatching = [];
+ipcMain.on("watchFolders", (_, folders) => {
+  const currentWatchedIds = currentlyWatching.map((f) => f.id);
+  const uniqueFolders = folders.filter(
+    (f) => !currentWatchedIds.includes(f.id)
+  );
+  const tempTotal = uniqueFolders.length + currentlyWatching.length;
+  if (tempTotal > 50) {
+    const toRemove = currentlyWatching.slice(0, tempTotal - 50);
+    currentlyWatching = currentlyWatching.slice(toRemove.length);
+    toRemovePaths = toRemove.map((f) => f.path);
+    if (batchWatcher) {
+      batchWatcher.unwatch(toRemovePaths);
+    }
+  } else {
+    currentlyWatching.push(...uniqueFolders);
+  }
+  const folderFullPaths = uniqueFolders.map((f) =>
+    path.join(defaultWorkDirectory, f.path)
+  );
+  const validPaths = folderFullPaths.filter((f) => fs.existsSync(f));
+  if (validPaths.length === 0) {
+    return;
+  }
+  if (batchWatcher) {
+    batchWatcher.add(validPaths);
+  } else {
+    batchWatcher = fileWatcher.watch(validPaths, {
+      ignored: /[\/\\]\./,
+      persistent: true,
+      ignoreInitial: true,
+      followSymlinks: false,
+    });
+    batchWatcher.on("add", (p) => {
+      const filePath = p.replace(defaultWorkDirectory, "");
+      const catPath = path.dirname(filePath);
+      mainWindow.webContents.send("file-added", catPath);
+    });
+  }
+});
 
 ipcMain.on("setModule", (_, { selectedModule, desktopId }) => {
   let absPaths = store.get("moduleSources") || {};
@@ -595,31 +608,6 @@ function getDirectoryStats(dirPath) {
     totalFolders,
     totalSize,
   };
-}
-
-function scanDirectoryWithStats(directory, maxLevel = 1) {
-  if (maxLevel <= 0) return {};
-  let files = fs.readdirSync(directory);
-  let folders = {};
-  files.forEach((file) => {
-    if (file.startsWith(".")) return;
-    let filepath = path.join(directory, file);
-    let stats = fs.statSync(filepath);
-    if (stats.isDirectory()) {
-      let { totalFiles, totalFolders, totalSize } = getDirectoryStats(filepath);
-      folders[file] = {};
-      folders[file]["totalSize"] = totalSize;
-      folders[file]["totalFiles"] = totalFiles;
-      folders[file]["totalFolders"] = totalFolders;
-      if (maxLevel > 1) {
-        folders[file]["subfolders"] = scanDirectoryWithStats(
-          filepath,
-          maxLevel - 1
-        );
-      }
-    }
-  });
-  return folders;
 }
 
 ipcMain.on("refreshStats", (_, directories) => {
@@ -1248,35 +1236,6 @@ function readDirectories(directory) {
   };
 }
 
-function sanitizePath(path) {
-  path = path.replace(/:/g, "[colon]");
-  path = path.replace(/\./g, "[dot]");
-  path = path.replace(/\//g, "[slash]");
-  path = path.replace(/\\/g, "[backslash]");
-  path = path.replace(/</g, "[lt]");
-  path = path.replace(/>/g, "[gt]");
-  path = path.replace(/”/g, "[quote]");
-  path = path.replace(/\|/g, "[pipe]");
-  path = path.replace(/\?/g, "[question]");
-  path = path.replace(/\*/g, "[asterisk]");
-  path = path.replace(/\^/g, "[caret]");
-  return path;
-}
-function deSanitizePath(path) {
-  path = path.replace(/\[colon\]/g, ":");
-  path = path.replace(/\[dot\]/g, ".");
-  path = path.replace(/\[slash\]/g, "/");
-  path = path.replace(/\[backslash\]/g, "\\");
-  path = path.replace(/\[lt\]/g, "<");
-  path = path.replace(/\[gt\]/g, ">");
-  path = path.replace(/\[quote\]/g, "”");
-  path = path.replace(/\[pipe\]/g, "|");
-  path = path.replace(/\[question\]/g, "?");
-  path = path.replace(/\[asterisk\]/g, "*");
-  path = path.replace(/\[caret\]/g, "^");
-  return path;
-}
-
 function addExtraFoldersToList(categories, categoryPath) {
   let rootPath;
   let rootLevel;
@@ -1426,7 +1385,7 @@ class DownloadCounter extends EventEmitter {
 
 const downloadCounter = new DownloadCounter();
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)); // test
+// const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)); // test
 
 const downloadFolderRecursive = async function (
   categories,

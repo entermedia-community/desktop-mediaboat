@@ -189,7 +189,7 @@ button.btn:active {
   justify-content: center;
   margin: 0 auto;
   pointer-events: none;
-  max-width: 1040px;
+  max-width: 740px;
 }
 #urlForm.show {
   pointer-events: all;

@@ -1,7 +1,7 @@
 const { ipcRenderer } = require("electron");
 
-function renderSaved(url, name, drive, logo) {
-  var el = `<div class="df aic saved" data-url="${url}" data-drive="${drive}" title="${url}">`;
+function renderSaved(url, name, logo) {
+  var el = `<div class="df aic saved" data-url="${url}" title="${url}">`;
   if (logo) {
     el += `<img src="${logo}" alt="${name}" onerror="this.onerror=null;this.src='assets/images/default-logo.png'"/>`;
   }
@@ -18,34 +18,30 @@ function renderSaved(url, name, drive, logo) {
 
 $(document).ready(function () {
   ipcRenderer.send("configInit");
-  ipcRenderer.on(
-    "config-init",
-    (_, { workspaces, defaultLocalDrive, welcomeDone = false }) => {
-      if (welcomeDone) {
-        document.title = "Library Settings";
-        $("#localDrive").val(defaultLocalDrive);
-        $("#demos").addClass("show");
-        setTimeout(() => {
-          $("#welcome").remove();
-        }, 300);
-        workspaces = workspaces.filter((workspace) => workspace.url);
-        if (workspaces.length === 0) {
-          $("#savedLibraries").hide();
-        } else {
-          $("#savedLibraries").show();
-          var saved = $("#savedLibraries").find("#saved");
-          saved.empty();
-          workspaces.forEach(({ url, name, drive, logo }) => {
-            saved.append(renderSaved(url, name, drive, logo));
-          });
-        }
+  ipcRenderer.on("config-init", (_, { workspaces, welcomeDone = false }) => {
+    if (welcomeDone) {
+      document.title = "Library Settings";
+      $("#demos").addClass("show");
+      setTimeout(() => {
+        $("#welcome").remove();
+      }, 300);
+      workspaces = workspaces.filter((workspace) => workspace.url);
+      if (workspaces.length === 0) {
+        $("#savedLibraries").hide();
       } else {
-        document.title = "Welcome to eMedia Desktop App";
-        $(".loader").remove();
-        $("#next").show();
+        $("#savedLibraries").show();
+        var saved = $("#savedLibraries").find("#saved");
+        saved.empty();
+        workspaces.forEach(({ url, name, logo }) => {
+          saved.append(renderSaved(url, name, logo));
+        });
       }
+    } else {
+      document.title = "Welcome to eMedia Desktop App";
+      $(".loader").remove();
+      $("#next").show();
     }
-  );
+  });
   jQuery("#next").click(function () {
     ipcRenderer.send("welcomeDone");
     $("#demos").addClass("show");
@@ -67,17 +63,17 @@ $(document).ready(function () {
   jQuery(document).on("click", ".edit", function (e) {
     e.stopPropagation();
     var url = $(this).parent().data("url");
-    var drive = $(this).parent().data("drive");
     var name = $(this).parent().find("h3").text();
     $("#url").val(url);
     $("#name").val(name);
-    $("#localDrive").val(drive);
     $("#addBtns").hide();
     $("#add").text("Edit");
     $("#urlForm").addClass("show");
   });
   jQuery(document).on("click", "#addBtn", function () {
     $("#addBtns").hide();
+    $("#url").val("");
+    $("#name").val("");
     $("#add").text("+ Add");
     $("#urlForm").addClass("show");
   });
@@ -90,52 +86,48 @@ $(document).ready(function () {
   jQuery(document).on("click", "#add", function () {
     var url = $("#url").val();
     var name = $("#name").val();
-    var drive = $("#localDrive").val();
     if (!url) {
       alert("Please enter URL");
       return;
+    } else {
+      if (url.endsWith("index.html")) {
+        url = url.substring(0, url.length - 10);
+      }
+      if (url.endsWith("/")) {
+        url = url.substring(0, url.length - 1);
+      }
+      if (!url.endsWith("find") || !url.startsWith("http")) {
+        alert("Please enter a valid eMedia Library URL");
+        return;
+      }
     }
-    if (!drive) {
-      alert("Please select a drive");
+    if (!name) {
+      alert("Please enter a name for the library");
       return;
     }
-    if (url.endsWith("/")) {
-      url = url.substring(0, url.length - 1);
-    }
     var logo = [url, "theme/images/logo.png"].join("/");
-    ipcRenderer.send("addWorkspace", { url, name, drive, logo });
+    ipcRenderer.send("addWorkspace", { url, name, logo });
   });
 
   ipcRenderer.on("workspaces-updated", (_, workspaces) => {
     $("#savedLibraries").show();
     var saved = $("#savedLibraries").find("#saved");
     saved.empty();
-    workspaces.forEach(({ url, name, drive, logo }) => {
-      saved.append(renderSaved(url, name, drive, logo));
+    workspaces.forEach(({ url, name, logo }) => {
+      saved.append(renderSaved(url, name, logo));
     });
     $("#addBtns").show();
     $("#urlForm").removeClass("show");
   });
-  jQuery(document).on("click", "#localDrive", function (e) {
-    e.preventDefault();
-    window.postMessage({
-      type: "configDir",
-    });
-  });
-  ipcRenderer.on("config-dir", (_, path) => {
-    if (!path) {
-      return;
-    }
-    $("#localDrive").val(path);
-  });
+
   jQuery(document).on("click", ".card", function () {
     var url = $(this).data("url");
-    ipcRenderer.send("openWorkspace", { url, drive: "demo" });
+    ipcRenderer.send("openWorkspace", url);
   });
   jQuery(document).on("click", ".saved", function () {
     var url = $(this).data("url");
-    var drive = $(this).data("drive");
-    ipcRenderer.send("openWorkspace", { url, drive });
+    console.log(url);
+    ipcRenderer.send("openWorkspace", url);
   });
   jQuery(document).on("click", ".external-link", function (e) {
     e.preventDefault();

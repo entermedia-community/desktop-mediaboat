@@ -222,8 +222,8 @@ ipcMain.on("configInit", () => {
   mainWindow.webContents.send("config-init", {
     welcomeDone: welcomeDone,
     workspaces,
-    defaultLocalDrive: defaultWorkDirectory,
   });
+  setMainMenu(mainWindow);
 });
 
 ipcMain.on("welcomeDone", () => {
@@ -233,22 +233,30 @@ ipcMain.on("welcomeDone", () => {
 ipcMain.on("addWorkspace", (_, newWorkspace) => {
   let workspaces = store.get("workspaces") || [];
   workspaces = workspaces.filter((w) => w.url);
+  let drive = defaultWorkDirectory;
   const editMode = workspaces.find((w) => w.url === newWorkspace.url);
   if (!editMode) {
+    newWorkspace.drive = drive;
     workspaces.push(newWorkspace);
   } else {
+    drive = editMode.drive;
     workspaces = workspaces.map((w) => {
       if (w.url === newWorkspace.url) {
-        return newWorkspace;
+        return {
+          ...newWorkspace,
+          drive: w.drive,
+        };
       }
       return w;
     });
   }
   store.set("workspaces", workspaces);
   if (newWorkspace.url === store.get("homeUrl")) {
-    defaultWorkDirectory = newWorkspace.drive;
+    defaultWorkDirectory = drive;
+    store.set("localDrive", drive);
   }
   mainWindow.webContents.send("workspaces-updated", workspaces);
+  setMainMenu(mainWindow);
 });
 
 ipcMain.on("deleteWorkspace", (_, url) => {
@@ -259,20 +267,20 @@ ipcMain.on("deleteWorkspace", (_, url) => {
   if (homeUrl === url) {
     store.delete("homeUrl");
   }
+  setMainMenu(mainWindow);
 });
 
 function openWorkspace(homeUrl) {
-  const url = new URL(homeUrl);
-  url.searchParams.append("desktopname", computerName);
-  log.info("Opening Workspace: ", url.toString());
+  log.info("Opening Workspace: ", homeUrl);
   let userAgent = mainWindow.webContents.getUserAgent();
   if (userAgent.indexOf("ComputerName") === -1) {
     userAgent = userAgent + " ComputerName/" + computerName;
   }
-  mainWindow.loadURL(url.toString(), { userAgent });
+  mainWindow.loadURL(homeUrl, { userAgent });
   mainWindow.webContents.on("did-finish-load", () => {
     mainWindow.webContents.send("set-local-root", defaultWorkDirectory);
   });
+  setMainMenu(mainWindow);
 }
 
 ipcMain.on("changeLocalDrive", (_, newRoot) => {
@@ -811,19 +819,14 @@ ipcMain.on("dir-picker", async (_, arg) => {
   });
 });
 
-ipcMain.on("configDir", async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ["openDirectory", "createDirectory"],
-    defaultPath: defaultWorkDirectory,
-  });
-  let rootPath = result.filePaths[0];
-  mainWindow.webContents.send("config-dir", rootPath);
-});
-
-ipcMain.on("openWorkspace", (_, { url, drive }) => {
-  if (drive === "demo") {
-    drive = app.getPath("home") + "/eMedia/";
+ipcMain.on("openWorkspace", (_, url) => {
+  const workSpaces = store.get("workspaces") || [];
+  let drive = defaultWorkDirectory;
+  const selectedWorkspace = workSpaces.find((w) => w.url === url);
+  if (selectedWorkspace && selectedWorkspace.drive) {
+    drive = selectedWorkspace.drive;
   }
+
   if (!drive.endsWith("/")) {
     drive += "/";
   }
@@ -837,16 +840,50 @@ ipcMain.on("openExternal", (_, url) => {
   shell.openExternal(url);
 });
 
+function getWorkSpaceMenu() {
+  const workspaces = store.get("workspaces") || [];
+  let subMenus = [];
+  if (workspaces.length === 0) {
+    subMenus = [{ label: "Nothing to show", enabled: false }];
+  }
+  subMenus = workspaces.map((ws) => {
+    return {
+      label: ws.name,
+      id: ws.url,
+      type: "radio",
+      checked: ws.url === store.get("homeUrl"),
+      click() {
+        if (ws.drive) {
+          defaultWorkDirectory = ws.drive;
+        } else {
+          ws.drive = defaultWorkDirectory;
+        }
+        store.set("homeUrl", ws.url);
+        store.set("localDrive", ws.drive);
+        openWorkspace(ws.url);
+      },
+    };
+  });
+  subMenus.push({ type: "separator" });
+  subMenus.push({
+    label: "Add a new workspace",
+    click() {
+      openWorkspacePicker(welcomeForm);
+    },
+  });
+  return subMenus;
+}
+
 function setMainMenu(mainWindow) {
   const template = [
     {
-      label: "Workspace",
+      label: "eMedia Library",
       submenu: [
         {
-          label: "Libraries",
-          accelerator: "CmdOrCtrl+L",
-          click() {
-            openWorkspacePicker(welcomeForm);
+          label: "Home",
+          click: () => {
+            mainWin.show();
+            mainWin.loadURL(this.homeUrl);
           },
         },
         {
@@ -866,9 +903,9 @@ function setMainMenu(mainWindow) {
     {
       label: "Edit",
       submenu: [
-        { label: "Undo", accelerator: "CmdOrCtrl+Z", selector: "undo:" },
-        { label: "Redo", accelerator: "Shift+CmdOrCtrl+Z", selector: "redo:" },
-        { type: "separator" },
+        // { label: "Undo", accelerator: "CmdOrCtrl+Z", selector: "undo:" },
+        // { label: "Redo", accelerator: "Shift+CmdOrCtrl+Z", selector: "redo:" },
+        // { type: "separator" },
         { label: "Cut", accelerator: "CmdOrCtrl+X", selector: "cut:" },
         { label: "Copy", accelerator: "CmdOrCtrl+C", selector: "copy:" },
         { label: "Paste", accelerator: "CmdOrCtrl+V", selector: "paste:" },
@@ -878,6 +915,11 @@ function setMainMenu(mainWindow) {
           selector: "selectAll:",
         },
       ],
+    },
+    {
+      label: "Libraries",
+      id: "workspaces",
+      submenu: getWorkSpaceMenu(),
     },
     {
       label: "Browser",
@@ -950,6 +992,7 @@ function setMainMenu(mainWindow) {
 
 function CreateTray(workSpaces, mainWin) {
   this.trayMenu = [];
+  this.homeUrl = store.get("homeUrl");
   if (!this.tray) this.tray = new Tray(__dirname + trayLogo);
 
   workSpaces.forEach((ws) => {
@@ -982,11 +1025,18 @@ function DrawTray(mainWin) {
   this.trayMenu.push({
     label: "Home",
     click: () => {
-      //KillAllMediaBoatProcesses();
       mainWin.show();
-      mainWin.loadURL(homeUrl);
+      mainWin.loadURL(this.homeUrl);
     },
   });
+  this.trayMenu.push({ type: "separator" });
+  this.trayMenu.push({
+    label: "Libraries...    ",
+    click() {
+      openWorkspacePicker(welcomeForm);
+    },
+  });
+  this.trayMenu.push({ type: "separator" });
   this.trayMenu.push({
     label: "Quit",
     click: () => {

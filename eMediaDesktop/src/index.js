@@ -439,12 +439,13 @@ class UploadBarrier extends EventEmitter {
 }
 
 class UploadManager {
-  constructor(barrier, maxConcurrentUploads = 4) {
+  constructor(maxConcurrentUploads = 4) {
     this.uploadQueue = [];
     this.maxConcurrentUploads = maxConcurrentUploads;
     this.currentUploads = 0;
     this.totalUploadsCount = 0;
-    this.barrier = barrier;
+    this.activeUploadRequests = {};
+    this.isCancelled = false;
   }
 
   async uploadFile({
@@ -457,7 +458,8 @@ class UploadManager {
     onCompleted,
     onError,
   }) {
-    if (!this.barrier.allowed) {
+    if (this.isCancelled) {
+      console.log("Cancelled uploading");
       return;
     }
     const uploadPromise = this.createUploadPromise(
@@ -528,12 +530,10 @@ class UploadManager {
           uploadRequest.then(() => {
             if (typeof callbacks.onCompleted === "function") {
               callbacks.onCompleted(uploadEntityId);
+              delete this.activeUploadRequests[formData.filePath];
             }
           });
-          this.barrier.once("prevented", () => {
-            uploadRequest.abort();
-            uploadRequest.cancel();
-          });
+          this.activeUploadRequests[formData.filePath] = uploadRequest;
         } catch (error) {
           if (typeof callbacks.onError === "function") {
             console.log(error);
@@ -541,6 +541,7 @@ class UploadManager {
               uploadEntityId,
               error.message || JSON.stringify(error) || "Unknown error"
             );
+            delete this.activeUploadRequests[formData.filePath];
           }
         } finally {
           this.currentUploads--;
@@ -548,14 +549,14 @@ class UploadManager {
           this.processQueue();
         }
       },
-      cancel: () => {
-        this.currentUploads = 0;
-        this.uploadQueue = [];
-        this.totalUploadsCount = 0;
-        if (typeof callbacks.onCancel === "function") {
-          callbacks.onCancel();
-        }
-      },
+      // cancel: () => {
+      //   this.currentUploads = 0;
+      //   this.uploadQueue = [];
+      //   this.totalUploadsCount = 0;
+      //   if (typeof callbacks.onCancel === "function") {
+      //     callbacks.onCancel();
+      //   }
+      // },
     };
   }
 
@@ -571,7 +572,12 @@ class UploadManager {
   }
 
   cancelUpload() {
-    this.barrier.prevent();
+    this.isCancelled = true;
+    Object.keys(this.activeUploadRequests).forEach((key) => {
+      this.activeUploadRequests[key].abort();
+      this.activeUploadRequests[key].cancel();
+    });
+    this.activeUploadRequests = {};
     this.currentUploads = 0;
     this.uploadQueue = [];
     this.totalUploadsCount = 0;
@@ -660,8 +666,7 @@ function getFilesByDirectory(directory) {
 }
 
 const autoUploadCounter = new UploadCounter();
-const autoUploadBarrier = new UploadBarrier();
-const autoUploadManager = new UploadManager(autoUploadBarrier);
+const autoUploadManager = new UploadManager();
 
 async function uploadAutoFolders(folders, index = 0) {
   if (folders.length === index) {
@@ -698,9 +703,6 @@ async function uploadAutoFolders(folders, index = 0) {
           autoUploadCounter.setTotal(filesToUpload.length);
           filesToUpload.forEach((item) => {
             const filePath = path.join(fetchPath, item.path);
-            if (!autoUploadBarrier.allowed) {
-              autoUploadBarrier.allow();
-            }
             autoUploadManager.uploadFile({
               uploadEntityId: folder.entityId,
               filePath: filePath,
@@ -791,6 +793,7 @@ ipcMain.on("syncAllFolders", (_, syncFolders) => {
 
 ipcMain.on("abortAutoUpload", () => {
   autoUploadManager.cancelUpload();
+  mainWindow.webContents.send("upload-aborted");
 });
 
 ipcMain.on("abortUpload", () => {
@@ -1446,6 +1449,9 @@ class DownloadCounter extends EventEmitter {
 
 const downloadCounter = new DownloadCounter();
 
+const batchDownloadCounter = new DownloadCounter();
+// const batchDownloadManager = new DownloadManager();
+
 // const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)); // test
 
 async function downloadFilesRecursive(categories, index = 0, scanOnly = false) {
@@ -1508,7 +1514,7 @@ async function downloadFilesRecursive(categories, index = 0, scanOnly = false) {
                   "//" +
                   parsedUrl.host +
                   file.itemdownloadurl,
-                donwloadFilePath: file,
+                downloadFilePath: file,
                 localFolderPath: defaultWorkDirectory + file.categorypath,
                 header: connectionOptions.headers,
                 onProgress: (progress, bytesLoaded, filePath) => {
@@ -1556,6 +1562,8 @@ async function downloadFilesRecursive(categories, index = 0, scanOnly = false) {
             index++;
             if (categories.length > index) {
               downloadFilesRecursive(categories, index, true);
+            } else {
+              mainWindow.webContents.send("scan-complete");
             }
           }
         } else {
@@ -1646,8 +1654,7 @@ ipcMain.on("uploadAll", async (_, { categorypath, entityId }) => {
 });
 
 const entityUploadCounter = new UploadCounter();
-const entityUploadBarrier = new UploadBarrier();
-const entityUploadManager = new UploadManager(entityUploadBarrier);
+const entityUploadManager = new UploadManager();
 
 async function uploadFilesRecursive(categories, index = 0, options = {}) {
   if (categories.length === index) {
@@ -1682,9 +1689,6 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
           entityUploadCounter.setTotal(filesToUpload.length);
           filesToUpload.forEach((item) => {
             const filePath = path.join(fetchPath, item.path);
-            if (!entityUploadBarrier.allowed) {
-              entityUploadBarrier.allow();
-            }
             entityUploadManager.uploadFile({
               uploadEntityId: options["entityId"],
               filePath: filePath,
@@ -1807,7 +1811,7 @@ ipcMain.on("fetchfilesupload", async (event, { assetid, file }) => {
     downloadItemId: assetid,
     downloadPath:
       parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
-    donwloadFilePath: file,
+    downloadFilePath: file,
     localFolderPath: defaultWorkDirectory + file.categorypath,
     header: connectionOptions.headers,
     onStarted: () => {
@@ -1853,7 +1857,7 @@ function fetchfilesdownload(assetid, file) {
     downloadItemId: assetid,
     downloadPath:
       parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
-    donwloadFilePath: file,
+    downloadFilePath: file,
     localFolderPath: defaultWorkDirectory + file.categorypath,
     header: connectionOptions.headers,
     onStarted: () => {
@@ -1897,13 +1901,12 @@ function fetchfilesdownload(assetid, file) {
 // ----------------------- Download --------------------
 
 class DownloadManager {
-  constructor(window_, maxConcurrentDownloads = 4) {
+  constructor(maxConcurrentDownloads = 4) {
     this.downloads = new Map();
     this.downloadQueue = [];
     this.maxConcurrentDownloads = maxConcurrentDownloads;
     this.currentDownloads = 0;
     this.totalDownloadsCounts = 0;
-    this.window = window_;
     this.haveDefaultDownlaodPath = store.has("downloadDefaultPath");
     this.isPaused = false;
   }
@@ -1926,7 +1929,7 @@ class DownloadManager {
   async downloadFile({
     downloadItemId,
     downloadPath,
-    donwloadFilePath,
+    downloadFilePath,
     localFolderPath,
     header,
     onStarted,
@@ -1966,7 +1969,7 @@ class DownloadManager {
 
     const info = {
       url: downloadPath,
-      filePath: donwloadFilePath,
+      filePath: downloadFilePath,
       directory: fileDownloadedPath,
       headers: header,
       onStarted: (item) => {
@@ -2316,7 +2319,7 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
     downloadItemId: orderitemid,
     downloadPath:
       parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
-    donwloadFilePath: file,
+    downloadFilePath: file,
     header: headers,
     onStarted: () => {
       mainWindow.webContents.send(`download-started-${orderitemid}`);

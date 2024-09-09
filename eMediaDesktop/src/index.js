@@ -381,6 +381,16 @@ ipcMain.on("watchFolders", (_, folders) => {
       const catPath = path.dirname(filePath);
       mainWindow.webContents.send("file-added", catPath);
     });
+    batchWatcher.on("unlink", (p) => {
+      const filePath = p.replace(defaultWorkDirectory, "");
+      const catPath = path.dirname(filePath);
+      mainWindow.webContents.send("file-removed", catPath);
+    });
+    batchWatcher.on("unlinkDir", (p) => {
+      const filePath = p.replace(defaultWorkDirectory, "");
+      const catPath = path.dirname(filePath);
+      mainWindow.webContents.send("file-removed", catPath);
+    });
   }
 });
 
@@ -439,7 +449,7 @@ class UploadManager {
 
   async uploadFile({
     uploadEntityId,
-    jsonData,
+    sourcePath,
     filePath,
     onStarted,
     onCancel,
@@ -452,10 +462,7 @@ class UploadManager {
     }
     const uploadPromise = this.createUploadPromise(
       uploadEntityId,
-      {
-        jsonrequest: JSON.stringify(jsonData),
-        filePath: filePath,
-      },
+      { sourcePath, filePath },
       {
         onStarted,
         onProgress,
@@ -484,11 +491,17 @@ class UploadManager {
 
           let size = fs.statSync(formData.filePath).size;
           let loaded = 0;
+
+          const jsonrequest = {
+            sourcepath: formData.sourcePath,
+            filesize: size,
+          };
+
           const uploadRequest = rp({
             method: "POST",
             uri: getMediaDbUrl() + "/services/module/asset/create",
             formData: {
-              jsonrequest: formData.jsonrequest,
+              jsonrequest: JSON.stringify(jsonrequest),
               file: {
                 value: fs
                   .createReadStream(formData.filePath)
@@ -691,9 +704,7 @@ async function uploadAutoFolders(folders, index = 0) {
             autoUploadManager.uploadFile({
               uploadEntityId: folder.entityId,
               filePath: filePath,
-              jsonData: {
-                sourcepath: path.join(folder.categoryPath, item.path),
-              },
+              sourcePath: path.join(folder.categoryPath, item.path),
               onProgress: ({ loaded }) => {
                 mainWindow.webContents.send("auto-upload-progress", loaded);
               },
@@ -882,8 +893,8 @@ function setMainMenu(mainWindow) {
         {
           label: "Home",
           click: () => {
-            mainWin.show();
-            mainWin.loadURL(this.homeUrl);
+            mainWindow.show();
+            mainWindow.loadURL(this.homeUrl);
           },
         },
         {
@@ -1403,7 +1414,7 @@ ipcMain.on("downloadAll", (_, { categorypath, scanOnly = false }) => {
   fetchSubFolderContent(
     defaultWorkDirectory,
     categorypath,
-    downloadFolderRecursive,
+    downloadFilesRecursive,
     [0, scanOnly]
   );
 });
@@ -1437,12 +1448,8 @@ const downloadCounter = new DownloadCounter();
 
 // const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)); // test
 
-const downloadFolderRecursive = async function (
-  categories,
-  index = 0,
-  scanOnly = false
-) {
-  if (index >= categories.length) {
+async function downloadFilesRecursive(categories, index = 0, scanOnly = false) {
+  if (categories.length === index) {
     if (scanOnly) {
       mainWindow.webContents.send("scan-complete");
     } else {
@@ -1453,52 +1460,38 @@ const downloadFolderRecursive = async function (
     return;
   }
 
-  const startNextDownload = async () => {
-    if (categories.length > index) {
-      index++;
-      await downloadFolderRecursive(categories, index, false);
-      mainWindow.webContents.send("download-next", {
-        index: index,
-      });
-    } else {
-      mainWindow.webContents.send("download-all-complete");
-      downloadCounter.removeAllListeners("completed");
-      openFolder(defaultWorkDirectory + categories[0].path);
-    }
-  };
-  if (index === 0 && !scanOnly) {
-    mainWindow.webContents.send("download-next", {
-      index: index,
-    });
-    downloadCounter.on("completed", startNextDownload);
-  }
+  downloadCounter.once("completed", async () => {
+    await downloadFilesRecursive(categories, index + 1, scanOnly);
+  });
 
   let category = categories[index];
-  let fetchpath = defaultWorkDirectory + category.path;
-  let data = {};
+  let fetchPath = defaultWorkDirectory + category.path;
 
-  if (fs.existsSync(fetchpath)) {
-    data = readDirectory(fetchpath, false);
+  let data = {};
+  if (fs.existsSync(fetchPath)) {
+    data = readDirectory(fetchPath, false);
   }
 
   data.categorypath = category.path;
 
-  let downloadfolderurl =
-    getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json";
   await axios
-    .post(downloadfolderurl, data, {
-      headers: connectionOptions.headers,
-    })
+    .post(
+      getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json",
+      data,
+      {
+        headers: connectionOptions.headers,
+      }
+    )
     .then(function (res) {
       if (res.data !== undefined) {
-        let filestodownload = res.data.filestodownload;
-        let filestoupload = res.data.filestoupload;
-        if (filestodownload !== undefined) {
+        const filesToDownload = res.data.filestodownload;
+        const filesToUpload = res.data.filestoupload;
+        if (filesToDownload !== undefined) {
           if (!scanOnly) {
-            downloadCounter.setTotal(filestodownload.length);
+            downloadCounter.setTotal(filesToDownload.length);
           }
           if (!scanOnly) {
-            filestodownload.forEach((item) => {
+            filesToDownload.forEach((item) => {
               let file = {
                 itemexportname: category.path + "/" + item.path,
                 itemdownloadurl: item.url,
@@ -1506,29 +1499,63 @@ const downloadFolderRecursive = async function (
               };
               let assetid = item.id;
               console.log("Downloading: " + file.itemexportname);
-              fetchfilesdownload(assetid, file, true);
+
+              const parsedUrl = parseURL(store.get("homeUrl"), true);
+              downloadManager.downloadFile({
+                downloadItemId: assetid,
+                downloadPath:
+                  parsedUrl.protocol +
+                  "//" +
+                  parsedUrl.host +
+                  file.itemdownloadurl,
+                donwloadFilePath: file,
+                localFolderPath: defaultWorkDirectory + file.categorypath,
+                header: connectionOptions.headers,
+                onProgress: (progress, bytesLoaded, filePath) => {
+                  /*  mainWindow.webContents.send(`download-progress-${orderitemid}`, {
+          loaded: bytesLoaded,
+          total: progress.total,
+        });*/
+                },
+                onCompleted: (filePath, totalBytes) => {
+                  // mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
+                  if (batchMode) {
+                    mainWindow.webContents.send("download-next", {
+                      categorypath: file.categorypath,
+                      assetid: file.assetid,
+                    });
+                  }
+
+                  // console.log("Downloaded: " + filePath);
+                  if (batchMode) {
+                    downloadCounter.incrementCompleted();
+                  }
+                },
+                onError: (err) => {
+                  //mainWindow.webContents.send(`download-error-${orderitemid}`, err);
+                  console.log(err);
+                },
+              });
             });
           } else {
             let folderDownloadSize = 0;
-            filestodownload.forEach((item) => {
+            filesToDownload.forEach((item) => {
               folderDownloadSize += parseInt(item.size);
             });
             let folderUploadSize = 0;
-            filestoupload.forEach((item) => {
+            filesToUpload.forEach((item) => {
               folderUploadSize += parseInt(item.size);
             });
             mainWindow.webContents.send("scan-progress", {
               ...category,
               downloadSize: folderDownloadSize,
-              downloadCount: filestodownload.length,
+              downloadCount: filesToDownload.length,
               uploadSize: folderUploadSize,
-              uploadCount: filestoupload.length,
+              uploadCount: filesToUpload.length,
             });
             index++;
             if (categories.length > index) {
-              downloadFolderRecursive(categories, index, true);
-            } else {
-              mainWindow.webContents.send("scan-complete");
+              downloadFilesRecursive(categories, index, true);
             }
           }
         } else {
@@ -1543,7 +1570,7 @@ const downloadFolderRecursive = async function (
       console.error("Error on download Folder: " + category.path);
       console.error(err);
     });
-};
+}
 
 function getMediaDbUrl() {
   const mediadburl = store.get("mediadburl");
@@ -1661,9 +1688,7 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
             entityUploadManager.uploadFile({
               uploadEntityId: options["entityId"],
               filePath: filePath,
-              jsonData: {
-                sourcepath: path.join(category.path, item.path),
-              },
+              sourcePath: path.join(category.path, item.path),
               onProgress: ({ id, loaded }) => {
                 console.log("Progress: " + loaded);
                 mainWindow.webContents.send("entity-upload-progress", {
@@ -1821,7 +1846,7 @@ ipcMain.on("fetchfilesdownload", async (_, { assetid, file }) => {
   fetchfilesdownload(assetid, file);
 });
 
-function fetchfilesdownload(assetid, file, batchMode = false) {
+function fetchfilesdownload(assetid, file) {
   const parsedUrl = parseURL(store.get("homeUrl"), true);
 
   const items = {
@@ -1851,7 +1876,6 @@ function fetchfilesdownload(assetid, file, batchMode = false) {
     },
     onCompleted: (filePath, totalBytes) => {
       // mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
-
       mainWindow.webContents.send("download-asset-complete", {
         categorypath: file.categorypath,
         assetid: file.assetid,

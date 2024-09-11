@@ -21,7 +21,7 @@ const { parse: parseURL } = require("url");
 const fs = require("fs");
 const { EventEmitter } = require("events");
 const axios = require("axios");
-const extName = require("ext-name");
+const demos = require("./assets/demos.json");
 const fileWatcher = require("chokidar");
 const OS = require("os");
 
@@ -30,6 +30,7 @@ const { download: eDownload, CancelError } = require("electron-dl");
 const computerName = OS.userInfo().username + OS.hostname();
 
 let defaultWorkDirectory = app.getPath("home") + "/eMedia/";
+let currentWorkDirectory = defaultWorkDirectory;
 
 let connectionOptions = {
   headers: {
@@ -120,7 +121,7 @@ const createWindow = () => {
   if (!homeUrl || !localDrive) {
     openWorkspacePicker(welcomeForm);
   } else {
-    defaultWorkDirectory = localDrive;
+    currentWorkDirectory = localDrive;
     openWorkspace(homeUrl);
   }
   // Open the DevTools.
@@ -132,7 +133,7 @@ const createWindow = () => {
   setMainMenu(mainWindow);
 
   // tray
-  CreateTray([], mainWindow);
+  new CreateTray(mainWindow).drawTray();
 
   // Events
   mainWindow.on("minimize", (event) => {
@@ -258,7 +259,7 @@ ipcMain.on("addWorkspace", (_, newWorkspace) => {
   }
   store.set("workspaces", workspaces);
   if (newWorkspace.url === store.get("homeUrl")) {
-    defaultWorkDirectory = drive;
+    currentWorkDirectory = drive;
     store.set("localDrive", drive);
   }
   mainWindow.webContents.send("workspaces-updated", workspaces);
@@ -301,7 +302,7 @@ function openWorkspace(homeUrl) {
 
   mainWindow.loadURL(homeUrl, { userAgent });
   mainWindow.webContents.on("did-finish-load", () => {
-    mainWindow.webContents.send("set-local-root", defaultWorkDirectory);
+    mainWindow.webContents.send("set-local-root", currentWorkDirectory);
     if (loaderWindow) loaderWindow.destroy();
   });
   setMainMenu(mainWindow);
@@ -319,8 +320,8 @@ ipcMain.on("changeLocalDrive", (_, newRoot) => {
     });
     store.set("workspaces", workspaces);
     store.set("localDrive", newRoot);
-    defaultWorkDirectory = newRoot;
-    mainWindow.webContents.send("set-local-root", defaultWorkDirectory);
+    currentWorkDirectory = newRoot;
+    mainWindow.webContents.send("set-local-root", currentWorkDirectory);
   }
 });
 
@@ -329,8 +330,6 @@ ipcMain.on("setConnectionOptions", (_, options) => {
   if (!homeUrl) return;
   const parsedUrl = parseURL(homeUrl);
   const filter = { urls: ["*" + "://" + parsedUrl.hostname + "/*"] };
-  console.log(options);
-  console.log(filter);
   session.defaultSession.webRequest.onBeforeSendHeaders(
     filter,
     (details, callback) => {
@@ -401,7 +400,7 @@ ipcMain.on("watchFolders", (_, folders) => {
     watchedEntities.push(...uniqueFolders);
   }
   const folderFullPaths = uniqueFolders.map((f) =>
-    path.join(defaultWorkDirectory, f.path)
+    path.join(currentWorkDirectory, f.path)
   );
   const validPaths = folderFullPaths.filter((f) => fs.existsSync(f));
   if (validPaths.length === 0) {
@@ -417,17 +416,17 @@ ipcMain.on("watchFolders", (_, folders) => {
       followSymlinks: false,
     });
     entityWatcher.on("add", (p) => {
-      const filePath = p.replace(defaultWorkDirectory, "");
+      const filePath = p.replace(currentWorkDirectory, "");
       const catPath = path.dirname(filePath);
       mainWindow.webContents.send("file-added", catPath);
     });
     entityWatcher.on("unlink", (p) => {
-      const filePath = p.replace(defaultWorkDirectory, "");
+      const filePath = p.replace(currentWorkDirectory, "");
       const catPath = path.dirname(filePath);
       mainWindow.webContents.send("file-removed", catPath);
     });
     entityWatcher.on("unlinkDir", (p) => {
-      const filePath = p.replace(defaultWorkDirectory, "");
+      const filePath = p.replace(currentWorkDirectory, "");
       const catPath = path.dirname(filePath);
       mainWindow.webContents.send("file-removed", catPath);
     });
@@ -869,7 +868,7 @@ ipcMain.on("openWorkspace", (_, url) => {
   if (!drive.endsWith("/")) {
     drive += "/";
   }
-  defaultWorkDirectory = drive;
+  currentWorkDirectory = drive;
   store.set("localDrive", drive);
   store.set("homeUrl", url);
   openWorkspace(url);
@@ -893,7 +892,7 @@ function getWorkSpaceMenu() {
       checked: ws.url === store.get("homeUrl"),
       click() {
         if (ws.drive) {
-          defaultWorkDirectory = ws.drive;
+          currentWorkDirectory = ws.drive;
         } else {
           ws.drive = defaultWorkDirectory;
         }
@@ -904,8 +903,28 @@ function getWorkSpaceMenu() {
     };
   });
   subMenus.push({ type: "separator" });
+  const demoMenu = [];
+  Object.keys(demos).forEach((key) => {
+    demoMenu.push({
+      label: key,
+      id: demos[key],
+      type: "radio",
+      checked: demos[key] === store.get("homeUrl"),
+      click() {
+        store.set("homeUrl", demos[key]);
+        store.set("localDrive", defaultWorkDirectory);
+        currentWorkDirectory = defaultWorkDirectory;
+        openWorkspace(demos[key]);
+      },
+    });
+  });
   subMenus.push({
-    label: "Add a new workspace",
+    label: "Demo Libraries",
+    submenu: demoMenu,
+  });
+  subMenus.push({ type: "separator" });
+  subMenus.push({
+    label: "Add Library",
     click() {
       openWorkspacePicker(welcomeForm);
     },
@@ -914,6 +933,7 @@ function getWorkSpaceMenu() {
 }
 
 function setMainMenu(mainWindow) {
+  const homeUrl = store.get("homeUrl");
   const template = [
     {
       label: "eMedia Library",
@@ -922,7 +942,7 @@ function setMainMenu(mainWindow) {
           label: "Home",
           click: () => {
             mainWindow.show();
-            mainWindow.loadURL(this.homeUrl);
+            mainWindow.loadURL(homeUrl);
           },
         },
         {
@@ -1030,63 +1050,47 @@ function setMainMenu(mainWindow) {
   // Menu.setApplicationMenu(null);
 }
 
-function CreateTray(workSpaces, mainWin) {
-  this.trayMenu = [];
-  this.homeUrl = store.get("homeUrl");
-  if (!this.tray) this.tray = new Tray(__dirname + trayLogo);
+class CreateTray {
+  constructor(mainWin) {
+    this.mainWin = mainWin;
+    this.trayMenu = [];
+    this.homeUrl = store.get("homeUrl");
+    this.tray = new Tray(__dirname + trayLogo);
+  }
 
-  workSpaces.forEach((ws) => {
+  drawTray() {
     this.trayMenu.push({
-      label: ws.label,
+      label: "Show App",
       click: () => {
-        mainWin.show();
-        mainWin.loadURL(ws.url);
+        this.mainWin.show();
       },
     });
-  });
-  DrawTray(mainWin);
-  click = 0;
-  this.tray.on("click", () => {
-    click += 1;
-    setTimeout(() => {
-      click = 0;
-    }, 1000);
-    if (click >= 2) mainWin.show();
-  });
-}
-
-function DrawTray(mainWin) {
-  this.trayMenu.push({
-    label: "Show App",
-    click: () => {
-      mainWin.show();
-    },
-  });
-  this.trayMenu.push({
-    label: "Home",
-    click: () => {
-      mainWin.show();
-      mainWin.loadURL(this.homeUrl);
-    },
-  });
-  this.trayMenu.push({ type: "separator" });
-  this.trayMenu.push({
-    label: "Libraries...    ",
-    click() {
-      openWorkspacePicker(welcomeForm);
-    },
-  });
-  this.trayMenu.push({ type: "separator" });
-  this.trayMenu.push({
-    label: "Quit",
-    click: () => {
-      app.isQuitting = true;
-      app.quit();
-    },
-  });
-  this.tray.setToolTip("eMedia Library");
-  let contextMenu = Menu.buildFromTemplate(this.trayMenu);
-  this.tray.setContextMenu(contextMenu);
+    this.trayMenu.push({
+      label: "Home",
+      click: () => {
+        this.mainWin.show();
+        this.mainWin.loadURL(this.homeUrl);
+      },
+    });
+    this.trayMenu.push({ type: "separator" });
+    this.trayMenu.push({
+      label: "Libraries...    ",
+      click() {
+        openWorkspacePicker(welcomeForm);
+      },
+    });
+    this.trayMenu.push({ type: "separator" });
+    this.trayMenu.push({
+      label: "Quit",
+      click: () => {
+        app.isQuitting = true;
+        app.quit();
+      },
+    });
+    this.tray.setToolTip("eMedia Library");
+    const contextMenu = Menu.buildFromTemplate(this.trayMenu);
+    this.tray.setContextMenu(contextMenu);
+  }
 }
 
 ipcMain.on("uploadFolder", (event, options) => {
@@ -1102,8 +1106,6 @@ ipcMain.on("uploadFolder", (event, options) => {
       properties: ["openFile", "openDirectory"],
     })
     .then((result) => {
-      //console.log(result.canceled)
-      //console.log(result.filePaths)
       let directory = result.filePaths[0];
       if (directory != undefined) {
         store.set("uploaddefaultpath", directory);
@@ -1122,7 +1124,7 @@ function startFolderUpload(
   inMediadbUrl,
   options
 ) {
-  //let directoryfinal = directory.replace(defaultWorkDirectory, ''); //remove user home
+  //let directoryfinal = directory.replace(currentWorkDirectory, ''); //remove user home
   let dirname = path.basename(startingdirectory);
   console.log(dirname);
 
@@ -1190,7 +1192,7 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
       let stats = fs.statSync(filepath);
       if (stats.isDirectory()) {
         console.log("Subdirectory found: " + filepath);
-        let filenamefinal = filepath.replace(defaultWorkDirectory, ""); //remove user home
+        let filenamefinal = filepath.replace(currentWorkDirectory, ""); //remove user home
         loopDirectory(filepath, savingPath, inMediadbUrl);
       } else {
         let fileSizeInBytes = stats.size;
@@ -1215,7 +1217,7 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
       filepath = path.basename(filepath);
 
       filepath = filepath.replace(":", "");
-      let filenamefinal = filepath.replace(defaultWorkDirectory, ""); //remove user home
+      let filenamefinal = filepath.replace(currentWorkDirectory, ""); //remove user home
       let absPath = path.join(savingPath, filenamefinal);
       absPath = absPath.split(path.sep).join(path.posix.sep);
 
@@ -1320,12 +1322,12 @@ function addExtraFoldersToList(categories, categoryPath) {
   let filter = null;
   if (categories.length === 0) {
     if (!categoryPath) return;
-    rootPath = path.dirname(path.join(defaultWorkDirectory, categoryPath));
+    rootPath = path.dirname(path.join(currentWorkDirectory, categoryPath));
     rootLevel = categoryPath.split("/").length;
     shouldUpdateTree = false;
-    filter = path.basename(path.join(defaultWorkDirectory, categoryPath));
+    filter = path.basename(path.join(currentWorkDirectory, categoryPath));
   } else {
-    rootPath = path.join(defaultWorkDirectory, categories[0].path);
+    rootPath = path.join(currentWorkDirectory, categories[0].path);
     rootLevel = parseInt(categories[0].level);
   }
   let localPaths = [];
@@ -1337,7 +1339,7 @@ function addExtraFoldersToList(categories, categoryPath) {
       if (filter && fullpath.indexOf(filter) === -1) return;
       let stats = fs.statSync(fullpath);
       if (stats.isDirectory(fullpath)) {
-        let categoryPath = fullpath.substring(defaultWorkDirectory.length);
+        let categoryPath = fullpath.substring(currentWorkDirectory.length);
         let isExtra =
           categories.find((c) => c.path === categoryPath) === undefined;
         let _files = fs.readdirSync(fullpath);
@@ -1424,9 +1426,8 @@ async function fetchSubFolderContent(
 }
 
 ipcMain.on("downloadAll", (_, categorypath) => {
-  console.log("downloadAll " + categorypath);
   fetchSubFolderContent(
-    defaultWorkDirectory,
+    currentWorkDirectory,
     categorypath,
     downloadFilesRecursive
   );
@@ -1439,13 +1440,12 @@ async function scanFilesRecursive(categories, index = 0) {
   }
 
   let category = categories[index];
-  let fetchPath = path.join(defaultWorkDirectory, category.path);
+  let fetchPath = path.join(currentWorkDirectory, category.path);
 
   let data = {};
   if (fs.existsSync(fetchPath)) {
     data = readDirectory(fetchPath, false);
   }
-  console.log({ data });
   data.categorypath = category.path;
 
   await axios
@@ -1460,7 +1460,6 @@ async function scanFilesRecursive(categories, index = 0) {
       if (res.data !== undefined) {
         const filesToDownload = res.data.filestodownload;
         const filesToUpload = res.data.filestoupload;
-        console.log({ filesToDownload, filesToUpload });
         if (filesToDownload !== undefined) {
           let folderDownloadSize = 0;
           filesToDownload.forEach((item) => {
@@ -1492,23 +1491,21 @@ async function scanFilesRecursive(categories, index = 0) {
 }
 
 ipcMain.on("scanAll", (_, categorypath) => {
-  fetchSubFolderContent(defaultWorkDirectory, categorypath, scanFilesRecursive);
+  fetchSubFolderContent(currentWorkDirectory, categorypath, scanFilesRecursive);
 });
 
 class DownloadManager {
-  constructor(maxConcurrentDownloads = 4) {
+  constructor() {
     this.downloadItems = {};
     this.downloadQueue = [];
-    this.maxConcurrentDownloads = maxConcurrentDownloads;
-    this.currentDownloads = 0;
-    this.totalDownloadsCounts = 0;
+    this.isDownloading = false;
     this.isCancelled = false;
   }
 
   async downloadFile({
     downloadItemId,
     downloadUrl,
-    directory,
+    directory = undefined,
     onStarted = () => {},
     onCancel = () => {},
     onTotalProgress = () => {},
@@ -1524,12 +1521,14 @@ class DownloadManager {
       console.error("Invalid downloadUrl");
       return;
     }
-    if (!fs.existsSync(directory)) {
-      try {
-        fs.mkdirSync(directory, { recursive: true });
-      } catch (e) {
-        console.error(directory + " doesn't exist");
-        return;
+    if (directory !== undefined) {
+      if (!fs.existsSync(directory)) {
+        try {
+          fs.mkdirSync(directory, { recursive: true });
+        } catch (e) {
+          console.error(directory + " doesn't exist");
+          return;
+        }
       }
     }
     if (this.isCancelled) {
@@ -1548,12 +1547,8 @@ class DownloadManager {
       openFolderWhenDone,
     });
 
-    if (this.currentDownloads < this.maxConcurrentDownloads) {
-      this.currentDownloads++;
-      downloadPromise.start();
-    } else {
-      this.downloadQueue.push(downloadPromise);
-    }
+    this.downloadQueue.push(downloadPromise);
+    this.processQueue();
   }
 
   createDownloadPromise({
@@ -1581,19 +1576,20 @@ class DownloadManager {
             onCompleted,
             openFolderWhenDone,
             overwrite: true,
+            saveAs: directory === undefined,
+            showBadge: false,
           });
           this.downloadItems[downloadItemId] = downloadItem;
         } catch (e) {
           console.log("Error downloading " + downloadUrl);
-          console.log(e);
+          console.log(e.message || e);
           if (e instanceof CancelError) {
             onCancel();
           } else {
             onError(e);
           }
         } finally {
-          this.currentDownloads--;
-          this.totalDownloadsCounts--;
+          this.isDownloading = false;
           this.processQueue();
         }
       },
@@ -1601,12 +1597,9 @@ class DownloadManager {
   }
 
   processQueue() {
-    if (
-      this.currentDownloads < this.maxConcurrentDownloads &&
-      this.downloadQueue.length > 0
-    ) {
+    if (!this.isDownloading && this.downloadQueue.length > 0) {
       const nextDownload = this.downloadQueue.shift();
-      this.currentDownloads++;
+      this.isDownloading = true;
       nextDownload.start();
     }
   }
@@ -1620,9 +1613,8 @@ class DownloadManager {
       }
     });
     this.downloadItems = {};
-    this.currentDownloads = 0;
+    this.isDownloading = false;
     this.downloadQueue = [];
-    this.totalDownloadsCounts = 0;
     this.isCancelled = false;
   }
 }
@@ -1660,7 +1652,6 @@ const batchDownloadCounter = new DownloadCounter();
 let lastBatchDlProgUpdate = 0;
 async function downloadFilesRecursive(categories, index = 0) {
   if (categories.length === index) {
-    console.log("download-batch-complete");
     mainWindow.webContents.send("download-batch-complete");
     batchDownloadCounter.removeAllListeners("completed");
     return;
@@ -1671,7 +1662,7 @@ async function downloadFilesRecursive(categories, index = 0) {
   });
 
   let category = categories[index];
-  let fetchPath = path.join(defaultWorkDirectory, category.path);
+  let fetchPath = path.join(currentWorkDirectory, category.path);
 
   let data = {};
   if (fs.existsSync(fetchPath)) {
@@ -1700,7 +1691,7 @@ async function downloadFilesRecursive(categories, index = 0) {
               downloadItemId: assetId,
               downloadUrl:
                 parsedUrl.protocol + "//" + parsedUrl.host + item.url,
-              directory: path.join(defaultWorkDirectory, category.path),
+              directory: path.join(currentWorkDirectory, category.path),
               onTotalProgress: ({ transferredBytes, totalBytes }) => {
                 if (lastBatchDlProgUpdate + 1000 < Date.now()) {
                   lastBatchDlProgUpdate = Date.now();
@@ -1734,7 +1725,7 @@ async function downloadFilesRecursive(categories, index = 0) {
 }
 
 ipcMain.on("fetchFiles", (_, options) => {
-  let fetchpath = path.join(defaultWorkDirectory, options["categorypath"]);
+  let fetchpath = path.join(currentWorkDirectory, options["categorypath"]);
   let data = {};
   if (!fs.existsSync(fetchpath)) {
     fs.mkdirSync(fetchpath, { recursive: true });
@@ -1748,16 +1739,15 @@ ipcMain.on("fetchFiles", (_, options) => {
 });
 
 ipcMain.on("openFolder", (_, options) => {
-  console.log({ options });
   if (!options["path"].startsWith("/")) {
-    options["path"] = path.join(defaultWorkDirectory, options["path"]);
+    options["path"] = path.join(currentWorkDirectory, options["path"]);
   }
   openFolder(options["path"]);
 });
 
 ipcMain.on("uploadAll", async (_, { categorypath, entityId }) => {
   fetchSubFolderContent(
-    defaultWorkDirectory,
+    currentWorkDirectory,
     categorypath,
     uploadFilesRecursive,
     [0, { entityId: entityId }]
@@ -1780,7 +1770,7 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
   });
 
   const category = categories[index];
-  const fetchPath = path.join(defaultWorkDirectory, category.path);
+  const fetchPath = path.join(currentWorkDirectory, category.path);
 
   let data = {};
   if (fs.existsSync(fetchPath)) {
@@ -1850,7 +1840,7 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
 
 ipcMain.on("trashExtraFiles", async (_, { categorypath }) => {
   fetchSubFolderContent(
-    defaultWorkDirectory,
+    currentWorkDirectory,
     categorypath,
     trashFilesRecursive
   );
@@ -1863,7 +1853,7 @@ function trashFilesRecursive(categories, index = 0) {
   }
 
   let category = categories[index];
-  let fetchpath = path.join(defaultWorkDirectory, category.path);
+  let fetchpath = path.join(currentWorkDirectory, category.path);
   let data = {};
 
   if (fs.existsSync(fetchpath)) {
@@ -1905,27 +1895,26 @@ function trashFilesRecursive(categories, index = 0) {
     });
 }
 
-const indiDownloadManager = new DownloadManager();
+const indieDownloadManager = new DownloadManager();
 ipcMain.on("start-download", async (event, { orderitemid, file }) => {
   const parsedUrl = parseURL(store.get("homeUrl"), true);
-  indiDownloadManager.downloadFile({
+  indieDownloadManager.downloadFile({
     downloadItemId: orderitemid,
     downloadUrl:
       parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
-    directory: file,
     onStarted: () => {
       mainWindow.webContents.send(`download-started-${orderitemid}`);
     },
     onCancel: () => {
       mainWindow.webContents.send(`download-abort-${orderitemid}`);
     },
-    onProgress: (progress, bytesLoaded, filePath) => {
+    onProgress: ({ transferredBytes, totalBytes }) => {
       mainWindow.webContents.send(`download-progress-${orderitemid}`, {
-        loaded: bytesLoaded,
-        total: progress.total,
+        loaded: transferredBytes,
+        total: totalBytes,
       });
     },
-    onCompleted: (filePath, totalBytes) => {
+    onCompleted: (filePath) => {
       mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
       console.log("Download Complete: " + filePath);
     },

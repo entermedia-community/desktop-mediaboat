@@ -9,6 +9,7 @@ const {
   Tray,
   shell,
   screen,
+  session,
 } = require("electron");
 const rp = require("request-promise");
 const mime = require("mime-types");
@@ -23,6 +24,9 @@ const axios = require("axios");
 const extName = require("ext-name");
 const fileWatcher = require("chokidar");
 const OS = require("os");
+
+const { download: eDownload, CancelError } = require("electron-dl");
+
 const computerName = OS.userInfo().username + OS.hostname();
 
 let defaultWorkDirectory = app.getPath("home") + "/eMedia/";
@@ -46,6 +50,7 @@ if (isDev) {
 }
 
 let mainWindow;
+let loaderWindow;
 let entermediaKey;
 
 //Config
@@ -53,6 +58,7 @@ const appLogo = "/assets/images/icon.png";
 const trayLogo = "/assets/images/em.png";
 
 const store = new Store();
+const loaderPage = `file://${__dirname}/loader.html`;
 const welcomeForm = `file://${__dirname}/config.html`;
 
 const currentVersion = process.env.npm_package_version;
@@ -270,15 +276,33 @@ ipcMain.on("deleteWorkspace", (_, url) => {
   setMainMenu(mainWindow);
 });
 
+function showLoader() {
+  const bounds = mainWindow.getBounds();
+
+  loaderWindow = new BrowserWindow({
+    ...bounds,
+    resizable: false,
+    frame: false,
+    parent: mainWindow,
+  });
+  loaderWindow.loadURL(loaderPage);
+  loaderWindow.show();
+}
+
 function openWorkspace(homeUrl) {
   log.info("Opening Workspace: ", homeUrl);
+
   let userAgent = mainWindow.webContents.getUserAgent();
   if (userAgent.indexOf("ComputerName") === -1) {
     userAgent = userAgent + " ComputerName/" + computerName;
   }
+
+  showLoader();
+
   mainWindow.loadURL(homeUrl, { userAgent });
   mainWindow.webContents.on("did-finish-load", () => {
     mainWindow.webContents.send("set-local-root", defaultWorkDirectory);
+    if (loaderWindow) loaderWindow.destroy();
   });
   setMainMenu(mainWindow);
 }
@@ -301,6 +325,22 @@ ipcMain.on("changeLocalDrive", (_, newRoot) => {
 });
 
 ipcMain.on("setConnectionOptions", (_, options) => {
+  let homeUrl = store.get("homeUrl");
+  if (!homeUrl) return;
+  if (homeUrl[homeUrl.length - 1] !== "/") {
+    homeUrl += "/";
+  }
+  const filter = { urls: [homeUrl + "*"] };
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    filter,
+    (details, callback) => {
+      Object.keys(options.headers).forEach((header) => {
+        details.requestHeaders[header] = options.headers[header];
+      });
+      callback({ requestHeaders: details.requestHeaders });
+    }
+  );
+
   connectionOptions = {
     ...options,
     headers: {
@@ -424,20 +464,6 @@ ipcMain.on("setModule", (_, { selectedModule, desktopId }) => {
   mainWindow.webContents.send("set-module-contents", contents);
 });
 
-class UploadBarrier extends EventEmitter {
-  constructor() {
-    super();
-    this.allowed = true;
-  }
-  allow() {
-    this.allowed = true;
-  }
-  prevent() {
-    this.allowed = false;
-    this.emit("prevented");
-  }
-}
-
 class UploadManager {
   constructor(maxConcurrentUploads = 4) {
     this.uploadQueue = [];
@@ -449,7 +475,7 @@ class UploadManager {
   }
 
   async uploadFile({
-    uploadEntityId,
+    subFolderId,
     sourcePath,
     filePath,
     onStarted,
@@ -463,7 +489,7 @@ class UploadManager {
       return;
     }
     const uploadPromise = this.createUploadPromise(
-      uploadEntityId,
+      subFolderId,
       { sourcePath, filePath },
       {
         onStarted,
@@ -483,12 +509,12 @@ class UploadManager {
     this.totalUploadsCount++;
   }
 
-  createUploadPromise(uploadEntityId, formData, callbacks) {
+  createUploadPromise(subFolderId, formData, callbacks) {
     return {
       start: async () => {
         try {
           if (typeof callbacks.onStarted === "function") {
-            callbacks.onStarted(uploadEntityId);
+            callbacks.onStarted(subFolderId);
           }
 
           let size = fs.statSync(formData.filePath).size;
@@ -511,7 +537,7 @@ class UploadManager {
                     loaded += chunk.length;
                     if (typeof callbacks.onProgress === "function") {
                       callbacks.onProgress({
-                        id: uploadEntityId,
+                        id: subFolderId,
                         loaded,
                         total: size,
                       });
@@ -529,7 +555,7 @@ class UploadManager {
           });
           uploadRequest.then(() => {
             if (typeof callbacks.onCompleted === "function") {
-              callbacks.onCompleted(uploadEntityId);
+              callbacks.onCompleted(subFolderId);
               delete this.activeUploadRequests[formData.filePath];
             }
           });
@@ -538,7 +564,7 @@ class UploadManager {
           if (typeof callbacks.onError === "function") {
             console.log(error);
             callbacks.onError(
-              uploadEntityId,
+              subFolderId,
               error.message || JSON.stringify(error) || "Unknown error"
             );
             delete this.activeUploadRequests[formData.filePath];
@@ -571,7 +597,7 @@ class UploadManager {
     }
   }
 
-  cancelUpload() {
+  cancelAllUpload() {
     this.isCancelled = true;
     Object.keys(this.activeUploadRequests).forEach((key) => {
       this.activeUploadRequests[key].abort();
@@ -581,6 +607,7 @@ class UploadManager {
     this.currentUploads = 0;
     this.uploadQueue = [];
     this.totalUploadsCount = 0;
+    this.isCancelled = false;
   }
 }
 
@@ -668,9 +695,16 @@ function getFilesByDirectory(directory) {
 const autoUploadCounter = new UploadCounter();
 const autoUploadManager = new UploadManager();
 
+let lastAutoProgUpdate = 0;
+let lastUploadedFolderId = null;
 async function uploadAutoFolders(folders, index = 0) {
   if (folders.length === index) {
-    mainWindow.webContents.send("auto-upload-complete");
+    mainWindow.webContents.send(
+      "auto-upload-entity-complete",
+      lastUploadedFolderId
+    );
+    lastUploadedFolderId = null;
+    mainWindow.webContents.send("auto-upload-complete", folders.length);
     autoUploadCounter.removeAllListeners("completed");
     return;
   }
@@ -680,6 +714,11 @@ async function uploadAutoFolders(folders, index = 0) {
   });
 
   const folder = folders[index];
+
+  if (lastUploadedFolderId === null) {
+    lastUploadedFolderId = folder.syncFolderId;
+  }
+
   const fetchPath = folder.localPath;
 
   let data = {};
@@ -689,7 +728,7 @@ async function uploadAutoFolders(folders, index = 0) {
     data = { files: [] };
   }
   data.categorypath = folder.categoryPath;
-  data.entityid = folder.entityId;
+
   await axios
     .post(
       getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json",
@@ -700,24 +739,44 @@ async function uploadAutoFolders(folders, index = 0) {
       if (res.data !== undefined) {
         const filesToUpload = res.data.filestoupload;
         if (filesToUpload !== undefined) {
+          if (
+            filesToUpload.length === 0 &&
+            lastUploadedFolderId !== folder.syncFolderId
+          ) {
+            mainWindow.webContents.send(
+              "auto-upload-entity-complete",
+              lastUploadedFolderId
+            );
+          }
           autoUploadCounter.setTotal(filesToUpload.length);
           filesToUpload.forEach((item) => {
             const filePath = path.join(fetchPath, item.path);
             autoUploadManager.uploadFile({
-              uploadEntityId: folder.entityId,
+              subFolderId: folder.syncFolderId,
               filePath: filePath,
               sourcePath: path.join(folder.categoryPath, item.path),
               onProgress: ({ loaded }) => {
-                mainWindow.webContents.send("auto-upload-progress", loaded);
+                if (lastAutoProgUpdate + 1000 < Date.now()) {
+                  lastAutoProgUpdate = Date.now();
+                  mainWindow.webContents.send("auto-upload-progress", loaded);
+                }
               },
               onCompleted: () => {
+                if (lastUploadedFolderId !== folder.syncFolderId) {
+                  mainWindow.webContents.send(
+                    "auto-upload-entity-complete",
+                    lastUploadedFolderId
+                  );
+                }
+                lastUploadedFolderId = folder.syncFolderId;
                 mainWindow.webContents.send("auto-upload-next", {
-                  id: folder.entityId,
+                  id: folder.syncFolderId,
                   size: fs.statSync(filePath).size || 0,
                 });
                 autoUploadCounter.incrementCompleted();
               },
               onError: (id, err) => {
+                lastUploadedFolderId = folder.syncFolderId;
                 autoUploadCounter.incrementCompleted();
                 mainWindow.webContents.send("auto-upload-error", {
                   id,
@@ -763,7 +822,7 @@ ipcMain.on("syncAllFolders", (_, syncFolders) => {
   const ids = [];
   syncFolders.forEach((folder) => {
     const localPath = folder.localPath;
-    const folderId = folder.id;
+    const folderId = folder.syncFolderId;
     const categoryPath = folder.categoryPath;
 
     ids.push(folderId);
@@ -779,10 +838,9 @@ ipcMain.on("syncAllFolders", (_, syncFolders) => {
     const directories = getDirectories(localPath);
     directories.forEach((dir) => {
       subfolders.push({
-        id: folderId,
+        syncFolderId: folderId,
         localPath: dir,
         categoryPath: path.join(categoryPath, dir.replace(localPath, "")),
-        entityId: folderId,
       });
     });
   });
@@ -791,13 +849,13 @@ ipcMain.on("syncAllFolders", (_, syncFolders) => {
   uploadAutoFolders(subfolders);
 });
 
-ipcMain.on("abortAutoUpload", () => {
-  autoUploadManager.cancelUpload();
-  mainWindow.webContents.send("upload-aborted");
+ipcMain.on("cancelAutoUpload", () => {
+  autoUploadManager.cancelAllUpload();
+  mainWindow.webContents.send("upload-canceled");
 });
 
 ipcMain.on("abortUpload", () => {
-  entityUploadManager.cancelUpload();
+  entityUploadManager.cancelAllUpload();
 });
 
 ipcMain.on("select-dirs", async (_, arg) => {
@@ -942,7 +1000,8 @@ function setMainMenu(mainWindow) {
           label: "Refresh",
           accelerator: "F5",
           click() {
-            mainWindow.reload();
+            showLoader();
+            mainWindow.reloadIgnoringCache();
           },
         },
         {
@@ -1413,14 +1472,204 @@ async function fetchSubFolderContent(
     });
 }
 
-ipcMain.on("downloadAll", (_, { categorypath, scanOnly = false }) => {
+ipcMain.on("downloadAll", (_, categorypath) => {
+  console.log("downloadAll " + categorypath);
   fetchSubFolderContent(
     defaultWorkDirectory,
     categorypath,
-    downloadFilesRecursive,
-    [0, scanOnly]
+    downloadFilesRecursive
   );
 });
+
+ipcMain.on("scanAll", (_, categorypath) => {
+  fetchSubFolderContent(defaultWorkDirectory, categorypath, scanFilesRecursive);
+});
+
+async function scanFilesRecursive(categories, index = 0) {
+  if (categories.length === index) {
+    mainWindow.webContents.send("scan-complete");
+    return;
+  }
+
+  let category = categories[index];
+  let fetchPath = defaultWorkDirectory + category.path;
+
+  let data = {};
+  if (fs.existsSync(fetchPath)) {
+    data = readDirectory(fetchPath, false);
+  }
+
+  data.categorypath = category.path;
+
+  await axios
+    .post(
+      getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json",
+      data,
+      {
+        headers: connectionOptions.headers,
+      }
+    )
+    .then(function (res) {
+      if (res.data !== undefined) {
+        const filesToDownload = res.data.filestodownload;
+        const filesToUpload = res.data.filestoupload;
+        if (filesToDownload !== undefined) {
+          let folderDownloadSize = 0;
+          filesToDownload.forEach((item) => {
+            folderDownloadSize += parseInt(item.size);
+          });
+          let folderUploadSize = 0;
+          filesToUpload.forEach((item) => {
+            folderUploadSize += parseInt(item.size);
+          });
+          mainWindow.webContents.send("scan-progress", {
+            ...category,
+            downloadSize: folderDownloadSize,
+            downloadCount: filesToDownload.length,
+            uploadSize: folderUploadSize,
+            uploadCount: filesToUpload.length,
+          });
+          index++;
+          if (categories.length > index) {
+            scanFilesRecursive(categories, index);
+          } else {
+            mainWindow.webContents.send("scan-complete");
+          }
+        } else {
+          throw new Error("No files found");
+        }
+      } else {
+        throw new Error("No data found");
+      }
+    })
+    .catch(function (err) {
+      console.error("Error on scan Folder: " + category.path);
+      console.error(err);
+    });
+}
+
+class DownloadManager {
+  constructor(maxConcurrentDownloads = 4) {
+    this.downloadItems = {};
+    this.downloadQueue = [];
+    this.maxConcurrentDownloads = maxConcurrentDownloads;
+    this.currentDownloads = 0;
+    this.totalDownloadsCounts = 0;
+    this.isCancelled = false;
+  }
+
+  async downloadFile({
+    downloadItemId,
+    downloadUrl,
+    directory,
+    onCancel = () => {},
+    onProgress = () => {},
+    onCompleted = () => {},
+    openFolderWhenDone = false,
+  }) {
+    if (!downloadItemId) {
+      console.error("Invalid downloadItemId");
+      return;
+    }
+    if (!downloadUrl) {
+      console.error("Invalid downloadUrl");
+      return;
+    }
+    if (!fs.existsSync(directory)) {
+      try {
+        fs.mkdirSync(directory);
+      } catch (e) {
+        console.error(directory + " doesn't exist");
+        return;
+      }
+    }
+    if (this.isCancelled) {
+      console.log("Cancelled downloading");
+      return;
+    }
+    const downloadPromise = this.createDownloadPromise({
+      downloadItemId,
+      downloadUrl,
+      directory,
+      onProgress,
+      onCompleted,
+      onCancel,
+      openFolderWhenDone,
+    });
+
+    if (this.currentDownloads < this.maxConcurrentDownloads) {
+      this.currentDownloads++;
+      downloadPromise.start();
+    } else {
+      this.downloadQueue.push(downloadPromise);
+    }
+  }
+
+  createDownloadPromise({
+    downloadItemId,
+    downloadUrl,
+    directory,
+    onProgress,
+    onCancel,
+    onCompleted,
+    onError,
+    openFolderWhenDone,
+  }) {
+    return {
+      start: async () => {
+        try {
+          const win = BrowserWindow.getFocusedWindow();
+          const downloadItem = await eDownload(win, downloadUrl, {
+            directory,
+            onTotalProgress: onProgress,
+            onCancel,
+            onCompleted,
+            openFolderWhenDone,
+            overwrite: true,
+          });
+          this.downloadItems[downloadItemId] = downloadItem;
+        } catch (e) {
+          console.log(e);
+          if (e instanceof CancelError) {
+            onCancel();
+          } else {
+            onError(e);
+          }
+        } finally {
+          this.currentDownloads--;
+          this.totalDownloadsCounts--;
+          this.processQueue();
+        }
+      },
+    };
+  }
+
+  processQueue() {
+    if (
+      this.currentDownloads < this.maxConcurrentDownloads &&
+      this.downloadQueue.length > 0
+    ) {
+      const nextDownload = this.downloadQueue.shift();
+      this.currentDownloads++;
+      nextDownload.start();
+    }
+  }
+
+  cancelAllDownload() {
+    this.isCancelled = true;
+    Object.keys(this.downloadItems).forEach((downloadItemId) => {
+      const download = this.downloadItems[downloadItemId];
+      if (download) {
+        download.cancel();
+      }
+    });
+    this.downloadItems = {};
+    this.currentDownloads = 0;
+    this.downloadQueue = [];
+    this.totalDownloadsCounts = 0;
+    this.isCancelled = false;
+  }
+}
 
 class DownloadCounter extends EventEmitter {
   constructor() {
@@ -1447,27 +1696,21 @@ class DownloadCounter extends EventEmitter {
   }
 }
 
-const downloadCounter = new DownloadCounter();
-
+const batchDownloadManager = new DownloadManager();
 const batchDownloadCounter = new DownloadCounter();
-// const batchDownloadManager = new DownloadManager();
 
 // const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)); // test
 
-async function downloadFilesRecursive(categories, index = 0, scanOnly = false) {
+let lastBatchDlProgUpdate = 0;
+async function downloadFilesRecursive(categories, index = 0) {
   if (categories.length === index) {
-    if (scanOnly) {
-      mainWindow.webContents.send("scan-complete");
-    } else {
-      mainWindow.webContents.send("download-all-complete");
-      downloadCounter.removeAllListeners("completed");
-      openFolder(defaultWorkDirectory + categories[0].path);
-    }
+    mainWindow.webContents.send("download-batch-complete");
+    batchDownloadCounter.removeAllListeners("completed");
     return;
   }
 
-  downloadCounter.once("completed", async () => {
-    await downloadFilesRecursive(categories, index + 1, scanOnly);
+  batchDownloadCounter.once("completed", async () => {
+    await downloadFilesRecursive(categories, index + 1);
   });
 
   let category = categories[index];
@@ -1491,81 +1734,34 @@ async function downloadFilesRecursive(categories, index = 0, scanOnly = false) {
     .then(function (res) {
       if (res.data !== undefined) {
         const filesToDownload = res.data.filestodownload;
-        const filesToUpload = res.data.filestoupload;
         if (filesToDownload !== undefined) {
-          if (!scanOnly) {
-            downloadCounter.setTotal(filesToDownload.length);
-          }
-          if (!scanOnly) {
-            filesToDownload.forEach((item) => {
-              let file = {
-                itemexportname: category.path + "/" + item.path,
-                itemdownloadurl: item.url,
-                categorypath: category.path,
-              };
-              let assetid = item.id;
-              console.log("Downloading: " + file.itemexportname);
-
-              const parsedUrl = parseURL(store.get("homeUrl"), true);
-              downloadManager.downloadFile({
-                downloadItemId: assetid,
-                downloadPath:
-                  parsedUrl.protocol +
-                  "//" +
-                  parsedUrl.host +
-                  file.itemdownloadurl,
-                downloadFilePath: file,
-                localFolderPath: defaultWorkDirectory + file.categorypath,
-                header: connectionOptions.headers,
-                onProgress: (progress, bytesLoaded, filePath) => {
-                  /*  mainWindow.webContents.send(`download-progress-${orderitemid}`, {
-          loaded: bytesLoaded,
-          total: progress.total,
-        });*/
-                },
-                onCompleted: (filePath, totalBytes) => {
-                  // mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
-                  if (batchMode) {
-                    mainWindow.webContents.send("download-next", {
-                      categorypath: file.categorypath,
-                      assetid: file.assetid,
-                    });
-                  }
-
-                  // console.log("Downloaded: " + filePath);
-                  if (batchMode) {
-                    downloadCounter.incrementCompleted();
-                  }
-                },
-                onError: (err) => {
-                  //mainWindow.webContents.send(`download-error-${orderitemid}`, err);
-                  console.log(err);
-                },
-              });
+          batchDownloadCounter.setTotal(filesToDownload.length);
+          filesToDownload.forEach((item) => {
+            let assetId = item.id;
+            const parsedUrl = parseURL(store.get("homeUrl"), true);
+            batchDownloadManager.downloadFile({
+              downloadItemId: assetId,
+              downloadUrl:
+                parsedUrl.protocol + "//" + parsedUrl.host + item.url,
+              directory: path.join(defaultWorkDirectory, category.path),
+              onProgress: ({ percent, transferredBytes, totalBytes }) => {
+                if (lastBatchDlProgUpdate + 1000 < Date.now()) {
+                  lastBatchDlProgUpdate = Date.now();
+                  mainWindow.webContents.send("download-batch-progress", {
+                    transferredBytes,
+                    totalBytes,
+                  });
+                }
+              },
+              onCompleted: () => {
+                mainWindow.webContents.send("download-batch-next", {
+                  categoryPath: category.path,
+                  assetId,
+                });
+                batchDownloadCounter.incrementCompleted();
+              },
             });
-          } else {
-            let folderDownloadSize = 0;
-            filesToDownload.forEach((item) => {
-              folderDownloadSize += parseInt(item.size);
-            });
-            let folderUploadSize = 0;
-            filesToUpload.forEach((item) => {
-              folderUploadSize += parseInt(item.size);
-            });
-            mainWindow.webContents.send("scan-progress", {
-              ...category,
-              downloadSize: folderDownloadSize,
-              downloadCount: filesToDownload.length,
-              uploadSize: folderUploadSize,
-              uploadCount: filesToUpload.length,
-            });
-            index++;
-            if (categories.length > index) {
-              downloadFilesRecursive(categories, index, true);
-            } else {
-              mainWindow.webContents.send("scan-complete");
-            }
-          }
+          });
         } else {
           throw new Error("No files found");
         }
@@ -1574,7 +1770,7 @@ async function downloadFilesRecursive(categories, index = 0, scanOnly = false) {
       }
     })
     .catch(function (err) {
-      downloadCounter.setTotal(0);
+      batchDownloadCounter.setTotal(0);
       console.error("Error on download Folder: " + category.path);
       console.error(err);
     });
@@ -1656,6 +1852,7 @@ ipcMain.on("uploadAll", async (_, { categorypath, entityId }) => {
 const entityUploadCounter = new UploadCounter();
 const entityUploadManager = new UploadManager();
 
+let lastEntityProgUpdate = 0;
 async function uploadFilesRecursive(categories, index = 0, options = {}) {
   if (categories.length === index) {
     mainWindow.webContents.send("entity-upload-complete");
@@ -1690,16 +1887,18 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
           filesToUpload.forEach((item) => {
             const filePath = path.join(fetchPath, item.path);
             entityUploadManager.uploadFile({
-              uploadEntityId: options["entityId"],
+              subFolderId: options["entityId"],
               filePath: filePath,
               sourcePath: path.join(category.path, item.path),
               onProgress: ({ id, loaded }) => {
-                console.log("Progress: " + loaded);
-                mainWindow.webContents.send("entity-upload-progress", {
-                  id,
-                  index: category.index,
-                  loaded,
-                });
+                if (lastEntityProgUpdate + 1000 < Date.now()) {
+                  lastEntityProgUpdate = Date.now();
+                  mainWindow.webContents.send("entity-upload-progress", {
+                    id,
+                    index: category.index,
+                    loaded,
+                  });
+                }
               },
               onCompleted: () => {
                 const f = fs.statSync(filePath);
@@ -1843,13 +2042,13 @@ ipcMain.on("fetchfilesupload", async (event, { assetid, file }) => {
       console.log(err);
     },
   };
-  downloadManager.downloadFile(items);
 });
 
 ipcMain.on("fetchfilesdownload", async (_, { assetid, file }) => {
   fetchfilesdownload(assetid, file);
 });
 
+const downloadManager = new DownloadManager();
 function fetchfilesdownload(assetid, file) {
   const parsedUrl = parseURL(store.get("homeUrl"), true);
 
@@ -1884,11 +2083,6 @@ function fetchfilesdownload(assetid, file) {
         categorypath: file.categorypath,
         assetid: file.assetid,
       });
-
-      // console.log("Downloaded: " + filePath);
-      if (batchMode) {
-        downloadCounter.incrementCompleted();
-      }
     },
     onError: (err) => {
       //mainWindow.webContents.send(`download-error-${orderitemid}`, err);
@@ -1896,393 +2090,6 @@ function fetchfilesdownload(assetid, file) {
     },
   };
   downloadManager.downloadFile(items);
-}
-
-// ----------------------- Download --------------------
-
-class DownloadManager {
-  constructor(maxConcurrentDownloads = 4) {
-    this.downloads = new Map();
-    this.downloadQueue = [];
-    this.maxConcurrentDownloads = maxConcurrentDownloads;
-    this.currentDownloads = 0;
-    this.totalDownloadsCounts = 0;
-    this.haveDefaultDownlaodPath = store.has("downloadDefaultPath");
-    this.isPaused = false;
-  }
-
-  updateDockProgress() {
-    // TODO: show progress on the dock.
-  }
-
-  updateDockCount() {
-    if (["darwin", "linux"].includes(process.platform)) {
-      app.badgeCount = this.totalDownloadsCounts;
-    }
-  }
-
-  startDownloads() {
-    this.downloads = store.get("downloadQueue", new Map());
-    this.processQueue();
-  }
-
-  async downloadFile({
-    downloadItemId,
-    downloadPath,
-    downloadFilePath,
-    localFolderPath,
-    header,
-    onStarted,
-    onCancel,
-    onResume,
-    onPause,
-    onProgress,
-    onCompleted,
-    onError,
-  }) {
-    if (!this.haveDefaultDownlaodPath) {
-      try {
-        const result = dialog.showOpenDialogSync(mainWindow, {
-          properties: ["openDirectory", "createDirectory"],
-        });
-        this.haveDefaultDownlaodPath = true;
-        let directory = result[0];
-        if (directory != undefined) {
-          store.set("downloadDefaultPath", directory);
-        }
-      } catch (err) {
-        onError(err);
-        onCancel();
-        console.error(err);
-        return;
-      }
-    }
-
-    let fileDownloadedPath = "";
-
-    if (localFolderPath != null) {
-      fileDownloadedPath = localFolderPath;
-    } else {
-      fileDownloadedPath =
-        store.get("downloadDefaultPath") ?? app.getPath("downloads");
-    }
-
-    const info = {
-      url: downloadPath,
-      filePath: downloadFilePath,
-      directory: fileDownloadedPath,
-      headers: header,
-      onStarted: (item) => {
-        this.downloads.set(downloadItemId, item);
-        store.set("downloadQueue", this.downloads);
-        onStarted();
-      },
-      onProgress: (progress, bytesLoaded, filePath) => {
-        // TODO: update about the progress.
-        onProgress(progress, bytesLoaded, filePath);
-      },
-      onCancel: (item) => {
-        this.downloads.delete(downloadItemId);
-        store.set("downloadQueue", this.downloads);
-        this.processQueue();
-        onCancel(item);
-      },
-      onPause: () => {
-        this.currentDownloads--;
-        onPause();
-      },
-      onResume: () => {
-        this.currentDownloads++;
-        onResume();
-      },
-      onCompleted: (file, totalBytes) => {
-        onCompleted(file, totalBytes);
-        this.downloads.delete(downloadItemId);
-        store.set("downloadQueue", this.downloads);
-        if (process.platform === "darwin") {
-          app.dock.downloadFinished(file);
-        }
-        this.currentDownloads--;
-        this.totalDownloadsCounts--;
-        this.updateDockCount();
-        this.processQueue();
-      },
-      onError: onError,
-    };
-
-    const downloadPromise = new DownloadItemHelper(info);
-
-    if (this.currentDownloads < this.maxConcurrentDownloads) {
-      this.currentDownloads++;
-      downloadPromise.start();
-    } else {
-      this.downloadQueue.push(downloadPromise);
-    }
-    this.totalDownloadsCounts++;
-    this.updateDockCount();
-  }
-
-  processQueue() {
-    // console.log(
-    //   this.currentDownloads +
-    //     " current downloads of " +
-    //     this.downloadQueue.length
-    // );
-    if (
-      this.currentDownloads < this.maxConcurrentDownloads &&
-      this.downloadQueue.length > 0 &&
-      !this.isPaused
-    ) {
-      const nextDownload = this.downloadQueue.shift();
-      this.currentDownloads++;
-      nextDownload.start();
-    }
-  }
-
-  cancelDownload(onlineDownloadableItemId) {
-    const download = this.downloads.get(onlineDownloadableItemId);
-    if (download) {
-      download.cancel();
-      this.downloads.delete(onlineDownloadableItemId);
-      store.set("downloadQueue", this.downloads);
-    }
-  }
-
-  pauseDownload(onlineDownloadableItemId) {
-    const download = this.downloads.get(onlineDownloadableItemId);
-    if (download) {
-      download.pause();
-    }
-  }
-
-  resumeDownload(onlineDownloadableItemId) {
-    const download = this.downloads.get(onlineDownloadableItemId);
-    if (download) {
-      download.resume();
-    }
-  }
-
-  pauseAllDownloads() {
-    this.downloads.forEach((download) => {
-      download.pause();
-      this.isPaused = true;
-    });
-  }
-
-  resumeAllDownloads() {
-    this.isPaused = false;
-    this.downloads.forEach((download) => {
-      download.resume();
-    });
-    this.processQueue();
-  }
-}
-
-class DownloadItemHelper extends EventEmitter {
-  constructor({
-    url,
-    fileName,
-    directory,
-    headers,
-    onStarted,
-    onProgress,
-    onCancel,
-    onCompleted,
-    onPause,
-    onResume,
-    onError,
-    downloadData,
-  }) {
-    super();
-    this.url = url;
-    this.fileName = fileName;
-    this.directory = directory || this.getDefaultDownloadDirectory();
-    this.headers = headers || {};
-    this.onStartedCallback = onStarted;
-    this.onProgressCallback = onProgress;
-    this.onCancelCallback = onCancel;
-    this.onCompletedCallback = onCompleted;
-    this.filePath = this.fileName
-      ? path.join(this.directory, this.fileName)
-      : null;
-    this.onPauseCallback = onPause;
-    this.onResume = onResume;
-    this.onError = onError;
-    this.store = new Store();
-    this.totalBytes = 0;
-    this.progress = 0;
-    this.status = "idle";
-    this.cancelTokenSource = null;
-    this.downloadData = downloadData ||
-      this.store.get(this.url) || { bytesDownloaded: 0 };
-  }
-
-  detectFileName(url, extra, headers) {
-    let fileName = decodeURI(path.basename(url));
-    let extension = path.extname(url);
-    if (!fileName.includes(".")) {
-      const contentType = headers["content-type"];
-      if (contentType) {
-        extension = getFilenameFromMime("", contentType);
-        fileName += extension ? extension : ".txt"; // Default to .txt if extension not found
-      } else {
-        fileName += ".txt"; // Default to .txt if content-type header not found
-      }
-    }
-
-    if (extra) {
-      let count = 1;
-      let baseName = fileName.replace(extension, "");
-
-      while (fs.existsSync(path.join(this.directory, fileName))) {
-        count++;
-        fileName = `${baseName}_${count}${extension}`;
-      }
-    }
-
-    return fileName;
-  }
-
-  getDefaultDownloadDirectory() {
-    return app.getPath("downloads"); // Default download directory
-  }
-
-  async start() {
-    if (this.status === "downloading") return;
-
-    this.status = "downloading";
-    let headers = { ...this.headers };
-
-    let filePathExists = false;
-
-    if (!filePathExists && !this.filePath) {
-      const storedData = this.store.get(this.url);
-      if (storedData && storedData.filePath) {
-        this.filePath = storedData.filePath;
-        this.downloadData = storedData;
-        filePathExists = fs.existsSync(this.filePath);
-      }
-    }
-
-    if (this.filePath) {
-      filePathExists = fs.existsSync(this.filePath);
-    }
-
-    if (filePathExists) {
-      this.downloadData.bytesDownloaded = fs.statSync(this.filePath).size;
-      headers["Range"] = `bytes=${this.downloadData.bytesDownloaded}-`;
-    }
-
-    this.cancelTokenSource = axios.CancelToken.source();
-
-    try {
-      let response = await axios.get(this.url, {
-        headers,
-        responseType: "stream",
-        cancelToken: this.cancelTokenSource.token,
-        onDownloadProgress: (progressEvent) => {
-          this.totalBytes = progressEvent.total;
-          this.progress = Math.round(
-            ((this.downloadData.bytesDownloaded + progressEvent.loaded) /
-              this.totalBytes) *
-              100
-          );
-          this.emit("progress", progressEvent);
-          if (typeof this.onProgressCallback === "function") {
-            this.onProgressCallback(
-              progressEvent,
-              this.downloadData.bytesDownloaded + progressEvent.loaded,
-              this.filePath
-            );
-          }
-        },
-      });
-
-      if (
-        filePathExists &&
-        this.downloadData.bytesDownloaded >= response.headers["content-length"]
-      ) {
-        this.fileName = this.detectFileName(this.url, true, response.headers);
-        this.filePath = path.join(this.directory, this.fileName);
-      }
-
-      if (!filePathExists && !this.filePath) {
-        this.fileName = this.detectFileName(this.url, true, response.headers);
-        this.filePath = path.join(this.directory, this.fileName);
-      }
-
-      if (!filePathExists) {
-        fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-      }
-
-      this.downloadData.filePath = this.filePath;
-      this.store.set(this.url, this.downloadData);
-
-      let writer = fs.createWriteStream(this.filePath, {
-        flags: this.downloadData.bytesDownloaded == 0 ? "w" : "a",
-      });
-      response.data.pipe(writer);
-
-      if (typeof this.onStartedCallback === "function") {
-        this.onStartedCallback(this);
-      }
-
-      await new Promise((resolve, reject) => {
-        writer.on("finish", () => {
-          this.store.delete(this.url);
-          this.status = "completed";
-          this.emit("progress", 100);
-          if (typeof this.onProgressCallback === "function") {
-            this.onProgressCallback(100, this.totalBytes, this.filePath);
-          }
-          if (typeof this.onCompletedCallback === "function") {
-            this.onCompletedCallback(this.filePath, this.totalBytes);
-          }
-          resolve();
-        });
-
-        writer.on("error", (err) => {
-          this.status = "failed";
-          this.store.set(this.url, this.downloadData);
-          reject(err);
-        });
-      });
-    } catch (err) {
-      if (typeof this.onError === "function") {
-        this.onError(err);
-      }
-      this.status = "failed";
-      this.store.set(this.url, this.downloadData);
-      throw err;
-    }
-  }
-
-  pause() {
-    if (this.status === "downloading") {
-      this.status = "paused";
-      this.cancelTokenSource.cancel("Download paused");
-      this.onPauseCallback();
-      this.store.set(this.url, this.downloadData); // Save downloadData to store on pause
-    }
-  }
-
-  resume() {
-    if (this.status === "paused") {
-      this.onResume();
-      this.start();
-    }
-  }
-
-  cancel() {
-    if (this.status !== "cancelled") {
-      this.cancelTokenSource.cancel("Download cancelled");
-      this.store.delete(this.url);
-      this.status = "cancelled";
-      if (typeof this.onCancelCallback === "function") {
-        this.onCancelCallback(this.filePath);
-      }
-    }
-  }
 }
 
 const getFilenameFromMime = (name, mime) => {
@@ -2294,24 +2101,6 @@ const getFilenameFromMime = (name, mime) => {
 
   return `${name}.${extensions[0].ext}`;
 };
-
-const downloadManager = new DownloadManager(mainWindow);
-
-ipcMain.on("pause-download", (event, { orderitemid }) => {
-  downloadManager.pauseDownload(orderitemid);
-});
-
-ipcMain.on("retry-download", (event, { orderitemid }) => {
-  downloadManager.resumeDownload(orderitemid);
-});
-
-ipcMain.on("resume-download", (event, { orderitemid }) => {
-  downloadManager.resumeDownload(orderitemid);
-});
-
-ipcMain.on("cancel-download", (event, { orderitemid }) => {
-  downloadManager.cancelDownload(orderitemid);
-});
 
 ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
   const parsedUrl = parseURL(store.get("homeUrl"), true);

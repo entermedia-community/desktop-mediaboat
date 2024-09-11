@@ -199,8 +199,8 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
-  if (watcher) {
-    watcher.close();
+  if (autoFolderWatcher) {
+    autoFolderWatcher.close();
   }
   if (mainWindow) {
     const bounds = mainWindow.getBounds();
@@ -327,10 +327,10 @@ ipcMain.on("changeLocalDrive", (_, newRoot) => {
 ipcMain.on("setConnectionOptions", (_, options) => {
   let homeUrl = store.get("homeUrl");
   if (!homeUrl) return;
-  if (homeUrl[homeUrl.length - 1] !== "/") {
-    homeUrl += "/";
-  }
-  const filter = { urls: [homeUrl + "*"] };
+  const parsedUrl = parseURL(homeUrl);
+  const filter = { urls: ["*" + "://" + parsedUrl.hostname + "/*"] };
+  console.log(options);
+  console.log(filter);
   session.defaultSession.webRequest.onBeforeSendHeaders(
     filter,
     (details, callback) => {
@@ -352,20 +352,20 @@ ipcMain.on("setConnectionOptions", (_, options) => {
   mainWindow.webContents.send("desktopReady");
 });
 
-let watcher;
-const watchedPaths = [];
+let autoFolderWatcher;
+const watchedAutoFolders = [];
 async function StartWatcher(workPath) {
   if (!fs.existsSync(workPath)) {
     return;
   }
-  if (!watcher) {
-    watcher = fileWatcher.watch(workPath, {
-      ignored: /[\/\\]\./,
+  if (!autoFolderWatcher) {
+    autoFolderWatcher = fileWatcher.watch(workPath, {
+      ignored: /^\./,
       persistent: true,
       ignoreInitial: true,
       followSymlinks: false,
     });
-    watcher
+    autoFolderWatcher
       .on("add", (p) => {
         mainWindow.webContents.send("auto-file-added", p);
       })
@@ -376,29 +376,29 @@ async function StartWatcher(workPath) {
         console.log("Watching for changes on", workPath);
       });
   } else {
-    watcher.add(workPath);
+    autoFolderWatcher.add(workPath);
   }
 
-  watchedPaths.push(workPath);
+  watchedAutoFolders.push(workPath);
 }
 
-let batchWatcher;
-const currentlyWatching = [];
+let entityWatcher;
+const watchedEntities = [];
 ipcMain.on("watchFolders", (_, folders) => {
-  const currentWatchedIds = currentlyWatching.map((f) => f.id);
+  const currentWatchedIds = watchedEntities.map((f) => f.id);
   const uniqueFolders = folders.filter(
     (f) => !currentWatchedIds.includes(f.id)
   );
-  const tempTotal = uniqueFolders.length + currentlyWatching.length;
+  const tempTotal = uniqueFolders.length + watchedEntities.length;
   if (tempTotal > 50) {
-    const toRemove = currentlyWatching.slice(0, tempTotal - 50);
-    currentlyWatching = currentlyWatching.slice(toRemove.length);
+    const toRemove = watchedEntities.slice(0, tempTotal - 50);
+    watchedEntities = watchedEntities.slice(toRemove.length);
     toRemovePaths = toRemove.map((f) => f.path);
-    if (batchWatcher) {
-      batchWatcher.unwatch(toRemovePaths);
+    if (entityWatcher) {
+      entityWatcher.unwatch(toRemovePaths);
     }
   } else {
-    currentlyWatching.push(...uniqueFolders);
+    watchedEntities.push(...uniqueFolders);
   }
   const folderFullPaths = uniqueFolders.map((f) =>
     path.join(defaultWorkDirectory, f.path)
@@ -407,26 +407,26 @@ ipcMain.on("watchFolders", (_, folders) => {
   if (validPaths.length === 0) {
     return;
   }
-  if (batchWatcher) {
-    batchWatcher.add(validPaths);
+  if (entityWatcher) {
+    entityWatcher.add(validPaths);
   } else {
-    batchWatcher = fileWatcher.watch(validPaths, {
+    entityWatcher = fileWatcher.watch(validPaths, {
       ignored: /[\/\\]\./,
       persistent: true,
       ignoreInitial: true,
       followSymlinks: false,
     });
-    batchWatcher.on("add", (p) => {
+    entityWatcher.on("add", (p) => {
       const filePath = p.replace(defaultWorkDirectory, "");
       const catPath = path.dirname(filePath);
       mainWindow.webContents.send("file-added", catPath);
     });
-    batchWatcher.on("unlink", (p) => {
+    entityWatcher.on("unlink", (p) => {
       const filePath = p.replace(defaultWorkDirectory, "");
       const catPath = path.dirname(filePath);
       mainWindow.webContents.send("file-removed", catPath);
     });
-    batchWatcher.on("unlinkDir", (p) => {
+    entityWatcher.on("unlinkDir", (p) => {
       const filePath = p.replace(defaultWorkDirectory, "");
       const catPath = path.dirname(filePath);
       mainWindow.webContents.send("file-removed", catPath);
@@ -434,35 +434,14 @@ ipcMain.on("watchFolders", (_, folders) => {
   }
 });
 
-ipcMain.on("setModule", (_, { selectedModule, desktopId }) => {
-  let absPaths = store.get("moduleSources") || {};
-  let absPath = absPaths[selectedModule.moduleid];
-  if (!absPath) {
-    absPath = path.join(defaultWorkDirectory, selectedModule.modulename);
-    store.set("moduleSources", {
-      ...absPaths,
-      [selectedModule.moduleid]: absPath,
-    });
+function getMediaDbUrl(url) {
+  const mediaDbUrl = store.get("mediadburl");
+  if (!mediaDbUrl) {
+    console.error("No MediaDB url found");
+    return url;
   }
-  // const formData = new FormData();
-  // formData.append("field", "desktopid");
-  // formData.append("desktopid.value", desktopId);
-  // formData.append("field", "moduleid");
-  // formData.append("moduleid.value", selectedModule.moduleid);
-  // formData.append("field", "localpath");
-  // formData.append("localpath.value", absPath);
-  // // formData.append("field", "lastscan");
-  // // formData.append("lastscan.value", Date.now());
-
-  const contents = scanDirectory(absPath);
-
-  // axios
-  //   .post(getMediaDbUrl() + "")
-  //   .then((res) => {})
-  //   .catch((err) => {});
-
-  mainWindow.webContents.send("set-module-contents", contents);
-});
+  return mediaDbUrl + "/" + url;
+}
 
 class UploadManager {
   constructor(maxConcurrentUploads = 4) {
@@ -527,7 +506,7 @@ class UploadManager {
 
           const uploadRequest = rp({
             method: "POST",
-            uri: getMediaDbUrl() + "/services/module/asset/create",
+            uri: getMediaDbUrl("services/module/asset/create"),
             formData: {
               jsonrequest: JSON.stringify(jsonrequest),
               file: {
@@ -664,18 +643,6 @@ function getDirectoryStats(dirPath) {
   };
 }
 
-ipcMain.on("refreshStats", (_, directories) => {
-  let stats = {};
-  Object.keys(directories).forEach((id) => {
-    const localPath = directories[id].localPath;
-    if (!fs.existsSync(localPath)) {
-      return;
-    }
-    stats[id] = getDirectoryStats(localPath);
-  });
-  mainWindow.webContents.send("stats", stats);
-});
-
 function getFilesByDirectory(directory) {
   let filePaths = [];
   let files = fs.readdirSync(directory);
@@ -731,7 +698,7 @@ async function uploadAutoFolders(folders, index = 0) {
 
   await axios
     .post(
-      getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json",
+      getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
       data,
       { headers: connectionOptions.headers }
     )
@@ -799,13 +766,13 @@ async function uploadAutoFolders(folders, index = 0) {
     });
 }
 
-function getDirectories(path) {
+function getDirectories(p) {
   const directories = [];
-  directories.push(path);
-  function fetchDirectories(path) {
-    const items = fs.readdirSync(path);
+  directories.push(p);
+  function fetchDirectories(p) {
+    const items = fs.readdirSync(p);
     items.forEach((item) => {
-      const itemPath = path + "/" + item;
+      const itemPath = path.join(p, item);
       const stats = fs.statSync(itemPath);
       if (stats.isDirectory()) {
         directories.push(itemPath);
@@ -813,7 +780,7 @@ function getDirectories(path) {
       }
     });
   }
-  fetchDirectories(path);
+  fetchDirectories(p);
   return directories;
 }
 
@@ -831,7 +798,7 @@ ipcMain.on("syncAllFolders", (_, syncFolders) => {
       fs.mkdirSync(localPath, { recursive: true });
     }
 
-    if (watchedPaths.indexOf(localPath) === -1) {
+    if (watchedAutoFolders.indexOf(localPath) === -1) {
       StartWatcher(localPath);
     }
 
@@ -1001,7 +968,7 @@ function setMainMenu(mainWindow) {
           accelerator: "F5",
           click() {
             showLoader();
-            mainWindow.reloadIgnoringCache();
+            mainWindow.reload();
           },
         },
         {
@@ -1170,7 +1137,7 @@ function startFolderUpload(
   //categorypath = categorypath.split(path.sep).join(path.posix.sep);
   //--
   //categorypath = inSourcepath + "/" + dirname;
-  let savingPath = inSourcepath + "/" + dirname;
+  let savingPath = path.join(inSourcepath, dirname);
   console.log("Upload start to category:" + savingPath);
   form1.append("absPath", savingPath);
   //form.append('totalfilesize', totalsize); Todo: loop over files first
@@ -1267,19 +1234,6 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
   });
 }
 
-//Download
-
-ipcMain.on("selectFolder", (event, options) => {
-  console.log("selectFolder called", options);
-  //function selectFolder(inKey, downloadpaths) {
-  entermediaKey = options["entermediakey"];
-  downloadpaths = options["downloadpaths"];
-  console.log("Download paths ", downloadpaths);
-  downloadpaths.forEach(function (downloadpath) {
-    downloadfile("https://em11.entermediadb.org" + downloadpath.url);
-  });
-});
-
 // ---------------------- Open file ---------------------
 
 function openFile(path) {
@@ -1366,12 +1320,12 @@ function addExtraFoldersToList(categories, categoryPath) {
   let filter = null;
   if (categories.length === 0) {
     if (!categoryPath) return;
-    rootPath = path.dirname(defaultWorkDirectory + categoryPath);
+    rootPath = path.dirname(path.join(defaultWorkDirectory, categoryPath));
     rootLevel = categoryPath.split("/").length;
     shouldUpdateTree = false;
-    filter = path.basename(defaultWorkDirectory + categoryPath);
+    filter = path.basename(path.join(defaultWorkDirectory, categoryPath));
   } else {
-    rootPath = defaultWorkDirectory + categories[0].path;
+    rootPath = path.join(defaultWorkDirectory, categories[0].path);
     rootLevel = parseInt(categories[0].level);
   }
   let localPaths = [];
@@ -1433,8 +1387,7 @@ async function fetchSubFolderContent(
   args = null,
   ignoreExtra = false
 ) {
-  const url =
-    getMediaDbUrl() + "/services/module/asset/entity/pullfolderlist.json";
+  const url = getMediaDbUrl("services/module/asset/entity/pullfolderlist.json");
   axios
     .post(
       url,
@@ -1445,13 +1398,11 @@ async function fetchSubFolderContent(
       if (res.data !== undefined) {
         const categories = res.data.categories;
         if (categories && categories.length >= 0) {
-          if (
-            categories.length > 0 &&
-            !fs.existsSync(rootPath + categories[0].path)
-          ) {
-            fs.mkdirSync(rootPath + categories[0].path, {
-              recursive: true,
-            });
+          if (categories.length > 0) {
+            const dir = path.join(rootPath, categories[0].path);
+            if (!fs.existsSync(dir)) {
+              fs.mkdirSync(dir, { recursive: true });
+            }
           }
           if (!ignoreExtra) {
             addExtraFoldersToList(categories, categorypath);
@@ -1481,10 +1432,6 @@ ipcMain.on("downloadAll", (_, categorypath) => {
   );
 });
 
-ipcMain.on("scanAll", (_, categorypath) => {
-  fetchSubFolderContent(defaultWorkDirectory, categorypath, scanFilesRecursive);
-});
-
 async function scanFilesRecursive(categories, index = 0) {
   if (categories.length === index) {
     mainWindow.webContents.send("scan-complete");
@@ -1492,18 +1439,18 @@ async function scanFilesRecursive(categories, index = 0) {
   }
 
   let category = categories[index];
-  let fetchPath = defaultWorkDirectory + category.path;
+  let fetchPath = path.join(defaultWorkDirectory, category.path);
 
   let data = {};
   if (fs.existsSync(fetchPath)) {
     data = readDirectory(fetchPath, false);
   }
-
+  console.log({ data });
   data.categorypath = category.path;
 
   await axios
     .post(
-      getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json",
+      getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
       data,
       {
         headers: connectionOptions.headers,
@@ -1513,6 +1460,7 @@ async function scanFilesRecursive(categories, index = 0) {
       if (res.data !== undefined) {
         const filesToDownload = res.data.filestodownload;
         const filesToUpload = res.data.filestoupload;
+        console.log({ filesToDownload, filesToUpload });
         if (filesToDownload !== undefined) {
           let folderDownloadSize = 0;
           filesToDownload.forEach((item) => {
@@ -1529,12 +1477,7 @@ async function scanFilesRecursive(categories, index = 0) {
             uploadSize: folderUploadSize,
             uploadCount: filesToUpload.length,
           });
-          index++;
-          if (categories.length > index) {
-            scanFilesRecursive(categories, index);
-          } else {
-            mainWindow.webContents.send("scan-complete");
-          }
+          scanFilesRecursive(categories, index + 1);
         } else {
           throw new Error("No files found");
         }
@@ -1547,6 +1490,10 @@ async function scanFilesRecursive(categories, index = 0) {
       console.error(err);
     });
 }
+
+ipcMain.on("scanAll", (_, categorypath) => {
+  fetchSubFolderContent(defaultWorkDirectory, categorypath, scanFilesRecursive);
+});
 
 class DownloadManager {
   constructor(maxConcurrentDownloads = 4) {
@@ -1562,7 +1509,9 @@ class DownloadManager {
     downloadItemId,
     downloadUrl,
     directory,
+    onStarted = () => {},
     onCancel = () => {},
+    onTotalProgress = () => {},
     onProgress = () => {},
     onCompleted = () => {},
     openFolderWhenDone = false,
@@ -1577,7 +1526,7 @@ class DownloadManager {
     }
     if (!fs.existsSync(directory)) {
       try {
-        fs.mkdirSync(directory);
+        fs.mkdirSync(directory, { recursive: true });
       } catch (e) {
         console.error(directory + " doesn't exist");
         return;
@@ -1592,6 +1541,8 @@ class DownloadManager {
       downloadUrl,
       directory,
       onProgress,
+      onStarted,
+      onTotalProgress,
       onCompleted,
       onCancel,
       openFolderWhenDone,
@@ -1611,17 +1562,21 @@ class DownloadManager {
     directory,
     onProgress,
     onCancel,
+    onStarted,
     onCompleted,
+    onTotalProgress,
     onError,
     openFolderWhenDone,
   }) {
     return {
       start: async () => {
+        console.log("Downloading: " + downloadUrl);
         try {
-          const win = BrowserWindow.getFocusedWindow();
-          const downloadItem = await eDownload(win, downloadUrl, {
+          const downloadItem = await eDownload(mainWindow, downloadUrl, {
             directory,
-            onTotalProgress: onProgress,
+            onStarted,
+            onTotalProgress,
+            onProgress,
             onCancel,
             onCompleted,
             openFolderWhenDone,
@@ -1629,6 +1584,7 @@ class DownloadManager {
           });
           this.downloadItems[downloadItemId] = downloadItem;
         } catch (e) {
+          console.log("Error downloading " + downloadUrl);
           console.log(e);
           if (e instanceof CancelError) {
             onCancel();
@@ -1704,6 +1660,7 @@ const batchDownloadCounter = new DownloadCounter();
 let lastBatchDlProgUpdate = 0;
 async function downloadFilesRecursive(categories, index = 0) {
   if (categories.length === index) {
+    console.log("download-batch-complete");
     mainWindow.webContents.send("download-batch-complete");
     batchDownloadCounter.removeAllListeners("completed");
     return;
@@ -1714,7 +1671,7 @@ async function downloadFilesRecursive(categories, index = 0) {
   });
 
   let category = categories[index];
-  let fetchPath = defaultWorkDirectory + category.path;
+  let fetchPath = path.join(defaultWorkDirectory, category.path);
 
   let data = {};
   if (fs.existsSync(fetchPath)) {
@@ -1725,7 +1682,7 @@ async function downloadFilesRecursive(categories, index = 0) {
 
   await axios
     .post(
-      getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json",
+      getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
       data,
       {
         headers: connectionOptions.headers,
@@ -1744,7 +1701,7 @@ async function downloadFilesRecursive(categories, index = 0) {
               downloadUrl:
                 parsedUrl.protocol + "//" + parsedUrl.host + item.url,
               directory: path.join(defaultWorkDirectory, category.path),
-              onProgress: ({ percent, transferredBytes, totalBytes }) => {
+              onTotalProgress: ({ transferredBytes, totalBytes }) => {
                 if (lastBatchDlProgUpdate + 1000 < Date.now()) {
                   lastBatchDlProgUpdate = Date.now();
                   mainWindow.webContents.send("download-batch-progress", {
@@ -1776,16 +1733,8 @@ async function downloadFilesRecursive(categories, index = 0) {
     });
 }
 
-function getMediaDbUrl() {
-  const mediadburl = store.get("mediadburl");
-  if (!mediadburl) {
-    console.error("No MediaDB url found");
-  }
-  return mediadburl;
-}
-
 ipcMain.on("fetchFiles", (_, options) => {
-  let fetchpath = defaultWorkDirectory + options["categorypath"];
+  let fetchpath = path.join(defaultWorkDirectory, options["categorypath"]);
   let data = {};
   if (!fs.existsSync(fetchpath)) {
     fs.mkdirSync(fetchpath, { recursive: true });
@@ -1798,46 +1747,12 @@ ipcMain.on("fetchFiles", (_, options) => {
   });
 });
 
-ipcMain.on("fetchFilesPush", (_, options) => {
-  let fetchpath = defaultWorkDirectory + options["categorypath"];
-  let data = {};
-  if (fs.existsSync(fetchpath)) {
-    data = readDirectory(fetchpath, true);
-  }
-  data.filedownloadpath = fetchpath;
-  console.log("fetchFiles push:");
-  console.log(data);
-  mainWindow.webContents.send("files-fetched-push", {
-    ...options,
-    ...data,
-  });
-});
-
-ipcMain.on("fetchFoldersPush", (_, options) => {
-  let fetchpath = defaultWorkDirectory + options["categorypath"];
-  let data = {};
-  if (fs.existsSync(fetchpath)) {
-    data = readDirectories(fetchpath);
-  }
-  data.filedownloadpath = fetchpath;
-  //console.log(data);
-  mainWindow.webContents.send("folders-fetched-push", {
-    ...options,
-    ...data,
-  });
-});
-
 ipcMain.on("openFolder", (_, options) => {
+  console.log({ options });
   if (!options["path"].startsWith("/")) {
-    options["path"] = defaultWorkDirectory + options["path"];
+    options["path"] = path.join(defaultWorkDirectory, options["path"]);
   }
   openFolder(options["path"]);
-});
-
-ipcMain.on("folderSelected", (_, options) => {
-  if (!options["currentPath"].startsWith(defaultWorkDirectory)) {
-    options["currentPath"] = defaultWorkDirectory + options["path"];
-  }
 });
 
 ipcMain.on("uploadAll", async (_, { categorypath, entityId }) => {
@@ -1865,7 +1780,7 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
   });
 
   const category = categories[index];
-  const fetchPath = defaultWorkDirectory + category.path;
+  const fetchPath = path.join(defaultWorkDirectory, category.path);
 
   let data = {};
   if (fs.existsSync(fetchPath)) {
@@ -1875,7 +1790,7 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
   data.entityid = options["entityId"];
   await axios
     .post(
-      getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json",
+      getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
       data,
       { headers: connectionOptions.headers }
     )
@@ -1948,7 +1863,7 @@ function trashFilesRecursive(categories, index = 0) {
   }
 
   let category = categories[index];
-  let fetchpath = defaultWorkDirectory + category.path;
+  let fetchpath = path.join(defaultWorkDirectory, category.path);
   let data = {};
 
   if (fs.existsSync(fetchpath)) {
@@ -1959,7 +1874,7 @@ function trashFilesRecursive(categories, index = 0) {
 
   axios
     .post(
-      getMediaDbUrl() + "/services/module/asset/entity/pullpendingfiles.json",
+      getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
       data,
       {
         headers: connectionOptions.headers,
@@ -1990,137 +1905,19 @@ function trashFilesRecursive(categories, index = 0) {
     });
 }
 
-ipcMain.on("pickFolder", (_, options) => {
-  let fetchpath = pickFolder();
-  let data = {};
-  if (fs.existsSync(fetchpath)) {
-    data = readDirectory(fetchpath);
-  }
-  data.filedownloadpath = fetchpath;
-  mainWindow.webContents.send("files-fetched", {
-    ...fetchpath,
-    ...data,
-  });
-});
-
-ipcMain.on("fetchfilesupload", async (event, { assetid, file }) => {
+const indiDownloadManager = new DownloadManager();
+ipcMain.on("start-download", async (event, { orderitemid, file }) => {
   const parsedUrl = parseURL(store.get("homeUrl"), true);
-
-  const items = {
-    downloadItemId: assetid,
-    downloadPath:
-      parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
-    downloadFilePath: file,
-    localFolderPath: defaultWorkDirectory + file.categorypath,
-    header: connectionOptions.headers,
-    onStarted: () => {
-      //mainWindow.webContents.send(`download-started-${orderitemid}`);
-    },
-    onCancel: () => {
-      //mainWindow.webContents.send(`download-abort-${orderitemid}`);
-    },
-    onResume: () => {
-      //mainWindow.webContents.send(`download-resume-${orderitemid}`);
-    },
-    onPause: () => {
-      //mainWindow.webContents.send(`download-pause-${orderitemid}`);
-    },
-    onProgress: (progress, bytesLoaded, filePath) => {
-      /*  mainWindow.webContents.send(`download-progress-${orderitemid}`, {
-        loaded: bytesLoaded,
-        total: progress.total,
-      });*/
-    },
-    onCompleted: (filePath, totalBytes) => {
-      // mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
-      mainWindow.webContents.send("refresh-sync", {
-        categorypath: file.categorypath,
-      });
-    },
-    onError: (err) => {
-      //mainWindow.webContents.send(`download-error-${orderitemid}`, err);
-      console.log(err);
-    },
-  };
-});
-
-ipcMain.on("fetchfilesdownload", async (_, { assetid, file }) => {
-  fetchfilesdownload(assetid, file);
-});
-
-const downloadManager = new DownloadManager();
-function fetchfilesdownload(assetid, file) {
-  const parsedUrl = parseURL(store.get("homeUrl"), true);
-
-  const items = {
-    downloadItemId: assetid,
-    downloadPath:
-      parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
-    downloadFilePath: file,
-    localFolderPath: defaultWorkDirectory + file.categorypath,
-    header: connectionOptions.headers,
-    onStarted: () => {
-      //mainWindow.webContents.send(`download-started-${orderitemid}`);
-    },
-    onCancel: () => {
-      //mainWindow.webContents.send(`download-abort-${orderitemid}`);
-    },
-    onResume: () => {
-      //mainWindow.webContents.send(`download-resume-${orderitemid}`);
-    },
-    onPause: () => {
-      //mainWindow.webContents.send(`download-pause-${orderitemid}`);
-    },
-    onProgress: (progress, bytesLoaded, filePath) => {
-      /*  mainWindow.webContents.send(`download-progress-${orderitemid}`, {
-        loaded: bytesLoaded,
-        total: progress.total,
-      });*/
-    },
-    onCompleted: (filePath, totalBytes) => {
-      // mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
-      mainWindow.webContents.send("download-asset-complete", {
-        categorypath: file.categorypath,
-        assetid: file.assetid,
-      });
-    },
-    onError: (err) => {
-      //mainWindow.webContents.send(`download-error-${orderitemid}`, err);
-      console.log(err);
-    },
-  };
-  downloadManager.downloadFile(items);
-}
-
-const getFilenameFromMime = (name, mime) => {
-  const extensions = extName.mime(mime);
-
-  if (extensions.length !== 1) {
-    return name;
-  }
-
-  return `${name}.${extensions[0].ext}`;
-};
-
-ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
-  const parsedUrl = parseURL(store.get("homeUrl"), true);
-  const items = {
+  indiDownloadManager.downloadFile({
     downloadItemId: orderitemid,
-    downloadPath:
+    downloadUrl:
       parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
-    downloadFilePath: file,
-    header: headers,
+    directory: file,
     onStarted: () => {
       mainWindow.webContents.send(`download-started-${orderitemid}`);
     },
     onCancel: () => {
       mainWindow.webContents.send(`download-abort-${orderitemid}`);
-    },
-    onResume: () => {
-      mainWindow.webContents.send(`download-resume-${orderitemid}`);
-    },
-    onPause: () => {
-      mainWindow.webContents.send(`download-pause-${orderitemid}`);
     },
     onProgress: (progress, bytesLoaded, filePath) => {
       mainWindow.webContents.send(`download-progress-${orderitemid}`, {
@@ -2135,23 +1932,18 @@ ipcMain.on("start-download", async (event, { orderitemid, file, headers }) => {
     onError: (err) => {
       mainWindow.webContents.send(`download-error-${orderitemid}`, err);
     },
-  };
-  downloadManager.downloadFile(items);
+    openFolderWhenDone: true,
+  });
 });
 
-ipcMain.on("onOpenFile", (event, path) => {
+ipcMain.on("onOpenFile", (_, path) => {
   let downloadpath = app.getPath("downloads");
-  openFile(downloadpath + "/" + path.itemexportname);
+  openFile(path.join(downloadpath, path.itemexportname));
 });
 
-ipcMain.on("readDir", (event, { path }) => {
+ipcMain.on("readDir", (_, { path }) => {
   const files = readDirectory(path); // Call the function to read the directory
 
   //onScan(files)
   console.log("Received files from main process:", files);
-});
-
-ipcMain.on("readDirX", (event, { path, onScan }) => {
-  const files = readDirectory(path); // Call the function to read the directory
-  onScan(files);
 });

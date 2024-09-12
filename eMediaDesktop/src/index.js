@@ -662,15 +662,11 @@ const autoUploadCounter = new UploadCounter();
 const autoUploadManager = new UploadManager();
 
 let lastAutoProgUpdate = 0;
-let lastUploadedFolderId = null;
+let lastUploadedFolder = [];
 async function uploadAutoFolders(folders, index = 0) {
   if (folders.length === index) {
-    mainWindow.webContents.send(
-      "auto-upload-entity-complete",
-      lastUploadedFolderId
-    );
-    lastUploadedFolderId = null;
-    mainWindow.webContents.send("auto-upload-complete", folders.length);
+    mainWindow.webContents.send("auto-upload-all-complete", lastUploadedFolder);
+    lastUploadedFolder = [];
     autoUploadCounter.removeAllListeners("completed");
     return;
   }
@@ -681,8 +677,8 @@ async function uploadAutoFolders(folders, index = 0) {
 
   const folder = folders[index];
 
-  if (lastUploadedFolderId === null) {
-    lastUploadedFolderId = folder.syncFolderId;
+  if (lastUploadedFolder.length !== 2) {
+    lastUploadedFolder = [folder.syncFolderId, 0];
   }
 
   const fetchPath = folder.localPath;
@@ -705,13 +701,14 @@ async function uploadAutoFolders(folders, index = 0) {
       if (res.data !== undefined) {
         const filesToUpload = res.data.filestoupload;
         if (filesToUpload !== undefined) {
+          lastUploadedFolder[1] += filesToUpload.length;
           if (
             filesToUpload.length === 0 &&
-            lastUploadedFolderId !== folder.syncFolderId
+            lastUploadedFolder[0] !== folder.syncFolderId
           ) {
             mainWindow.webContents.send(
-              "auto-upload-entity-complete",
-              lastUploadedFolderId
+              "auto-upload-each-complete",
+              lastUploadedFolder
             );
           }
           autoUploadCounter.setTotal(filesToUpload.length);
@@ -728,13 +725,13 @@ async function uploadAutoFolders(folders, index = 0) {
                 }
               },
               onCompleted: () => {
-                if (lastUploadedFolderId !== folder.syncFolderId) {
+                if (lastUploadedFolder[0] !== folder.syncFolderId) {
                   mainWindow.webContents.send(
                     "auto-upload-entity-complete",
-                    lastUploadedFolderId
+                    lastUploadedFolder
                   );
                 }
-                lastUploadedFolderId = folder.syncFolderId;
+                lastUploadedFolder[0] = folder.syncFolderId;
                 mainWindow.webContents.send("auto-upload-next", {
                   id: folder.syncFolderId,
                   size: fs.statSync(filePath).size || 0,
@@ -742,7 +739,7 @@ async function uploadAutoFolders(folders, index = 0) {
                 autoUploadCounter.incrementCompleted();
               },
               onError: (id, err) => {
-                lastUploadedFolderId = folder.syncFolderId;
+                lastUploadedFolder[0] = folder.syncFolderId;
                 autoUploadCounter.incrementCompleted();
                 mainWindow.webContents.send("auto-upload-error", {
                   id,
@@ -783,7 +780,7 @@ function getDirectories(p) {
   return directories;
 }
 
-ipcMain.on("syncAllFolders", (_, syncFolders) => {
+ipcMain.on("syncAutoFolders", (_, syncFolders) => {
   const subfolders = [];
   const ids = [];
   syncFolders.forEach((folder) => {
@@ -811,7 +808,7 @@ ipcMain.on("syncAllFolders", (_, syncFolders) => {
     });
   });
 
-  mainWindow.webContents.send("scan-completed", ids);
+  mainWindow.webContents.send("scan-auto-folder-completed", ids);
   uploadAutoFolders(subfolders);
 });
 
@@ -985,7 +982,7 @@ function setMainMenu(mainWindow) {
       submenu: [
         {
           label: "Refresh",
-          accelerator: "F5",
+          accelerator: "CmdOrCtrl+R",
           click() {
             showLoader();
             mainWindow.reload();
@@ -1435,7 +1432,7 @@ ipcMain.on("downloadAll", (_, categorypath) => {
 
 async function scanFilesRecursive(categories, index = 0) {
   if (categories.length === index) {
-    mainWindow.webContents.send("scan-complete");
+    mainWindow.webContents.send("scan-entity-complete");
     return;
   }
 
@@ -1469,7 +1466,7 @@ async function scanFilesRecursive(categories, index = 0) {
           filesToUpload.forEach((item) => {
             folderUploadSize += parseInt(item.size);
           });
-          mainWindow.webContents.send("scan-progress", {
+          mainWindow.webContents.send("scan-entity-progress", {
             ...category,
             downloadSize: folderDownloadSize,
             downloadCount: filesToDownload.length,
@@ -1725,6 +1722,9 @@ async function downloadFilesRecursive(categories, index = 0) {
 }
 
 ipcMain.on("fetchFiles", (_, options) => {
+  if (!options["categorypath"]) {
+    return;
+  }
   let fetchpath = path.join(currentWorkDirectory, options["categorypath"]);
   let data = {};
   if (!fs.existsSync(fetchpath)) {

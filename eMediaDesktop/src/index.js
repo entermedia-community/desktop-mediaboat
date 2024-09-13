@@ -40,15 +40,15 @@ let connectionOptions = {
 
 const isDev = process.env.NODE_ENV === "development";
 
-if (isDev) {
-  try {
-    require("electron-reloader")(module, {
-      ignore: ["dist", "build", "node_modules"],
-    });
-  } catch (err) {
-    console.error(err);
-  }
-}
+// if (isDev) {
+//   try {
+//     require("electron-reloader")(module, {
+//       ignore: ["dist", "build", "node_modules"],
+//     });
+//   } catch (err) {
+//     console.error(err);
+//   }
+// }
 
 let mainWindow;
 let loaderWindow;
@@ -383,33 +383,26 @@ async function StartWatcher(workPath) {
 
 let entityWatcher;
 const watchedEntities = [];
-ipcMain.on("watchFolders", (_, folders) => {
-  const currentWatchedIds = watchedEntities.map((f) => f.id);
-  const uniqueFolders = folders.filter(
-    (f) => !currentWatchedIds.includes(f.id)
-  );
-  const tempTotal = uniqueFolders.length + watchedEntities.length;
-  if (tempTotal > 50) {
-    const toRemove = watchedEntities.slice(0, tempTotal - 50);
-    watchedEntities = watchedEntities.slice(toRemove.length);
-    toRemovePaths = toRemove.map((f) => f.path);
-    if (entityWatcher) {
-      entityWatcher.unwatch(toRemovePaths);
+ipcMain.on("watchFolder", (_, folder) => {
+  if (!folder.id || !folder.path) return;
+  const existing = watchedEntities.some((f) => f.id === folder.id);
+  if (existing) return;
+  if (watchedEntities.length + 1 > 2) {
+    const toRemove = watchedEntities.shift();
+    if (entityWatcher && toRemove) {
+      entityWatcher.unwatch(toRemove.path);
     }
   } else {
-    watchedEntities.push(...uniqueFolders);
+    watchedEntities.push(folder);
   }
-  const folderFullPaths = uniqueFolders.map((f) =>
-    path.join(currentWorkDirectory, f.path)
-  );
-  const validPaths = folderFullPaths.filter((f) => fs.existsSync(f));
-  if (validPaths.length === 0) {
-    return;
-  }
+  const folderFullPath = path.join(currentWorkDirectory, folder.path);
+
   if (entityWatcher) {
-    entityWatcher.add(validPaths);
+    if (fs.existsSync(folderFullPath)) {
+      entityWatcher.add(folderFullPath);
+    }
   } else {
-    entityWatcher = fileWatcher.watch(validPaths, {
+    entityWatcher = fileWatcher.watch(folderFullPath, {
       ignored: /[\/\\]\./,
       persistent: true,
       ignoreInitial: true,
@@ -1426,7 +1419,9 @@ ipcMain.on("downloadAll", (_, categorypath) => {
   fetchSubFolderContent(
     currentWorkDirectory,
     categorypath,
-    downloadFilesRecursive
+    downloadFilesRecursive,
+    [0, categorypath],
+    true
   );
 });
 
@@ -1647,15 +1642,21 @@ const batchDownloadCounter = new DownloadCounter();
 // const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)); // test
 
 let lastBatchDlProgUpdate = 0;
-async function downloadFilesRecursive(categories, index = 0) {
+const currentDownloadProgress = {};
+async function downloadFilesRecursive(categories, index = 0, tpCatPath) {
   if (categories.length === index) {
     mainWindow.webContents.send("download-batch-complete");
     batchDownloadCounter.removeAllListeners("completed");
+    delete currentDownloadProgress[tpCatPath];
     return;
   }
 
+  if (!currentDownloadProgress[tpCatPath]) {
+    currentDownloadProgress[tpCatPath] = 0;
+  }
+
   batchDownloadCounter.once("completed", async () => {
-    await downloadFilesRecursive(categories, index + 1);
+    await downloadFilesRecursive(categories, index + 1, tpCatPath);
   });
 
   let category = categories[index];
@@ -1693,12 +1694,14 @@ async function downloadFilesRecursive(categories, index = 0) {
                 if (lastBatchDlProgUpdate + 1000 < Date.now()) {
                   lastBatchDlProgUpdate = Date.now();
                   mainWindow.webContents.send("download-batch-progress", {
-                    transferredBytes,
+                    transferredBytes:
+                      currentDownloadProgress[tpCatPath] + transferredBytes,
                     totalBytes,
                   });
                 }
               },
-              onCompleted: () => {
+              onCompleted: ({ fileSize }) => {
+                currentDownloadProgress[tpCatPath] += fileSize;
                 mainWindow.webContents.send("download-batch-next", {
                   categoryPath: category.path,
                   assetId,

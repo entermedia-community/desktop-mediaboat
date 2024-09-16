@@ -1,0 +1,358 @@
+@font-face {
+  font-family: "Roboto";
+  src: url("../fonts/Roboto-Regular.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Roboto";
+  src: url("../fonts/Roboto-Bold.ttf") format("truetype");
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Roboto";
+  src: url("../fonts/Roboto-Light.ttf") format("truetype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+body {
+  color: #ffffff;
+  font-size: 1rem;
+  font-family: "Roboto", sans-serif;
+  font-weight: normal;
+  margin: 0;
+  padding: 0;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: #666666 #0a0a0a;
+}
+body::-webkit-scrollbar {
+  width: 6px;
+  background-color: #0a0a0a;
+}
+body::-webkit-scrollbar-thumb {
+  background-color: #666666;
+  border-radius: 6px;
+}
+.bg {
+  min-height: 100%;
+  background: radial-gradient(
+      ellipse at center,
+      rgba(0, 0, 0, 0.4),
+      rgba(0, 0, 0, 0.7)
+    ),
+    url("../images/bg.png") no-repeat center center fixed, #252525;
+  background-size: cover;
+  background-attachment: fixed;
+}
+h1 {
+  font-family: "Roboto", sans-serif;
+  font-weight: 300;
+  font-size: 3rem;
+  margin: 80px auto 20px auto;
+}
+h2 {
+  font-weight: normal;
+  font-size: 1.5rem;
+  margin: 20px auto 0;
+  text-align: center;
+}
+code {
+  background: rgba(255, 255, 255, 0.2);
+  color: rgb(255, 255, 255);
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+.dn {
+  display: none;
+}
+.df {
+  display: flex;
+}
+.dfc {
+  display: flex;
+  flex-direction: column;
+}
+.wrap {
+  flex-wrap: wrap;
+}
+.aic {
+  align-items: center;
+}
+.aie {
+  align-items: end;
+}
+.jcs {
+  justify-content: start;
+}
+.jcb {
+  justify-content: space-between;
+}
+.jcc {
+  justify-content: center;
+}
+.jce {
+  justify-content: flex-end;
+}
+.w100 {
+  width: 100%;
+}
+.h100 {
+  height: 100%;
+}
+.p1 {
+  padding: 8px;
+}
+.p2 {
+  padding: 16px;
+}
+.m1 {
+  margin: 8px;
+}
+.m2 {
+  margin: 16px;
+}
+#welcome {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+}
+button.btn {
+  background: #204ccf;
+  border: 2px solid #204ccf;
+  color: #ffffff;
+  padding: 8px 20px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 20px auto;
+  text-transform: uppercase;
+  border-radius: 50px;
+  min-width: 300px;
+  transition: 0.3s ease;
+}
+button.btn.text {
+  border-color: transparent;
+  background: transparent;
+}
+button.btn.text:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+button.btn#addBtn {
+  border-color: #204ccf;
+  background-color: #204ccf;
+}
+button.btn#add,
+button.btn#cancel {
+  min-width: auto;
+  margin: 8px 0;
+}
+button.btn img {
+  margin-left: 12px;
+  width: 20px;
+}
+button.btn:hover {
+  background: #204ccf;
+  color: #ffffff;
+}
+button.btn:hover img {
+  filter: invert(1);
+}
+button.btn:active {
+  transform: scale(0.95);
+}
+#demos {
+  opacity: 0;
+  pointer-events: none;
+  transition: 0.3s ease;
+}
+#demos.show {
+  pointer-events: all;
+  opacity: 1;
+}
+#urlForm {
+  padding: 0 20px;
+  overflow: hidden;
+  display: none;
+  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  pointer-events: none;
+  max-width: 740px;
+}
+#urlForm.show {
+  pointer-events: all;
+  display: flex;
+}
+#urlForm label {
+  font-size: 0.85rem;
+}
+#urlForm input {
+  background: #ffffff;
+  min-width: 400px;
+  padding: 8px;
+  border-radius: 4px;
+  border: 0;
+  width: 100%;
+  height: 36px;
+  margin-bottom: 8px;
+}
+div.right {
+  display: block;
+  width: 80px;
+  height: 3px;
+  margin-left: 8px;
+  background: linear-gradient(to left, rgba(255, 255, 255, 0), #ffffff);
+}
+div.left {
+  display: block;
+  width: 80px;
+  height: 3px;
+  margin-right: 8px;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0), #ffffff);
+}
+img {
+  object-fit: contain;
+}
+.card {
+  background-color: rgba(255, 255, 255, 0.2);
+  padding: 12px 24px;
+  border-radius: 16px;
+  width: 270px;
+  text-decoration: none;
+  margin: 20px;
+  user-select: none;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+.card img {
+  width: 80px;
+  height: 80px;
+  height: auto;
+  margin-right: 32px;
+  pointer-events: none;
+}
+.saved {
+  height: 120px;
+  margin: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+}
+.saved h3 {
+  font-weight: bold;
+  padding: 0 8px;
+  font-size: 1rem;
+  margin: 0;
+  line-height: 28px;
+}
+.saved h4 {
+  word-break: break-all;
+  font-size: 0.8rem;
+}
+.saved > img {
+  padding: 8px;
+  margin-bottom: 8px;
+  width: 240px;
+  height: calc(100% - 50px);
+  object-fit: contain;
+  object-position: center;
+  border-radius: 16px;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+.saved:hover > img {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+.card h3 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 300;
+  line-height: 38px;
+}
+.card:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+.card:active {
+  transform: scale(0.99);
+}
+footer {
+  margin: 30px 50px;
+}
+footer img {
+  width: 30px;
+  height: 30px;
+  margin-right: 16px;
+}
+.loader {
+  width: 45px;
+  aspect-ratio: 0.75;
+  --c: no-repeat linear-gradient(#fff 0 0);
+  background: var(--c) 0% 100%, var(--c) 50% 100%, var(--c) 100% 100%;
+  background-size: 20% 65%;
+  animation: l5 1s infinite linear;
+}
+@keyframes l5 {
+  20% {
+    background-position: 0% 50%, 50% 100%, 100% 100%;
+  }
+  40% {
+    background-position: 0% 0%, 50% 50%, 100% 100%;
+  }
+  60% {
+    background-position: 0% 100%, 50% 0%, 100% 50%;
+  }
+  80% {
+    background-position: 0% 100%, 50% 100%, 100% 0%;
+  }
+}
+button.edit,
+button.delete {
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  background-color: transparent;
+  position: absolute;
+  top: -25px;
+  right: -25px;
+  z-index: 9999;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background-color: rgba(0, 0, 0, 0.3);
+}
+button.edit:hover,
+button.delete:hover {
+  background-color: rgba(0, 0, 0, 0.4);
+}
+button.edit img,
+button.delete img {
+  margin: 4px !important;
+}
+.saved:hover button.edit {
+  top: 8px;
+  right: 36px;
+}
+.saved:hover button.delete {
+  top: 8px;
+  right: 6px;
+}
+#localDrive {
+  cursor: pointer;
+}

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <style>
+      body {
+        width: 100%;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        overflow: hidden;
+      }
+      .loader {
+        --s: 15px;
+        width: calc(var(--s) * 2.33);
+        aspect-ratio: 1;
+        display: flex;
+        justify-content: space-between;
+        animation: l29-0 1s infinite;
+      }
+      .loader::before,
+      .loader::after {
+        content: "";
+        width: var(--s);
+        --_g: no-repeat radial-gradient(farthest-side, #5f739e 94%, #0000);
+        background: var(--_g) top, var(--_g) bottom;
+        background-size: 100% var(--s);
+        transform-origin: 50% calc(100% - var(--s) / 2);
+        animation: inherit;
+        animation-name: l29-1;
+      }
+      .loader::after {
+        --_s: -1;
+      }
+      p {
+        color: #5f739e;
+        font-weight: bold;
+        font-family: monospace;
+      }
+      @keyframes l29-0 {
+        100% {
+          transform: translateY(calc(var(--s) - 100%));
+        }
+      }
+      @keyframes l29-1 {
+        100% {
+          transform: rotate(calc(var(--_s, 1) * -180deg));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="loader"></div>
+    <p>Loading...</p>
+  </body>
+</html>

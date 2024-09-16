@@ -1,0 +1,16 @@
+/bin/
+/build/
+/dist/
+/installer/dist/
+/installer/bin/
+/ver.0.5/electron/node_modules
+/ver.0.5/electron/out
+/ver.0.5/electron/src/jars
+/ver.0.5/electron/package-lock.json
+/ver.0.5/electron/dist
+/emediaworkspace/node_modules
+/emediaworkspace/dist
+.project
+.vscode
+eMediaDesktop/dist
+**/*.DS_Store

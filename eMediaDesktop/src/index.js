@@ -616,7 +616,8 @@ function getDirectoryStats(dirPath) {
     const items = fs.readdirSync(currentPath);
     totalFolders++;
     items.forEach((item) => {
-      if (item.startsWith(".")) return;
+      const ext = path.extname(item).toLowerCase();
+      if (item.startsWith(".") || ext === ".ini" || ext === ".db") return;
       const fullPath = path.join(currentPath, item);
       const stats = fs.statSync(fullPath);
       if (stats.isDirectory()) {
@@ -639,7 +640,8 @@ function getFilesByDirectory(directory) {
   let filePaths = [];
   let files = fs.readdirSync(directory);
   files.forEach((file) => {
-    if (file.startsWith(".")) return;
+    const ext = path.extname(file).toLowerCase();
+    if (file.startsWith(".") || ext === ".ini" || ext === ".db") return;
     let filepath = path.join(directory, file);
     let stats = fs.statSync(filepath);
     if (stats.isFile()) {
@@ -1235,26 +1237,6 @@ function openFile(path) {
   });
 }
 
-function openFolder(path) {
-  if (path.match(/[\$\.\{\}]/g)) {
-    console.error("Invalid path: " + path);
-    console.log(parseURL("http://www.example.com"));
-    console.log(new URL("http://www.example.com"));
-    return;
-  }
-  if (!fs.existsSync(path)) {
-    fs.mkdirSync(path, { recursive: true }, (err) => {
-      if (err) {
-        return console.error(err);
-      }
-      shell.openPath(path);
-      return;
-    });
-  } else {
-    shell.openPath(path);
-  }
-}
-
 // Read folders of the files.
 
 function getFilesizeInBytes(filename) {
@@ -1268,7 +1250,8 @@ function readDirectory(directory, append = false) {
   let folderPaths = [];
   let files = fs.readdirSync(directory);
   files.forEach((file) => {
-    if (file.startsWith(".")) return;
+    const ext = path.extname(file).toLowerCase();
+    if (file.startsWith(".") || ext === ".ini" || ext === ".db") return;
     let filepath = path.join(directory, file);
     let stats = fs.statSync(filepath);
     if (stats.isDirectory()) {
@@ -1291,7 +1274,8 @@ function readDirectories(directory) {
   let folderPaths = [];
   let files = fs.readdirSync(directory);
   files.forEach((file) => {
-    if (file.startsWith(".")) return;
+    const ext = path.extname(file).toLowerCase();
+    if (file.startsWith(".") || ext === ".ini" || ext === ".db") return;
     let filepath = path.join(directory, file);
     let stats = fs.statSync(filepath);
     if (stats.isDirectory(filepath)) {
@@ -1324,7 +1308,8 @@ function addExtraFoldersToList(categories, categoryPath) {
   function readDirs(root, index, level) {
     let files = fs.readdirSync(root);
     files.forEach((file) => {
-      if (file.startsWith(".")) return;
+      const ext = path.extname(file).toLowerCase();
+      if (file.startsWith(".") || ext === ".ini" || ext === ".db") return;
       let fullpath = path.join(root, file);
       if (filter && fullpath.indexOf(filter) === -1) return;
       let stats = fs.statSync(fullpath);
@@ -1742,11 +1727,37 @@ ipcMain.on("fetchFiles", (_, options) => {
 });
 
 ipcMain.on("openFolder", (_, options) => {
-  if (!options["path"].startsWith("/")) {
+  if (
+    !options["path"].startsWith("/") &&
+    !options["path"].match(/^[a-zA-Z]:\//)
+  ) {
     options["path"] = path.join(currentWorkDirectory, options["path"]);
   }
   openFolder(options["path"]);
 });
+
+function openFolder(path) {
+  if (path.match(/[$.{}]/g)) {
+    console.error("Invalid path: " + path);
+    return;
+  }
+
+  try {
+    if (!fs.existsSync(path)) {
+      fs.mkdirSync(path, { recursive: true }, (err) => {
+        if (err) {
+          return console.error(err);
+        }
+        shell.openPath(path);
+        return;
+      });
+    } else {
+      shell.openPath(path);
+    }
+  } catch (e) {
+    console.error("Error reading directory: " + path);
+  }
+}
 
 ipcMain.on("uploadAll", async (_, { categorypath, entityId }) => {
   fetchSubFolderContent(

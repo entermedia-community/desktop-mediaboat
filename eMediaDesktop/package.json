@@ -1,7 +1,7 @@
 {
   "name": "emedia-library",
   "productName": "eMedia Library",
-  "version": "2.3.3",
+  "version": "2.3.4",
   "description": "eMedia Library",
   "main": "src/index.js",
   "homepage": "https://github.com/entermedia-community/desktop-mediaboat",
@@ -13,8 +13,7 @@
     "publish": "electron-forge publish",
     "distwin": "electron-builder --win zip",
     "distlinux": "electron-builder --linux deb tar.xz ",
-    "distmacarm64": "NODE_ENV=production electron-builder --arm64 --mac dmg",
-    "distmacx64": "NODE_ENV=production electron-builder --x64 --mac dmg"
+    "distmac": "NODE_ENV=production electron-builder --arm64 --mac dmg && NODE_ENV=production electron-builder --x64 --mac dmg"
   },
   "keywords": [
     "DAM",

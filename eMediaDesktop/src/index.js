@@ -1795,7 +1795,7 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
   }
   data.categorypath = category.path;
   data.entityid = options["entityId"];
-  console.log(data);
+
   await axios
     .post(
       getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),

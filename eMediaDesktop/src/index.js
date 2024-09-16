@@ -492,7 +492,10 @@ class UploadManager {
           let loaded = 0;
 
           const jsonrequest = {
-            sourcepath: formData.sourcePath,
+            sourcepath: formData.sourcePath.replaceAll(
+              path.sep,
+              path.posix.sep
+            ),
             filesize: size,
           };
 
@@ -1729,7 +1732,7 @@ ipcMain.on("fetchFiles", (_, options) => {
 ipcMain.on("openFolder", (_, options) => {
   if (
     !options["path"].startsWith("/") &&
-    !options["path"].match(/^[a-zA-Z]:\//)
+    !options["path"].match(/^[a-zA-Z]:/)
   ) {
     options["path"] = path.join(currentWorkDirectory, options["path"]);
   }
@@ -1792,6 +1795,7 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
   }
   data.categorypath = category.path;
   data.entityid = options["entityId"];
+
   await axios
     .post(
       getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),

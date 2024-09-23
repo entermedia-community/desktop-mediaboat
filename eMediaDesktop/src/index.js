@@ -987,6 +987,16 @@ function setMainMenu(mainWindow) {
           },
         },
         {
+          label: "Refresh (Legacy)",
+          accelerator: "F5",
+          click() {
+            showLoader();
+            mainWindow.reload();
+          },
+          visible: false,
+          acceleratorWorksWhenHidden: true,
+        },
+        {
           type: "separator",
         },
         {

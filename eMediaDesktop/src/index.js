@@ -22,7 +22,7 @@ const fs = require("fs");
 const { EventEmitter } = require("events");
 const axios = require("axios");
 const demos = require("./assets/demos.json");
-const fileWatcher = require("chokidar");
+const chokidar = require("chokidar");
 const OS = require("os");
 
 const { download: eDownload, CancelError } = require("electron-dl");
@@ -358,7 +358,7 @@ async function StartWatcher(workPath) {
     return;
   }
   if (!autoFolderWatcher) {
-    autoFolderWatcher = fileWatcher.watch(workPath, {
+    autoFolderWatcher = chokidar.watch(workPath, {
       ignored: /^\./,
       persistent: true,
       ignoreInitial: true,
@@ -387,7 +387,7 @@ ipcMain.on("watchFolder", (_, folder) => {
   if (!folder.id || !folder.path) return;
   const existing = watchedEntities.some((f) => f.id === folder.id);
   if (existing) return;
-  if (watchedEntities.length + 1 > 2) {
+  if (watchedEntities.length + 1 > 10) {
     const toRemove = watchedEntities.shift();
     if (entityWatcher && toRemove) {
       entityWatcher.unwatch(toRemove.path);
@@ -395,14 +395,15 @@ ipcMain.on("watchFolder", (_, folder) => {
   } else {
     watchedEntities.push(folder);
   }
+
   const folderFullPath = path.join(currentWorkDirectory, folder.path);
 
-  if (entityWatcher) {
-    if (fs.existsSync(folderFullPath)) {
-      entityWatcher.add(folderFullPath);
-    }
-  } else {
-    entityWatcher = fileWatcher.watch(folderFullPath, {
+  if (!fs.existsSync(folderFullPath)) {
+    return;
+  }
+
+  if (!entityWatcher) {
+    entityWatcher = chokidar.watch(folderFullPath, {
       ignored: /[\/\\]\./,
       persistent: true,
       ignoreInitial: true,
@@ -423,6 +424,8 @@ ipcMain.on("watchFolder", (_, folder) => {
       const catPath = path.dirname(filePath);
       mainWindow.webContents.send("file-removed", catPath);
     });
+  } else {
+    entityWatcher.add(folderFullPath);
   }
 });
 

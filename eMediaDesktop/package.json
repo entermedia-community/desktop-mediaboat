@@ -11,7 +11,7 @@
     "make": "electron-forge make",
     "build": "electron-builder build",
     "publish": "electron-forge publish",
-    "distwin": "electron-builder --win portable",
+    "distwin": "electron-builder --win zip",
     "distlinux": "electron-builder --linux deb tar.xz ",
     "distmac": "NODE_ENV=production electron-builder --arm64 --mac dmg && NODE_ENV=production electron-builder --x64 --mac dmg"
   },

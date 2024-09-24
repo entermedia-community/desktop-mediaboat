@@ -29,9 +29,8 @@ const { download: eDownload, CancelError } = require("electron-dl");
 
 const computerName = OS.userInfo().username + OS.hostname();
 
-let defaultWorkDirectory = app.getPath("home") + "/eMedia/";
+let defaultWorkDirectory = path.join(app.getPath("home"), "eMedia" + path.sep);
 let currentWorkDirectory = defaultWorkDirectory;
-
 let connectionOptions = {
   headers: {
     "X-computername": computerName,
@@ -351,6 +350,10 @@ ipcMain.on("setConnectionOptions", (_, options) => {
   mainWindow.webContents.send("desktopReady");
 });
 
+function parsePath(p) {
+  return p.replaceAll(path.sep, path.posix.sep);
+}
+
 let autoFolderWatcher;
 const watchedAutoFolders = [];
 async function StartWatcher(workPath) {
@@ -392,9 +395,9 @@ ipcMain.on("watchFolder", (_, folder) => {
     if (entityWatcher && toRemove) {
       entityWatcher.unwatch(toRemove.path);
     }
-  } else {
-    watchedEntities.push(folder);
   }
+
+  watchedEntities.push(folder);
 
   const folderFullPath = path.join(currentWorkDirectory, folder.path);
 
@@ -404,7 +407,7 @@ ipcMain.on("watchFolder", (_, folder) => {
 
   if (!entityWatcher) {
     entityWatcher = chokidar.watch(folderFullPath, {
-      ignored: /[\/\\]\./,
+      ignored: /^\./,
       persistent: true,
       ignoreInitial: true,
       followSymlinks: false,
@@ -412,17 +415,17 @@ ipcMain.on("watchFolder", (_, folder) => {
     entityWatcher.on("add", (p) => {
       const filePath = p.replace(currentWorkDirectory, "");
       const catPath = path.dirname(filePath);
-      mainWindow.webContents.send("file-added", catPath);
+      mainWindow.webContents.send("file-added", parsePath(catPath));
     });
     entityWatcher.on("unlink", (p) => {
       const filePath = p.replace(currentWorkDirectory, "");
       const catPath = path.dirname(filePath);
-      mainWindow.webContents.send("file-removed", catPath);
+      mainWindow.webContents.send("file-removed", parsePath(catPath));
     });
     entityWatcher.on("unlinkDir", (p) => {
       const filePath = p.replace(currentWorkDirectory, "");
       const catPath = path.dirname(filePath);
-      mainWindow.webContents.send("file-removed", catPath);
+      mainWindow.webContents.send("file-removed", parsePath(catPath));
     });
   } else {
     entityWatcher.add(folderFullPath);
@@ -863,8 +866,8 @@ ipcMain.on("openWorkspace", (_, url) => {
     drive = selectedWorkspace.drive;
   }
 
-  if (!drive.endsWith("/")) {
-    drive += "/";
+  if (!drive.endsWith(path.sep)) {
+    drive += path.sep;
   }
   currentWorkDirectory = drive;
   store.set("localDrive", drive);
@@ -1349,9 +1352,9 @@ function addExtraFoldersToList(categories, categoryPath) {
   if (localPaths.length === 0) return categories;
   localPaths.sort((a, b) => a.level - b.level);
   localPaths.forEach((lp) => {
-    let level = lp.level;
-    let parent = lp.path.split("/").slice(0, -1).join("/");
-    let categoryIndex = categories.findIndex(
+    const level = lp.level;
+    const parent = lp.path.split("/").slice(0, -1).join("/");
+    const categoryIndex = categories.findIndex(
       (c) => parseInt(c.level) === level - 1 && c.path === parent
     );
     categories.splice(categoryIndex + 1, 0, {
@@ -1361,7 +1364,7 @@ function addExtraFoldersToList(categories, categoryPath) {
       isExtra: true,
     });
   });
-  let newCategories = categories.map((c, i) => {
+  const newCategories = categories.map((c, i) => {
     c.index = String(i);
     c.id = c.id ? c.id : "fake-id-" + String(i) + "-" + Date.now();
     c.level = String(c.level);

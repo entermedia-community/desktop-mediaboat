@@ -1970,3 +1970,7 @@ ipcMain.on("readDir", (_, { path }) => {
   //onScan(files)
   console.log("Received files from main process:", files);
 });
+
+ipcMain.on("directDownload", (_, url ) => {
+  mainWindow.webContents.downloadURL(url);
+});

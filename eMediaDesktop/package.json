@@ -9,7 +9,6 @@
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make -- --arch=all",
-    "make-arm": "electron-forge make",
     "build": "electron-builder build",
     "publish": "electron-forge publish"
   },
@@ -25,6 +24,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@electron-forge/maker-wix": "^7.5.0",
     "@electron/osx-sign": "^1.3.1",
     "axios": "^1.6.7",
     "chokidar": "^3.6.0",
@@ -51,17 +51,16 @@
     "@electron-forge/maker-pkg": "^7.5.0",
     "@electron-forge/maker-rpm": "^7.2.0",
     "@electron-forge/maker-squirrel": "^7.2.0",
-    "@electron-forge/maker-zip": "^7.2.0",
+    "@electron-forge/maker-zip": "^7.5.0",
     "@electron-forge/publisher-github": "^7.5.0",
     "electron": "28.1.1",
     "electron-builder": "^24.9.1",
     "electron-installer-squirrel-windows": "^1.3.0",
     "electron-installer-windows": "^3.0.0",
-    "electron-reloader": "^1.2.3",
-    "electron-winstaller": "^5.4.0"
+    "electron-reloader": "^1.2.3"
   },
   "build": {
-    "appId": "org.entermedia.app",
+    "appId": "com.emedialibrary",
     "productName": "eMedia Library",
     "asar": false,
     "icon": "build/icons",

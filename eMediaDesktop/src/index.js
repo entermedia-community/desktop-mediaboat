@@ -25,6 +25,8 @@ const demos = require("./assets/demos.json");
 const chokidar = require("chokidar");
 const OS = require("os");
 
+require("dotenv").config();
+
 const { download: eDownload, CancelError } = require("electron-dl");
 
 const computerName = OS.userInfo().username + OS.hostname();
@@ -52,10 +54,6 @@ const isDev = process.env.NODE_ENV === "development";
 let mainWindow;
 let loaderWindow;
 let entermediaKey;
-
-//Config
-const appLogo = "/assets/images/icon.png";
-const trayLogo = "/assets/images/em.png";
 
 const store = new Store();
 const loaderPage = `file://${__dirname}/loader.html`;
@@ -104,7 +102,7 @@ const createWindow = () => {
     y: bounds.y + 50,
     width: bounds.width,
     height: bounds.height,
-    icon: __dirname + appLogo,
+    icon: path.join(__dirname, "images/icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: true,
@@ -1066,7 +1064,7 @@ class CreateTray {
     this.mainWin = mainWin;
     this.trayMenu = [];
     this.homeUrl = store.get("homeUrl");
-    this.tray = new Tray(__dirname + trayLogo);
+    this.tray = new Tray(path.join(__dirname, "assets/images/em.png"));
   }
 
   drawTray() {
@@ -1971,6 +1969,6 @@ ipcMain.on("readDir", (_, { path }) => {
   console.log("Received files from main process:", files);
 });
 
-ipcMain.on("directDownload", (_, url ) => {
+ipcMain.on("directDownload", (_, url) => {
   mainWindow.webContents.downloadURL(url);
 });

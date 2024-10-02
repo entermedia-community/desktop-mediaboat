@@ -20,6 +20,12 @@ module.exports = {
       },
     },
     {
+      name: "@electron-forge/maker-pkg",
+      config: {
+        icon: __dirname + "/images/icon.icns",
+      },
+    },
+    {
       name: "@electron-forge/maker-squirrel",
       config: {
         iconUrl: "file://" + __dirname + "/images/icon.ico",

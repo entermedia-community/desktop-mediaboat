@@ -2,8 +2,10 @@ require("dotenv").config();
 
 module.exports = {
   packagerConfig: {
+    appBundleId: "com.emedialibrary",
+    // asar: true,
+    // all: true,
     icon: __dirname + "/images/icon",
-    asar: true,
     osxSign: {},
     osxNotarize: {
       appleId: process.env.APPLE_ID,
@@ -23,6 +25,8 @@ module.exports = {
       name: "@electron-forge/maker-pkg",
       config: {
         icon: __dirname + "/images/icon.icns",
+        identity:
+          "3rd Party Mac Developer Installer: EnterMedia Incorporated (VJ8RCF92K4)",
       },
     },
     {

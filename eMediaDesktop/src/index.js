@@ -1,5 +1,7 @@
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 
+const axios = require("axios");
+const chokidar = require("chokidar");
 const {
   app,
   BrowserWindow,
@@ -11,23 +13,20 @@ const {
   screen,
   session,
 } = require("electron");
-const rp = require("request-promise");
-const mime = require("mime-types");
-const path = require("path");
 const log = require("electron-log");
-const FormData = require("form-data");
 const Store = require("electron-store");
-const { parse: parseURL } = require("url");
-const fs = require("fs");
+const { download: eDownload, CancelError } = require("electron-dl");
 const { EventEmitter } = require("events");
-const axios = require("axios");
-const demos = require("./assets/demos.json");
-const chokidar = require("chokidar");
+const FormData = require("form-data");
+const fs = require("fs");
+const mime = require("mime-types");
 const OS = require("os");
+const path = require("path");
+const rp = require("request-promise");
+const { parse: parseURL } = require("url");
+const demos = require("./assets/demos.json");
 
 require("dotenv").config();
-
-const { download: eDownload, CancelError } = require("electron-dl");
 
 const computerName = OS.userInfo().username + OS.hostname();
 
@@ -41,15 +40,15 @@ let connectionOptions = {
 
 const isDev = process.env.NODE_ENV === "development";
 
-// if (isDev) {
-//   try {
-//     require("electron-reloader")(module, {
-//       ignore: ["dist", "build", "node_modules"],
-//     });
-//   } catch (err) {
-//     console.error(err);
-//   }
-// }
+if (isDev) {
+  try {
+    require("electron-reloader")(module, {
+      ignore: ["dist", "build", "node_modules"],
+    });
+  } catch (err) {
+    console.error(err);
+  }
+}
 
 let mainWindow;
 let loaderWindow;
@@ -85,11 +84,6 @@ const console = {
     }
   },
 };
-
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require("electron-squirrel-startup")) {
-  app.quit();
-}
 
 const createWindow = () => {
   let bounds = store.get("lastBounds");

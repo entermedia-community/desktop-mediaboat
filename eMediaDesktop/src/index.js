@@ -24,7 +24,8 @@ const mime = require("mime-types");
 const OS = require("os");
 const path = require("node:path");
 const rp = require("request-promise");
-const { parse: parseURL } = require("url");
+const { parse: parseURL } = require("node:url");
+const qs = require("node:querystring");
 const demos = require("./assets/demos.json");
 
 require("dotenv").config();
@@ -54,7 +55,7 @@ const trayIcon = nativeImage.createFromPath(
   path.join(__dirname, "assets/images/em.png")
 );
 const loaderPage = `file://${__dirname}/loader.html`;
-const welcomeForm = `file://${__dirname}/config.html`;
+const configPage = `file://${__dirname}/config.html`;
 
 const currentVersion = app.getVersion();
 
@@ -109,7 +110,7 @@ const createWindow = () => {
   const localDrive = store.get("localDrive");
   app.allowRendererProcessReuse = false;
   if (!homeUrl || !localDrive) {
-    openWorkspacePicker(welcomeForm);
+    openConfigPage();
   } else {
     currentWorkDirectory = localDrive;
     openWorkspace(homeUrl);
@@ -149,6 +150,27 @@ if (!gotTheLock) {
     });
   });
 }
+
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient("emedia", process.execPath, [
+      path.resolve(process.argv[1]),
+    ]);
+  }
+} else {
+  app.setAsDefaultProtocolClient("emedia");
+}
+
+app.on("open-url", (_, url) => {
+  const parsedUrl = parseURL(url);
+  const query = qs.parse(parsedUrl.query);
+  if (query.page === "config") {
+    openConfigPage();
+  } else if (query.url) {
+    log(query.url);
+    openWorkspace(query.url);
+  }
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
@@ -200,7 +222,7 @@ function createTray() {
   trayMenu.push({
     label: "Libraries...    ",
     click() {
-      openWorkspacePicker(welcomeForm);
+      openConfigPage();
     },
   });
   trayMenu.push({ type: "separator" });
@@ -215,10 +237,16 @@ function createTray() {
   tray.setToolTip("eMedia Library");
   const contextMenu = Menu.buildFromTemplate(trayMenu);
   tray.setContextMenu(contextMenu);
+
+  const dockMenu = Menu.buildFromTemplate([
+    trayMenu[1],
+    { ...trayMenu[3], label: "Configure Libraries" },
+  ]);
+  app.dock.setMenu(dockMenu);
 }
 
-function openWorkspacePicker(pickerURL) {
-  mainWindow.loadURL(pickerURL);
+function openConfigPage() {
+  mainWindow.loadURL(configPage);
 }
 
 ipcMain.on("configInit", () => {
@@ -308,6 +336,7 @@ function openWorkspace(homeUrl) {
     mainWindow.webContents.send("set-local-root", currentWorkDirectory);
     if (loaderWindow) loaderWindow.destroy();
   });
+
   setMainMenu(mainWindow);
 }
 
@@ -931,7 +960,7 @@ function getWorkSpaceMenu() {
   subMenus.push({
     label: "Add Library",
     click() {
-      openWorkspacePicker(welcomeForm);
+      openConfigPage();
     },
   });
   return subMenus;
@@ -1068,7 +1097,6 @@ function setMainMenu(mainWindow) {
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-  // Menu.setApplicationMenu(null);
 }
 
 ipcMain.on("uploadFolder", (event, options) => {

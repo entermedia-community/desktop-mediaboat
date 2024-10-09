@@ -12,6 +12,7 @@ const {
   shell,
   screen,
   session,
+  nativeImage,
 } = require("electron");
 const electronLog = require("electron-log");
 const Store = require("electron-store");
@@ -28,6 +29,8 @@ const demos = require("./assets/demos.json");
 
 require("dotenv").config();
 electronLog.initialize();
+electronLog.transports.console.level = "debug";
+electronLog.transports.console.format = "│{h}:{i}:{s}.{ms}│ {text}";
 const isDev = process.env.NODE_ENV === "development";
 const computerName = OS.userInfo().username + OS.hostname();
 
@@ -44,24 +47,30 @@ let loaderWindow;
 let entermediaKey;
 
 const store = new Store();
+const appIcon = nativeImage.createFromPath(
+  path.join(__dirname, "../images/icon.png")
+);
+const trayIcon = nativeImage.createFromPath(
+  path.join(__dirname, "assets/images/em.png")
+);
 const loaderPage = `file://${__dirname}/loader.html`;
 const welcomeForm = `file://${__dirname}/config.html`;
 
-const currentVersion = process.env.npm_package_version;
+const currentVersion = app.getVersion();
 
 function log(...args) {
-  console.log("\n\x1b[36m┌───────────┐\x1b[0m");
-  electronLog.info(...args);
-  console.log("\x1b[36m└───────────┘\x1b[0m\n");
+  console.log("\n┌────────────┐");
+  electronLog.debug(...args);
+  console.log("└────────────┘\n");
   if (mainWindow) {
     mainWindow.webContents.send("electron-log", args);
   }
 }
 
 function error(...args) {
-  console.log("\n\x1b[31m┌───────────┐\x1b[0m");
+  console.log("\n\x1b[31m┌────────────┐\x1b[0m");
   electronLog.error(...args);
-  console.log("\x1b[31m└───────────┘\x1b[0m\n");
+  console.log("\x1b[31m└────────────┘\x1b[0m\n");
   if (mainWindow) {
     mainWindow.webContents.send("electron-error", args);
   }
@@ -78,7 +87,7 @@ const createWindow = () => {
     y: bounds.y + 50,
     width: bounds.width,
     height: bounds.height,
-    icon: path.join(__dirname, "images/icon.png"),
+    icon: appIcon,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: true,
@@ -87,6 +96,8 @@ const createWindow = () => {
       enableRemoteModule: true,
     },
   });
+
+  mainWindow.setVisibleOnAllWorkspaces(true);
 
   mainWindow.on("close", (event) => {
     if (app.isQuitting) return false;
@@ -132,6 +143,8 @@ if (!gotTheLock) {
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
+      } else {
+        showApp();
       }
     });
   });
@@ -157,9 +170,11 @@ app.on("before-quit", () => {
 
 function showApp(reload = false) {
   if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore();
     if (!mainWindow.isVisible()) mainWindow.show();
-    mainWindow.focus();
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+      mainWindow.focus();
+    }
     if (reload) {
       const homeUrl = store.get("homeUrl");
       mainWindow.loadURL(homeUrl);
@@ -196,7 +211,7 @@ function createTray() {
       app.quit();
     },
   });
-  const tray = new Tray(path.join(__dirname, "assets/images/em.png"));
+  const tray = new Tray(trayIcon);
   tray.setToolTip("eMedia Library");
   const contextMenu = Menu.buildFromTemplate(trayMenu);
   tray.setContextMenu(contextMenu);
@@ -1026,15 +1041,22 @@ function setMainMenu(mainWindow) {
         {
           label: "About",
           click() {
-            const options = {
-              buttons: ["Close"],
-              defaultId: 2,
-              title: "Version",
-              message: "Current version",
-              detail:
-                process.env.npm_package_name + " Version: " + currentVersion,
-            };
-            dialog.showMessageBox(null, options);
+            dialog
+              .showMessageBox(mainWindow, {
+                type: "info",
+                icon: appIcon,
+                buttons: ["Show Log", "Close"],
+                defaultId: 0,
+                cancelId: 1,
+                title: "Version",
+                message: "eMedia Library v" + currentVersion,
+              })
+              .then(({ response }) => {
+                if (response === 0) {
+                  const logFile = electronLog.transports.file.getFile();
+                  openFolder(path.dirname(logFile.path));
+                }
+              });
           },
         },
       ],
@@ -1174,6 +1196,10 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
 
 function openFile(path) {
   log("Opening: " + path);
+  if (!fs.existsSync(path)) {
+    error("File not found: " + path);
+    return;
+  }
   shell.openPath(path).then((err) => {
     log(err);
   });
@@ -1669,6 +1695,7 @@ ipcMain.on("openFolder", (_, options) => {
 });
 
 function openFolder(path) {
+  log("Opening folder: " + path);
   if (path.match(/[$.{}]/g)) {
     error("Invalid path: " + path);
     return;

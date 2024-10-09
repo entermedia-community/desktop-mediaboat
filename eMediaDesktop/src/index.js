@@ -277,12 +277,17 @@ ipcMain.on("deleteWorkspace", (_, url) => {
 
 function showLoader() {
   const bounds = mainWindow.getBounds();
+  const contentSize = mainWindow.getContentSize();
+  bounds.y += bounds.height - contentSize[1];
+  bounds.height = contentSize[1];
 
   loaderWindow = new BrowserWindow({
     ...bounds,
+    parent: mainWindow,
     resizable: false,
     frame: false,
-    parent: mainWindow,
+    transparent: true,
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
   });
   loaderWindow.loadURL(loaderPage);
   loaderWindow.show();

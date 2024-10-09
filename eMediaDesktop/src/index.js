@@ -13,7 +13,7 @@ const {
   screen,
   session,
 } = require("electron");
-const log = require("electron-log");
+const electronLog = require("electron-log");
 const Store = require("electron-store");
 const { download: eDownload, CancelError } = require("electron-dl");
 const { EventEmitter } = require("events");
@@ -21,13 +21,14 @@ const FormData = require("form-data");
 const fs = require("fs");
 const mime = require("mime-types");
 const OS = require("os");
-const path = require("path");
+const path = require("node:path");
 const rp = require("request-promise");
 const { parse: parseURL } = require("url");
 const demos = require("./assets/demos.json");
 
 require("dotenv").config();
-
+electronLog.initialize();
+const isDev = process.env.NODE_ENV === "development";
 const computerName = OS.userInfo().username + OS.hostname();
 
 let defaultWorkDirectory = path.join(app.getPath("home"), "eMedia" + path.sep);
@@ -37,18 +38,6 @@ let connectionOptions = {
     "X-computername": computerName,
   },
 };
-
-const isDev = process.env.NODE_ENV === "development";
-
-if (isDev) {
-  try {
-    require("electron-reloader")(module, {
-      ignore: ["dist", "build", "node_modules"],
-    });
-  } catch (err) {
-    console.error(err);
-  }
-}
 
 let mainWindow;
 let loaderWindow;
@@ -60,30 +49,23 @@ const welcomeForm = `file://${__dirname}/config.html`;
 
 const currentVersion = process.env.npm_package_version;
 
-//Handle logs with electron-logs
-log.initialize();
-const console = {
-  log: function (...args) {
-    if (!mainWindow) return;
-    log.log.apply(this, args);
-    if (mainWindow.webContents) {
-      if (Array.isArray(args) && args.length === 1) {
-        args = args[0];
-      }
-      mainWindow.webContents.send("electron-log", args);
-    }
-  },
-  error: function (...args) {
-    if (!mainWindow) return;
-    log.error.apply(this, args);
-    if (mainWindow.webContents) {
-      if (Array.isArray(args) && args.length === 1) {
-        args = args[0];
-      }
-      mainWindow.webContents.send("electron-error", args);
-    }
-  },
-};
+function log(...args) {
+  console.log("\n\x1b[36m┌───────────┐\x1b[0m");
+  electronLog.info(...args);
+  console.log("\x1b[36m└───────────┘\x1b[0m\n");
+  if (mainWindow) {
+    mainWindow.webContents.send("electron-log", args);
+  }
+}
+
+function error(...args) {
+  console.log("\n\x1b[31m┌───────────┐\x1b[0m");
+  electronLog.error(...args);
+  console.log("\x1b[31m└───────────┘\x1b[0m\n");
+  if (mainWindow) {
+    mainWindow.webContents.send("electron-error", args);
+  }
+}
 
 const createWindow = () => {
   let bounds = store.get("lastBounds");
@@ -106,6 +88,12 @@ const createWindow = () => {
     },
   });
 
+  mainWindow.on("close", (event) => {
+    if (app.isQuitting) return false;
+    event.preventDefault();
+    mainWindow.hide();
+  });
+
   const homeUrl = store.get("homeUrl");
   const localDrive = store.get("localDrive");
   app.allowRendererProcessReuse = false;
@@ -124,69 +112,34 @@ const createWindow = () => {
   setMainMenu(mainWindow);
 
   // tray
-  new CreateTray(mainWindow).drawTray();
-
-  // Events
-  mainWindow.on("minimize", (event) => {
-    event.preventDefault();
-    mainWindow.hide();
-  });
-
-  mainWindow.on("close", (event) => {
-    if (!app.isQuiting) {
-      event.preventDefault();
-      mainWindow.removeAllListeners("close");
-      mainWindow = null;
-      app.quit();
-    }
-    return false;
-  });
-
-  mainWindow.on("closed", function () {
-    mainWindow = null;
-  });
-
-  mainWindow.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
-      app.quit();
-    }
-  });
+  createTray();
 };
 
-if (!isDev) {
-  const gotTheLock = app.getVersion();
-  if (!gotTheLock) {
-    app.quit();
-  } else {
-    app.on("second-instance", (_, commandLine) => {
-      if (mainWindow) {
-        mainWindow.show();
-      }
-      console.log("length:", commandLine.length);
-      if (commandLine.length >= 2) {
-        commandLine.forEach((c) => {
-          if (c.indexOf(PROTOCOL_SCHEME) !== -1) {
-            mainWindow.loadURL(c.replace(PROTOCOL_SCHEME, "http"));
-          }
-        });
-      }
-    });
-    app.on("ready", createWindow);
-    app.on("open-url", (event, url) => {
-      if (mainWindow) mainWindow.loadURL(url.replace(PROTOCOL_SCHEME, "http"));
-      event.preventDefault();
-    });
-  }
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.exit(0);
 } else {
-  app.on("ready", createWindow);
+  app.on("second-instance", (event, commandLine, workingDirectory) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
+  app.whenReady().then(() => {
+    createWindow();
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+  });
 }
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
-    app.quit();
+    app.exit(0);
   }
 });
 
@@ -202,13 +155,52 @@ app.on("before-quit", () => {
   }
 });
 
-app.on("activate", () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
-  if (mainWindow === null || BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+function showApp(reload = false) {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!mainWindow.isVisible()) mainWindow.show();
+    mainWindow.focus();
+    if (reload) {
+      const homeUrl = store.get("homeUrl");
+      mainWindow.loadURL(homeUrl);
+    }
   }
-});
+}
+
+function createTray() {
+  const trayMenu = [];
+  trayMenu.push({
+    label: "Show App",
+    click: () => {
+      showApp();
+    },
+  });
+  trayMenu.push({
+    label: "Home",
+    click: () => {
+      showApp(true);
+    },
+  });
+  trayMenu.push({ type: "separator" });
+  trayMenu.push({
+    label: "Libraries...    ",
+    click() {
+      openWorkspacePicker(welcomeForm);
+    },
+  });
+  trayMenu.push({ type: "separator" });
+  trayMenu.push({
+    label: "Quit",
+    click: () => {
+      app.isQuitting = true;
+      app.quit();
+    },
+  });
+  const tray = new Tray(path.join(__dirname, "assets/images/em.png"));
+  tray.setToolTip("eMedia Library");
+  const contextMenu = Menu.buildFromTemplate(trayMenu);
+  tray.setContextMenu(contextMenu);
+}
 
 function openWorkspacePicker(pickerURL) {
   mainWindow.loadURL(pickerURL);
@@ -282,11 +274,11 @@ function showLoader() {
 }
 
 function openWorkspace(homeUrl) {
-  log.info("Opening Workspace: ", homeUrl);
+  log("Opening Workspace: ", homeUrl);
 
   let userAgent = mainWindow.webContents.getUserAgent();
   if (userAgent.indexOf("ComputerName") === -1) {
-    userAgent = userAgent + " ComputerName/" + computerName;
+    userAgent = userAgent + "eMediaLibrary/2.5.5 ComputerName/" + computerName;
   }
 
   showLoader();
@@ -363,11 +355,11 @@ async function StartWatcher(workPath) {
       .on("add", (p) => {
         mainWindow.webContents.send("auto-file-added", p);
       })
-      .on("error", (error) => {
-        console.log("Chokidar error:", error);
+      .on("error", (err) => {
+        log("Chokidar error:", err);
       })
       .on("ready", () => {
-        console.log("Watching for changes on", workPath);
+        log("Watching for changes on", workPath);
       });
   } else {
     autoFolderWatcher.add(workPath);
@@ -427,7 +419,7 @@ ipcMain.on("watchFolder", (_, folder) => {
 function getMediaDbUrl(url) {
   const mediaDbUrl = store.get("mediadburl");
   if (!mediaDbUrl) {
-    console.error("No MediaDB url found");
+    error("No MediaDB url found");
     return url;
   }
   return mediaDbUrl + "/" + url;
@@ -454,7 +446,7 @@ class UploadManager {
     onError,
   }) {
     if (this.isCancelled) {
-      console.log("Cancelled uploading");
+      log("Cancelled uploading");
       return;
     }
     const uploadPromise = this.createUploadPromise(
@@ -532,12 +524,12 @@ class UploadManager {
             }
           });
           this.activeUploadRequests[formData.filePath] = uploadRequest;
-        } catch (error) {
+        } catch (err) {
           if (typeof callbacks.onError === "function") {
-            console.log(error);
+            log(err);
             callbacks.onError(
               subFolderId,
-              error.message || JSON.stringify(error) || "Unknown error"
+              err.message || JSON.stringify(err) || "Unknown error"
             );
             delete this.activeUploadRequests[formData.filePath];
           }
@@ -753,8 +745,8 @@ async function uploadAutoFolders(folders, index = 0) {
     })
     .catch(function (err) {
       autoUploadCounter.setTotal(0);
-      console.error("Error on upload/AutoFolders: " + category.path);
-      console.error(err);
+      error("Error on upload/AutoFolders: " + category.path);
+      error(err);
     });
 }
 
@@ -945,8 +937,7 @@ function setMainMenu(mainWindow) {
           label: "Exit",
           accelerator: "CmdOrCtrl+Q",
           click() {
-            app.isQuiting = true;
-            mainWindow.close();
+            app.isQuitting = true;
             app.quit();
           },
         },
@@ -1053,53 +1044,8 @@ function setMainMenu(mainWindow) {
   // Menu.setApplicationMenu(null);
 }
 
-class CreateTray {
-  constructor(mainWin) {
-    this.mainWin = mainWin;
-    this.trayMenu = [];
-    this.homeUrl = store.get("homeUrl");
-    this.tray = new Tray(path.join(__dirname, "assets/images/em.png"));
-  }
-
-  drawTray() {
-    this.trayMenu.push({
-      label: "Show App",
-      click: () => {
-        this.mainWin.show();
-      },
-    });
-    this.trayMenu.push({
-      label: "Home",
-      click: () => {
-        this.mainWin.show();
-        this.mainWin.loadURL(this.homeUrl);
-      },
-    });
-    this.trayMenu.push({ type: "separator" });
-    this.trayMenu.push({
-      label: "Libraries...    ",
-      click() {
-        openWorkspacePicker(welcomeForm);
-      },
-    });
-    this.trayMenu.push({ type: "separator" });
-    this.trayMenu.push({
-      label: "Quit",
-      click: () => {
-        app.isQuitting = true;
-        app.quit();
-      },
-    });
-    this.tray.setToolTip("eMedia Library");
-    const contextMenu = Menu.buildFromTemplate(this.trayMenu);
-    this.tray.setContextMenu(contextMenu);
-  }
-}
-
 ipcMain.on("uploadFolder", (event, options) => {
-  console.log("uploadFolder called", options);
-
-  //uploadFolder(options);
+  log("uploadFolder called", options);
   let inSourcepath = options["absPath"];
   let inMediadbUrl = options["mediadburl"];
   entermediaKey = options["entermediakey"];
@@ -1112,12 +1058,11 @@ ipcMain.on("uploadFolder", (event, options) => {
       let directory = result.filePaths[0];
       if (directory != undefined) {
         store.set("uploaddefaultpath", directory);
-        console.log("Directory selected:" + directory);
         startFolderUpload(directory, inSourcepath, inMediadbUrl, options);
       }
     })
     .catch((err) => {
-      console.error(err);
+      error(err);
     });
 });
 
@@ -1127,9 +1072,7 @@ function startFolderUpload(
   inMediadbUrl,
   options
 ) {
-  //let directoryfinal = directory.replace(currentWorkDirectory, ''); //remove user home
   let dirname = path.basename(startingdirectory);
-  console.log(dirname);
 
   let form1 = new FormData();
 
@@ -1137,16 +1080,10 @@ function startFolderUpload(
     form1.append("moduleid", options["moduleid"]);
     form1.append("entityid", options["entityid"]);
   }
-  //May need stronger path cleanup
-  //categorypath = categorypath.replace(":","");
-  //categorypath = categorypath.split(path.sep).join(path.posix.sep);
-  //--
-  //categorypath = inSourcepath + "/" + dirname;
+
   let savingPath = path.join(inSourcepath, dirname);
-  console.log("Upload start to category:" + savingPath);
+  log("Upload start to category:" + savingPath);
   form1.append("absPath", savingPath);
-  //form.append('totalfilesize', totalsize); Todo: loop over files first
-  //console.log(form);
   submitForm(
     form1,
     inMediadbUrl + "/services/module/userupload/uploadstart.json",
@@ -1159,9 +1096,7 @@ function startFolderUpload(
 }
 
 function submitForm(form, formurl, formCompleted) {
-  // const q = parseURL(formurl, true);
-  //entermediaKey = "cristobalmd542602d7e0ba09a4e08c0a6234578650c08d0ba08d";
-  console.log("submitForm Sending Form: " + formurl);
+  log("Submitting Form: " + formurl);
 
   fetch(formurl, {
     method: "POST",
@@ -1170,19 +1105,18 @@ function submitForm(form, formurl, formCompleted) {
     headers: { "X-tokentype": "entermedia", "X-token": entermediaKey },
   })
     .then(function (res) {
-      //console.log(res);  //EnterMedia always return 200, need to check for error on body: ToDo: Catch EM real error.
-      console.log("submitForm: ok");
+      log("Form Submitted");
       if (typeof formCompleted === "function") {
         formCompleted();
       }
     })
     .catch((err) => {
-      console.error(err);
+      error(err);
     });
 }
 
 function runJavaScript(code) {
-  console.log("Executed: " + code);
+  log("Executed: " + code);
   mainWindow.webContents.executeJavaScript(code);
 }
 
@@ -1194,8 +1128,7 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
       let filepath = path.join(directory, file);
       let stats = fs.statSync(filepath);
       if (stats.isDirectory()) {
-        console.log("Subdirectory found: " + filepath);
-        let filenamefinal = filepath.replace(currentWorkDirectory, ""); //remove user home
+        log("Subdirectory found: " + filepath);
         loopDirectory(filepath, savingPath, inMediadbUrl);
       } else {
         let fileSizeInBytes = stats.size;
@@ -1214,9 +1147,7 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
         return;
       }
       let filestream = fs.createReadStream(filepath);
-      //console.log(filestream);
 
-      // filepath = filepath.replace("\\","/");
       filepath = path.basename(filepath);
 
       filepath = filepath.replace(":", "");
@@ -1227,7 +1158,7 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
       let form = new FormData();
       form.append("absPath", absPath);
       form.append("file", filestream);
-      console.log("Uploading: " + absPath);
+      log("Uploading: " + absPath);
       submitForm(
         form,
         inMediadbUrl + "/services/module/asset/create",
@@ -1242,18 +1173,10 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
 // ---------------------- Open file ---------------------
 
 function openFile(path) {
-  console.log("Opening: " + path);
-  shell.openPath(path).then((error) => {
-    console.log(error);
+  log("Opening: " + path);
+  shell.openPath(path).then((err) => {
+    log(err);
   });
-}
-
-// Read folders of the files.
-
-function getFilesizeInBytes(filename) {
-  let stats = fs.statSync(filename);
-  let fileSizeInBytes = stats.size;
-  return fileSizeInBytes;
 }
 
 function readDirectory(directory, append = false) {
@@ -1400,14 +1323,12 @@ async function fetchSubFolderContent(
           } else {
             callback(categories);
           }
-        } else {
-          console.log({ categories });
         }
       }
     })
     .catch(function (err) {
-      console.error("Error loading: " + url);
-      console.error(err);
+      error("Error loading: " + url);
+      error(err);
     });
 }
 
@@ -1473,8 +1394,8 @@ async function scanFilesRecursive(categories, index = 0) {
       }
     })
     .catch(function (err) {
-      console.error("Error on scan Folder: " + category.path);
-      console.error(err);
+      error("Error on scan Folder: " + category.path);
+      error(err);
     });
 }
 
@@ -1502,11 +1423,11 @@ class DownloadManager {
     openFolderWhenDone = false,
   }) {
     if (!downloadItemId) {
-      console.error("Invalid downloadItemId");
+      error("Invalid downloadItemId");
       return;
     }
     if (!downloadUrl) {
-      console.error("Invalid downloadUrl");
+      error("Invalid downloadUrl");
       return;
     }
     if (directory !== undefined) {
@@ -1514,13 +1435,13 @@ class DownloadManager {
         try {
           fs.mkdirSync(directory, { recursive: true });
         } catch (e) {
-          console.error(directory + " doesn't exist");
+          error(directory + " doesn't exist");
           return;
         }
       }
     }
     if (this.isCancelled) {
-      console.log("Cancelled downloading");
+      log("Cancelled downloading");
       return;
     }
     const downloadPromise = this.createDownloadPromise({
@@ -1553,7 +1474,7 @@ class DownloadManager {
   }) {
     return {
       start: async () => {
-        console.log("Downloading: " + downloadUrl);
+        log("Downloading: " + downloadUrl);
         try {
           const downloadItem = await eDownload(mainWindow, downloadUrl, {
             directory,
@@ -1569,8 +1490,8 @@ class DownloadManager {
           });
           this.downloadItems[downloadItemId] = downloadItem;
         } catch (e) {
-          console.log("Error downloading " + downloadUrl);
-          console.log(e.message || e);
+          log("Error downloading " + downloadUrl);
+          log(e.message || e);
           if (e instanceof CancelError) {
             onCancel();
           } else {
@@ -1715,8 +1636,8 @@ async function downloadFilesRecursive(categories, index = 0, tpCatPath) {
     })
     .catch(function (err) {
       batchDownloadCounter.setTotal(0);
-      console.error("Error on download Folder: " + category.path);
-      console.error(err);
+      error("Error on download Folder: " + category.path);
+      error(err);
     });
 }
 
@@ -1749,7 +1670,7 @@ ipcMain.on("openFolder", (_, options) => {
 
 function openFolder(path) {
   if (path.match(/[$.{}]/g)) {
-    console.error("Invalid path: " + path);
+    error("Invalid path: " + path);
     return;
   }
 
@@ -1757,7 +1678,7 @@ function openFolder(path) {
     if (!fs.existsSync(path)) {
       fs.mkdirSync(path, { recursive: true }, (err) => {
         if (err) {
-          return console.error(err);
+          return error(err);
         }
         shell.openPath(path);
         return;
@@ -1766,7 +1687,7 @@ function openFolder(path) {
       shell.openPath(path);
     }
   } catch (e) {
-    console.error("Error reading directory: " + path);
+    error("Error reading directory: " + path);
   }
 }
 
@@ -1859,8 +1780,8 @@ async function uploadFilesRecursive(categories, index = 0, options = {}) {
     })
     .catch(function (err) {
       entityUploadCounter.setTotal(0);
-      console.error("Error on upload/FilesRecursive: " + category.path);
-      console.error(err);
+      error("Error on upload/FilesRecursive: " + category.path);
+      error(err);
     });
 }
 
@@ -1916,8 +1837,8 @@ function trashFilesRecursive(categories, index = 0) {
     })
     .catch(function (err) {
       trashFilesRecursive(categories, index + 1);
-      console.error("Error on trashFilesRecursive: " + category.path);
-      console.error(err);
+      error("Error on trashFilesRecursive: " + category.path);
+      error(err);
     });
 }
 
@@ -1942,7 +1863,7 @@ ipcMain.on("start-download", async (event, { orderitemid, file }) => {
     },
     onCompleted: (filePath) => {
       mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
-      console.log("Download Complete: " + filePath);
+      log("Download Complete: " + filePath);
     },
     onError: (err) => {
       mainWindow.webContents.send(`download-error-${orderitemid}`, err);
@@ -1960,7 +1881,7 @@ ipcMain.on("readDir", (_, { path }) => {
   const files = readDirectory(path); // Call the function to read the directory
 
   //onScan(files)
-  console.log("Received files from main process:", files);
+  log("Received files from main process:", files);
 });
 
 ipcMain.on("directDownload", (_, url) => {

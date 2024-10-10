@@ -11,9 +11,10 @@
     "make": "electron-forge make",
     "build": "electron-builder build",
     "publish": "electron-forge publish",
-    "dmg": "electron-forge make --arch=x64 --platform=darwin && electron-forge make --arch=arm64 --platform=darwin",
+    "dmg": "electron-forge make --arch=x64,arm64",
+    "exe": "electron-forge make --arch=ia32",
     "pkg": "electron-forge make --arch=universal --platform=mas",
-    "linux": "electron-forge make --arch=x64 --platform=linux",
+    "linux": "electron-forge make --arch=x64",
     "zip": "electron-forge make --arch=x64"
   },
   "keywords": [
@@ -56,38 +57,5 @@
     "electron-builder": "^25.1.7",
     "electron-installer-windows": "^3.0.0",
     "electron-log": "^5.2.0"
-  },
-  "build": {
-    "appId": "com.emedialibrary",
-    "productName": "eMedia Library",
-    "asar": false,
-    "icon": "build/icons",
-    "files": [
-      "src/**/*"
-    ],
-    "protocols": [
-      {
-        "name": "emedia",
-        "role": "Viewer",
-        "schemes": [
-          "emedia"
-        ]
-      }
-    ],
-    "linux": {
-      "icon": "build/icons",
-      "category": "AudioVideo"
-    },
-    "win": {
-      "target": "nsis",
-      "icon": "build/icons"
-    },
-    "nsis": {
-      "perMachine": true
-    },
-    "mac": {
-      "icon": "build/icons",
-      "identity": "tech@entermediadb.org"
-    }
   }
 }

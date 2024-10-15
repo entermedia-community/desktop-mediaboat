@@ -50,7 +50,10 @@ const appIcon = nativeImage.createFromPath(
   path.join(__dirname, "../images/icon.png")
 );
 const trayIcon = nativeImage.createFromPath(
-  path.join(__dirname, "assets/images/em.png")
+  path.join(
+    __dirname,
+    `assets/images/em${process.platform === "darwin" ? "" : "s"}.png`
+  )
 );
 const loaderPage = `file://${__dirname}/loader.html`;
 const configPage = `file://${__dirname}/config.html`;

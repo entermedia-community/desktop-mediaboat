@@ -1,3 +1,6 @@
+// `npm i -g gulp-cli`
+// start with `gulp`
+
 const { watch } = require("gulp");
 const { spawn } = require("child_process");
 const fs = require("fs");

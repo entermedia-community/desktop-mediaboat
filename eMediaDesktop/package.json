@@ -34,6 +34,7 @@
     "chokidar": "^4.0.1",
     "dotenv": "^16.4.5",
     "electron-dl": "^3.5.2",
+    "electron-log": "^5.2.0",
     "electron-store": "^8.1.0",
     "form-data": "^4.0.0",
     "mime-types": "^2.1.35",
@@ -57,7 +58,6 @@
     "electron": "32.1.2",
     "electron-builder": "^25.1.7",
     "electron-installer-windows": "^3.0.0",
-    "electron-log": "^5.2.0",
     "gulp": "^5.0.0"
   }
 }

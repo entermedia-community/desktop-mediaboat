@@ -760,7 +760,6 @@ async function uploadAutoFolders(folders, index = 0) {
 		.then(function (res) {
 			if (res.data !== undefined) {
 				const filesToUpload = res.data.filestoupload;
-				// console.log(object);
 				if (filesToUpload !== undefined) {
 					lastUploadedFolder[1] += filesToUpload.length;
 					if (
@@ -1258,13 +1257,19 @@ function loopDirectory(directory, savingPath, inMediadbUrl) {
 
 function openFile(path) {
 	log("Opening: " + path);
-	if (!fs.existsSync(path)) {
-		error("File not found: " + path);
-		return;
+	try {
+		if (!fs.existsSync(path)) {
+			error("File not found: " + path);
+			return;
+		}
+		shell.openPath(path).then((err) => {
+			if (err) {
+				error(err);
+			}
+		});
+	} catch (e) {
+		error("Failed to open the file: " + path);
 	}
-	shell.openPath(path).then((err) => {
-		log(err);
-	});
 }
 
 function readDirectory(directory, append = false) {
@@ -1651,6 +1656,7 @@ let lastBatchDlProgUpdate = 0;
 const currentDownloadProgress = {};
 async function downloadFilesRecursive(categories, index = 0, options = {}) {
 	if (categories.length === index) {
+		log("Batch download complete");
 		mainWindow.webContents.send("download-batch-complete", options);
 		batchDownloadCounter.removeAllListeners("completed");
 		delete currentDownloadProgress[options.topCat];
@@ -1750,6 +1756,32 @@ ipcMain.on("fetchFiles", (_, options) => {
 	});
 });
 
+ipcMain.on("openFile", (_, options) => {
+	if (
+		!options["path"].startsWith("/") &&
+		!options["path"].match(/^[a-zA-Z]:/)
+	) {
+		options["path"] = path.join(currentWorkDirectory, options["path"]);
+	}
+	openFile(options["path"]);
+});
+
+ipcMain.on("openFileWithDefault", (_, { categorypath, filename, dlink }) => {
+	const filePath = path.join(currentWorkDirectory, categorypath, filename);
+	if (fs.existsSync(filePath)) {
+		openFile(filePath);
+	} else {
+		const parsedUrl = parseURL(store.get("homeUrl"), true);
+		const downloadUrl = parsedUrl.protocol + "//" + parsedUrl.host + dlink;
+		eDownload(mainWindow, downloadUrl, {
+			directory: path.dirname(filePath),
+			onCompleted: () => {
+				openFile(filePath);
+			},
+		});
+	}
+});
+
 ipcMain.on("openFolder", (_, options) => {
 	if (
 		!options["path"].startsWith("/") &&
@@ -1781,16 +1813,10 @@ function openFolder(path) {
 	}
 }
 
-ipcMain.on("openLightbox", (_, { uploadsourcepath, lightbox }) => {
-	const categoryPath = path.join(
-		currentWorkDirectory,
-		uploadsourcepath,
-		lightbox
-	);
-	openFolder(categoryPath);
-});
 ipcMain.on("syncLightboxDown", (_, { uploadsourcepath, lightbox }) => {
 	const categoryPath = path.join(uploadsourcepath, lightbox);
+	openFolder(path.join(currentWorkDirectory, categoryPath));
+	log("Syncing: " + categoryPath);
 	fetchSubFolderContent(
 		categoryPath,
 		downloadFilesRecursive,

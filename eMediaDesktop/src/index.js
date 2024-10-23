@@ -1813,6 +1813,24 @@ function openFolder(path) {
 	}
 }
 
+ipcMain.on("shouldSyncLightboxShow", (_, { uploadsourcepath, lightbox }) => {
+	const categoryPath = path.join(
+		currentWorkDirectory,
+		uploadsourcepath,
+		lightbox
+	);
+	if (fs.existsSync(categoryPath)) {
+		const fileCount = fs
+			.readdirSync(categoryPath)
+			.filter((f) => !f.startsWith(".")).length;
+		if (fileCount > 0) {
+			mainWindow.webContents.send("show-sync-lightbox", {
+				lightbox,
+				fileCount,
+			});
+		}
+	}
+});
 ipcMain.on("syncLightboxDown", (_, { uploadsourcepath, lightbox }) => {
 	const categoryPath = path.join(uploadsourcepath, lightbox);
 	openFolder(path.join(currentWorkDirectory, categoryPath));

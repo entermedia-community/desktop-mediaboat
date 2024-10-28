@@ -1814,25 +1814,25 @@ function openFolder(path) {
 }
 
 ipcMain.on("shouldSyncLightboxShow", (_, { uploadsourcepath, lightbox }) => {
-	const categoryPath = path.join(
-		currentWorkDirectory,
-		uploadsourcepath,
-		lightbox
-	);
+	let categoryPath;
+	if (!lightbox) {
+		categoryPath = path.join(currentWorkDirectory, uploadsourcepath);
+	} else {
+		categoryPath = path.join(currentWorkDirectory, uploadsourcepath, lightbox);
+	}
 	if (fs.existsSync(categoryPath)) {
-		const fileCount = fs
-			.readdirSync(categoryPath)
-			.filter((f) => !f.startsWith(".")).length;
-		if (fileCount > 0) {
-			mainWindow.webContents.send("show-sync-lightbox", {
-				lightbox,
-				fileCount,
-			});
-		}
+		mainWindow.webContents.send("show-sync-lightbox", {
+			lightbox,
+		});
 	}
 });
 ipcMain.on("syncLightboxDown", (_, { uploadsourcepath, lightbox }) => {
-	const categoryPath = path.join(uploadsourcepath, lightbox);
+	let categoryPath;
+	if (!lightbox) {
+		categoryPath = uploadsourcepath;
+	} else {
+		categoryPath = path.join(uploadsourcepath, lightbox);
+	}
 	openFolder(path.join(currentWorkDirectory, categoryPath));
 	log("Syncing: " + categoryPath);
 	fetchSubFolderContent(
@@ -1843,7 +1843,12 @@ ipcMain.on("syncLightboxDown", (_, { uploadsourcepath, lightbox }) => {
 	);
 });
 ipcMain.on("syncLightboxUp", (_, { uploadsourcepath, lightbox, entityId }) => {
-	const categoryPath = path.join(uploadsourcepath, lightbox);
+	let categoryPath;
+	if (!lightbox) {
+		categoryPath = uploadsourcepath;
+	} else {
+		categoryPath = path.join(uploadsourcepath, lightbox);
+	}
 	fetchSubFolderContent(categoryPath, uploadFilesRecursive, {
 		entityId,
 		lightbox: true,

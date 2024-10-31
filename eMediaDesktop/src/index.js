@@ -1773,10 +1773,14 @@ ipcMain.on("openFileWithDefault", (_, { categorypath, filename, dlink }) => {
 	} else {
 		const parsedUrl = parseURL(store.get("homeUrl"), true);
 		const downloadUrl = parsedUrl.protocol + "//" + parsedUrl.host + dlink;
+		log("File doesn't exist. Downloading from: " + downloadUrl);
 		eDownload(mainWindow, downloadUrl, {
 			directory: path.dirname(filePath),
 			onCompleted: () => {
 				openFile(filePath);
+			},
+			onCancel: () => {
+				error("Download cancelled");
 			},
 		});
 	}

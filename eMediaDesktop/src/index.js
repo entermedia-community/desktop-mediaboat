@@ -1766,27 +1766,35 @@ ipcMain.on("openFile", (_, options) => {
 	openFile(options["path"]);
 });
 
-ipcMain.on("openFileWithDefault", (_, { categorypath, filename, dlink }) => {
-	const filePath = path.join(currentWorkDirectory, categorypath, filename);
-	if (fs.existsSync(filePath)) {
-		openFile(filePath);
-	} else {
-		if (!dlink.startsWith("http:")) {
-			const parsedUrl = parseURL(store.get("homeUrl"), true);
-			const dlink = parsedUrl.protocol + "//" + parsedUrl.host + dlink;
+ipcMain.on(
+	"openFileWithDefault",
+	(_, { categorypath, filename, dlink, lightbox }) => {
+		const filePath = path.join(currentWorkDirectory, categorypath, filename);
+		if (lightbox) {
+			mainWindow.webContents.send("show-sync-lightbox", {
+				lightbox,
+			});
 		}
-		log("File doesn't exist. Downloading from: " + dlink);
-		eDownload(mainWindow, dlink, {
-			directory: path.dirname(filePath),
-			onCompleted: () => {
-				openFile(filePath);
-			},
-			onCancel: () => {
-				error("Download cancelled");
-			},
-		});
+		if (fs.existsSync(filePath)) {
+			openFile(filePath);
+		} else {
+			if (!dlink.startsWith("http:")) {
+				const parsedUrl = parseURL(store.get("homeUrl"), true);
+				dlink = parsedUrl.protocol + "//" + parsedUrl.host + dlink;
+			}
+			log("File doesn't exist. Downloading from: " + dlink);
+			eDownload(mainWindow, dlink, {
+				directory: path.dirname(filePath),
+				onCompleted: () => {
+					openFile(filePath);
+				},
+				onCancel: () => {
+					error("Download cancelled");
+				},
+			});
+		}
 	}
-});
+);
 
 ipcMain.on("openFolder", (_, options) => {
 	if (

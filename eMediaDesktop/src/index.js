@@ -1771,10 +1771,12 @@ ipcMain.on("openFileWithDefault", (_, { categorypath, filename, dlink }) => {
 	if (fs.existsSync(filePath)) {
 		openFile(filePath);
 	} else {
-		const parsedUrl = parseURL(store.get("homeUrl"), true);
-		const downloadUrl = parsedUrl.protocol + "//" + parsedUrl.host + dlink;
-		log("File doesn't exist. Downloading from: " + downloadUrl);
-		eDownload(mainWindow, downloadUrl, {
+		if (!dlink.startsWith("http:")) {
+			const parsedUrl = parseURL(store.get("homeUrl"), true);
+			const dlink = parsedUrl.protocol + "//" + parsedUrl.host + dlink;
+		}
+		log("File doesn't exist. Downloading from: " + dlink);
+		eDownload(mainWindow, dlink, {
 			directory: path.dirname(filePath),
 			onCompleted: () => {
 				openFile(filePath);

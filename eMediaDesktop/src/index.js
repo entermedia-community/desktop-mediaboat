@@ -270,9 +270,11 @@ function openConfigPage() {
 ipcMain.on("configInit", () => {
 	const welcomeDone = store.get("welcomeDone");
 	const workspaces = store.get("workspaces");
+	const homeUrl = store.get("homeUrl");
 	mainWindow.webContents.send("config-init", {
 		welcomeDone: welcomeDone,
 		workspaces,
+		currentUrl: homeUrl,
 	});
 	setMainMenu(mainWindow);
 });
@@ -986,7 +988,7 @@ function getWorkSpaceMenu() {
 	});
 	subMenus.push({ type: "separator" });
 	subMenus.push({
-		label: "Add Library",
+		label: "Library Settings",
 		click() {
 			openConfigPage();
 		},
@@ -1005,6 +1007,13 @@ function setMainMenu(mainWindow) {
 					click: () => {
 						mainWindow.show();
 						mainWindow.loadURL(homeUrl);
+					},
+				},
+				{
+					label: "Settings",
+					accelerator: "CmdOrCtrl+,",
+					click: () => {
+						openConfigPage();
 					},
 				},
 				{

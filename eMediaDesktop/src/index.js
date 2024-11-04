@@ -13,6 +13,7 @@ const {
 	screen,
 	session,
 	nativeImage,
+	clipboard,
 } = require("electron");
 const electronLog = require("electron-log");
 const Store = require("electron-store");
@@ -357,6 +358,9 @@ function openWorkspace(homeUrl) {
 	mainWindow.webContents.on("did-finish-load", () => {
 		mainWindow.webContents.send("set-local-root", currentWorkDirectory);
 		if (loaderWindow) loaderWindow.destroy();
+	});
+	mainWindow.webContents.on("did-navigate-in-page", () => {
+		setMainMenu(mainWindow);
 	});
 
 	setMainMenu(mainWindow);
@@ -1054,6 +1058,14 @@ function setMainMenu(mainWindow) {
 			label: "Browser",
 			submenu: [
 				{
+					label: "Back",
+					accelerator: "CmdOrCtrl+Left",
+					click() {
+						mainWindow.webContents.navigationHistory.goBack();
+					},
+					enabled: mainWindow.webContents.navigationHistory.canGoBack(),
+				},
+				{
 					label: "Refresh",
 					accelerator: "CmdOrCtrl+R",
 					click() {
@@ -1079,6 +1091,16 @@ function setMainMenu(mainWindow) {
 					accelerator: "CmdOrCtrl+Shift+I",
 					click() {
 						mainWindow.webContents.openDevTools();
+					},
+				},
+				{
+					label: "Copy Current URL",
+					accelerator: "CmdOrCtrl+Shift+C",
+					click() {
+						const url = mainWindow.webContents.getURL();
+						if (url) {
+							clipboard.writeText(url);
+						}
 					},
 				},
 			],
@@ -1108,6 +1130,7 @@ function setMainMenu(mainWindow) {
 		},
 		{
 			label: "Help",
+			role: "help",
 			submenu: [
 				{
 					label: "About",

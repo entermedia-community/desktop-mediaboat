@@ -1,7 +1,7 @@
 {
 	"name": "emedia-library",
 	"productName": "eMedia Library",
-	"version": "2.3.8",
+	"version": "2.3.9",
 	"description": "Digital Asset Management Solution",
 	"main": "src/index.js",
 	"homepage": "https://github.com/entermedia-community/desktop-mediaboat",

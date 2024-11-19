@@ -102,7 +102,7 @@ $(document).ready(function () {
 			if (url.endsWith("/")) {
 				url = url.substring(0, url.length - 1);
 			}
-			if (!url.endsWith("find") || !url.startsWith("http")) {
+			if (!/find\d?$/.test(url) || !url.startsWith("http")) {
 				alert("Please enter a valid eMedia Library URL");
 				return;
 			}

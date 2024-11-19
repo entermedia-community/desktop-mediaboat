@@ -127,12 +127,84 @@ const createWindow = () => {
 		mainWindow.webContents.openDevTools();
 	}
 
-	// Main Menu
-	setMainMenu(mainWindow);
-
-	// tray
+	setMainMenu();
 	createTray();
+	createContextMenu();
 };
+
+function createContextMenu() {
+	mainWindow.webContents.on("context-menu", (_event, props) => {
+		const { editFlags, linkURL } = props;
+		const template = [
+			{
+				id: "refresh",
+				label: "Refresh",
+				enabled: true,
+				click() {
+					mainWindow.webContents.reload();
+				},
+			},
+			{
+				id: "copyLink",
+				label: "Copy Link Address",
+				visible: !!linkURL && linkURL !== "#",
+				click() {
+					clipboard.writeText(linkURL);
+				},
+			},
+			{
+				type: "separator",
+			},
+			{
+				id: "cut",
+				label: "Cut",
+				role: process.platform === "darwin" ? undefined : "cut",
+				enabled: editFlags.canCut,
+				click() {
+					mainWindow.webContents.cut();
+				},
+			},
+			{
+				id: "copy",
+				label: "Copy",
+				role: process.platform === "darwin" ? undefined : "copy",
+				enabled: editFlags.canCopy,
+				click() {
+					mainWindow.webContents.copy();
+				},
+			},
+			{
+				id: "paste",
+				label: "Paste",
+				role: process.platform === "darwin" ? undefined : "paste",
+				enabled: editFlags.canPaste,
+				click() {
+					mainWindow.webContents.paste();
+				},
+			},
+			{
+				id: "selectall",
+				label: "Select All",
+				role: "selectall",
+				enabled: editFlags.canSelectAll,
+			},
+			{
+				type: "separator",
+			},
+			{
+				id: "inspect",
+				label: "Inspect Element",
+				visible: isDev,
+				click() {
+					mainWindow.webContents.inspectElement(props.x, props.y);
+				},
+			},
+		];
+
+		const menu = Menu.buildFromTemplate(template);
+		menu.popup({});
+	});
+}
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -231,22 +303,22 @@ function createTray() {
 			showApp();
 		},
 	});
+	trayMenu.push({ type: "separator" });
 	trayMenu.push({
 		label: "Home",
 		click: () => {
 			showApp(true);
 		},
 	});
-	trayMenu.push({ type: "separator" });
 	trayMenu.push({
-		label: "Libraries...    ",
+		label: "Libraries Settings",
 		click() {
 			openConfigPage();
 		},
 	});
 	trayMenu.push({ type: "separator" });
 	trayMenu.push({
-		label: "Quit",
+		label: "Exit",
 		click: () => {
 			app.isQuitting = true;
 			app.quit();
@@ -277,7 +349,7 @@ ipcMain.on("configInit", () => {
 		workspaces,
 		currentUrl: homeUrl,
 	});
-	setMainMenu(mainWindow);
+	setMainMenu();
 });
 
 ipcMain.on("welcomeDone", () => {
@@ -310,7 +382,7 @@ ipcMain.on("addWorkspace", (_, newWorkspace) => {
 		store.set("localDrive", drive);
 	}
 	mainWindow.webContents.send("workspaces-updated", workspaces);
-	setMainMenu(mainWindow);
+	setMainMenu();
 });
 
 ipcMain.on("deleteWorkspace", (_, url) => {
@@ -321,7 +393,7 @@ ipcMain.on("deleteWorkspace", (_, url) => {
 	if (homeUrl === url) {
 		store.delete("homeUrl");
 	}
-	setMainMenu(mainWindow);
+	setMainMenu();
 });
 
 function showLoader() {
@@ -360,10 +432,10 @@ function openWorkspace(homeUrl) {
 		if (loaderWindow) loaderWindow.destroy();
 	});
 	mainWindow.webContents.on("did-navigate-in-page", () => {
-		setMainMenu(mainWindow);
+		setMainMenu();
 	});
 
-	setMainMenu(mainWindow);
+	setMainMenu();
 }
 
 ipcMain.on("changeLocalDrive", (_, newRoot) => {
@@ -891,6 +963,36 @@ ipcMain.on("cancelAutoUpload", () => {
 ipcMain.on("abortUpload", () => {
 	entityUploadManager.cancelAllUpload();
 });
+const dropUploadManager = new UploadManager();
+const dropUploadCounter = new UploadCounter();
+ipcMain.on("filesDropped", (_, { data, files }) => {
+	// dropUploadCounter.setTotal(files.length);
+	const categoryPath = data.categorypath;
+	const entityId = data.entityid;
+	log("filesDropped", files, categoryPath, entityId);
+
+	let filePaths = [];
+	files.forEach((filePath) => {
+		if (!fs.existsSync(filePath)) {
+			return;
+		}
+		const stats = fs.statSync(filePath);
+		console.log(stats.isDirectory());
+		if (stats.isDirectory()) {
+			console.log(getAllFiles(filePath));
+			filePaths = filePaths.concat(getAllFiles(filePath));
+		} else {
+			filePaths.push(filePath);
+		}
+	});
+	log("filePaths", filePaths);
+	// files.forEach((filePath) => {
+	// 	dropUploadManager.uploadFile({
+	// 		subFolderId: data.categoryid,
+	// 		filePath: filePath,
+	// 	});
+	// });
+});
 
 ipcMain.on("select-dirs", async (_, arg) => {
 	const result = await dialog.showOpenDialog(mainWindow, {
@@ -1000,7 +1102,8 @@ function getWorkSpaceMenu() {
 	return subMenus;
 }
 
-function setMainMenu(mainWindow) {
+function setMainMenu() {
+	if (!mainWindow) return;
 	const homeUrl = store.get("homeUrl");
 	const template = [
 		{
@@ -1035,19 +1138,7 @@ function setMainMenu(mainWindow) {
 		},
 		{
 			label: "Edit",
-			submenu: [
-				// { label: "Undo", accelerator: "CmdOrCtrl+Z", selector: "undo:" },
-				// { label: "Redo", accelerator: "Shift+CmdOrCtrl+Z", selector: "redo:" },
-				// { type: "separator" },
-				{ label: "Cut", accelerator: "CmdOrCtrl+X", selector: "cut:" },
-				{ label: "Copy", accelerator: "CmdOrCtrl+C", selector: "copy:" },
-				{ label: "Paste", accelerator: "CmdOrCtrl+V", selector: "paste:" },
-				{
-					label: "Select All",
-					accelerator: "CmdOrCtrl+A",
-					selector: "selectAll:",
-				},
-			],
+			role: "editMenu",
 		},
 		{
 			label: "Libraries",
@@ -1329,23 +1420,28 @@ function readDirectory(directory, append = false) {
 	};
 }
 
-function readDirectories(directory) {
-	let folderPaths = [];
-	let files = fs.readdirSync(directory);
-	files.forEach((file) => {
-		const ext = path.extname(file).toLowerCase();
-		if (file.startsWith(".") || ext === ".ini" || ext === ".db") return;
-		let filepath = path.join(directory, file);
-		let stats = fs.statSync(filepath);
-		if (stats.isDirectory(filepath)) {
-			let subfolderPaths = {};
-			subfolderPaths = readDirectories(filepath);
-			folderPaths.push({ path: file, subfolders: subfolderPaths });
-		}
-	});
-	return {
-		folders: folderPaths,
-	};
+function getAllFiles(rootDirectory) {
+	if (!fs.existsSync(rootDirectory)) {
+		log("Directory not found: " + rootDirectory);
+		return [];
+	}
+	let filePaths = [];
+	function searchFiles(directory) {
+		let files = fs.readdirSync(directory);
+		files.forEach((file) => {
+			if (file.startsWith(".")) return;
+			let filepath = path.join(directory, file);
+			console.log(filepath);
+			let stats = fs.statSync(filepath);
+			if (stats.isDirectory()) {
+				searchFiles(filepath);
+			} else {
+				filePaths.push(filepath);
+			}
+		});
+	}
+	searchFiles(rootDirectory);
+	return filePaths;
 }
 
 function addExtraFoldersToList(categories, categoryPath) {

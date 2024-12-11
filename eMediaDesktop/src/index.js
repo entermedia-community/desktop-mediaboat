@@ -438,19 +438,20 @@ function openWorkspace(homeUrl) {
 	setMainMenu();
 }
 
-ipcMain.on("changeLocalDrive", (_, newRoot) => {
-	if (fs.existsSync(newRoot)) {
+ipcMain.on("changeLocalDrive", (_, { selectedPath, isReadOnly }) => {
+	if (fs.existsSync(selectedPath)) {
 		const currentHome = store.get("homeUrl");
 		let workspaces = store.get("workspaces") || [];
 		workspaces = workspaces.map((w) => {
 			if (w.url === currentHome) {
-				w.drive = newRoot;
+				w.drive = selectedPath;
 			}
 			return w;
 		});
 		store.set("workspaces", workspaces);
-		store.set("localDrive", newRoot);
-		currentWorkDirectory = newRoot;
+		store.set("localDrive", selectedPath);
+		store.set("localDriveReadOnly", isReadOnly);
+		currentWorkDirectory = selectedPath;
 		mainWindow.webContents.send("set-local-root", currentWorkDirectory);
 	}
 });
@@ -1962,7 +1963,8 @@ ipcMain.on("shouldSyncLightboxShow", (_, { uploadsourcepath, lightbox }) => {
 	} else {
 		categoryPath = path.join(currentWorkDirectory, uploadsourcepath, lightbox);
 	}
-	if (fs.existsSync(categoryPath)) {
+	const localDriveReadOnly = store.get("localDriveReadOnly");
+	if (fs.existsSync(categoryPath) && !localDriveReadOnly) {
 		mainWindow.webContents.send("show-sync-lightbox", {
 			lightbox,
 		});
@@ -1976,6 +1978,13 @@ ipcMain.on("syncLightboxDown", (_, { uploadsourcepath, lightbox }) => {
 		categoryPath = path.join(uploadsourcepath, lightbox);
 	}
 	openFolder(path.join(currentWorkDirectory, categoryPath));
+	const localDriveReadOnly = store.get("localDriveReadOnly");
+	if (localDriveReadOnly) {
+		mainWindow.webContents.send("readonly-lightbox-opened", { lightbox });
+		return;
+	} else {
+		mainWindow.webContents.send("lightbox-downloading", { lightbox });
+	}
 	log("Syncing: " + categoryPath);
 	fetchSubFolderContent(
 		categoryPath,

@@ -438,7 +438,13 @@ function openWorkspace(homeUrl) {
 	setMainMenu();
 }
 
-ipcMain.on("changeLocalDrive", (_, { selectedPath, isReadOnly }) => {
+ipcMain.on("getExternalSyncEnabled", () => {
+	const externalSyncEnabled = store.get("externalSyncEnabled");
+	console.log("externalSyncEnabled", externalSyncEnabled);
+	mainWindow.webContents.send("set-external-sync", externalSyncEnabled);
+});
+
+ipcMain.on("changeLocalDrive", (_, { selectedPath, externalSyncEnabled }) => {
 	if (fs.existsSync(selectedPath)) {
 		const currentHome = store.get("homeUrl");
 		let workspaces = store.get("workspaces") || [];
@@ -450,7 +456,11 @@ ipcMain.on("changeLocalDrive", (_, { selectedPath, isReadOnly }) => {
 		});
 		store.set("workspaces", workspaces);
 		store.set("localDrive", selectedPath);
-		store.set("localDriveReadOnly", isReadOnly);
+		if (externalSyncEnabled) {
+			store.set("externalSyncEnabled", true);
+		} else {
+			store.delete("externalSyncEnabled");
+		}
 		currentWorkDirectory = selectedPath;
 		mainWindow.webContents.send("set-local-root", currentWorkDirectory);
 	}
@@ -1956,55 +1966,80 @@ function openFolder(path) {
 	}
 }
 
-ipcMain.on("shouldSyncLightboxShow", (_, { uploadsourcepath, lightbox }) => {
-	let categoryPath;
-	if (!lightbox) {
-		categoryPath = path.join(currentWorkDirectory, uploadsourcepath);
-	} else {
-		categoryPath = path.join(currentWorkDirectory, uploadsourcepath, lightbox);
+ipcMain.on(
+	"shouldInternalSyncLightboxShow",
+	(_, { uploadsourcepath, lightbox, useexternalsync = false }) => {
+		let categoryPath;
+		if (!lightbox) {
+			categoryPath = path.join(currentWorkDirectory, uploadsourcepath);
+		} else {
+			categoryPath = path.join(
+				currentWorkDirectory,
+				uploadsourcepath,
+				lightbox
+			);
+		}
+		const externalSyncEnabled = store.get("externalSyncEnabled");
+		console.log(
+			"externalSyncEnabled",
+			externalSyncEnabled,
+			"useexternalsync",
+			useexternalsync
+		);
+		if (externalSyncEnabled && useexternalsync) {
+			return;
+		}
+		if (fs.existsSync(categoryPath)) {
+			mainWindow.webContents.send("show-sync-lightbox", {
+				lightbox,
+			});
+		}
 	}
-	const localDriveReadOnly = store.get("localDriveReadOnly");
-	if (fs.existsSync(categoryPath) && !localDriveReadOnly) {
-		mainWindow.webContents.send("show-sync-lightbox", {
-			lightbox,
+);
+ipcMain.on(
+	"internalSyncLightboxDown",
+	(_, { uploadsourcepath, lightbox, useexternalsync = false }) => {
+		let categoryPath;
+		if (!lightbox) {
+			categoryPath = uploadsourcepath;
+		} else {
+			categoryPath = path.join(uploadsourcepath, lightbox);
+		}
+		openFolder(path.join(currentWorkDirectory, categoryPath));
+		const externalSyncEnabled = store.get("externalSyncEnabled");
+		if (externalSyncEnabled && useexternalsync) {
+			mainWindow.webContents.send("internal-lightbox-sync-disabled", {
+				lightbox,
+			});
+			return;
+		} else {
+			mainWindow.webContents.send("lightbox-downloading", { lightbox });
+		}
+		log("Syncing: " + categoryPath);
+		fetchSubFolderContent(
+			categoryPath,
+			downloadFilesRecursive,
+			{ topCat: categoryPath, lightbox: true },
+			true
+		);
+	}
+);
+
+ipcMain.on(
+	"internalSyncLightboxUp",
+	(_, { uploadsourcepath, lightbox, entityId }) => {
+		let categoryPath;
+		if (!lightbox) {
+			categoryPath = uploadsourcepath;
+		} else {
+			categoryPath = path.join(uploadsourcepath, lightbox);
+		}
+		fetchSubFolderContent(categoryPath, uploadFilesRecursive, {
+			entityId,
+			lightbox: true,
 		});
 	}
-});
-ipcMain.on("syncLightboxDown", (_, { uploadsourcepath, lightbox }) => {
-	let categoryPath;
-	if (!lightbox) {
-		categoryPath = uploadsourcepath;
-	} else {
-		categoryPath = path.join(uploadsourcepath, lightbox);
-	}
-	openFolder(path.join(currentWorkDirectory, categoryPath));
-	const localDriveReadOnly = store.get("localDriveReadOnly");
-	if (localDriveReadOnly) {
-		mainWindow.webContents.send("readonly-lightbox-opened", { lightbox });
-		return;
-	} else {
-		mainWindow.webContents.send("lightbox-downloading", { lightbox });
-	}
-	log("Syncing: " + categoryPath);
-	fetchSubFolderContent(
-		categoryPath,
-		downloadFilesRecursive,
-		{ topCat: categoryPath, lightbox: true },
-		true
-	);
-});
-ipcMain.on("syncLightboxUp", (_, { uploadsourcepath, lightbox, entityId }) => {
-	let categoryPath;
-	if (!lightbox) {
-		categoryPath = uploadsourcepath;
-	} else {
-		categoryPath = path.join(uploadsourcepath, lightbox);
-	}
-	fetchSubFolderContent(categoryPath, uploadFilesRecursive, {
-		entityId,
-		lightbox: true,
-	});
-});
+);
 
 ipcMain.on("uploadAll", async (_, { categorypath, entityId }) => {
 	fetchSubFolderContent(categorypath, uploadFilesRecursive, {

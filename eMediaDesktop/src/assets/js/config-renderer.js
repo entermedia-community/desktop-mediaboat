@@ -32,9 +32,9 @@ $(document).ready(function () {
 				}, 300);
 				workspaces = workspaces.filter((workspace) => workspace.url);
 				if (workspaces.length === 0) {
-					$("#savedLibraries").hide();
+					// $("#savedLibraries").removeClass("df");
 				} else {
-					$("#savedLibraries").show();
+					// $("#savedLibraries").addClass("df");
 					var saved = $("#savedLibraries").find("#saved");
 					saved.empty();
 					workspaces.forEach(({ url, name, logo }) => {
@@ -61,7 +61,7 @@ $(document).ready(function () {
 		var url = $(this).parent().data("url");
 		$(this).parent().remove();
 		if ($("#saved").children().length === 0) {
-			$("#savedLibraries").hide();
+			// $("#savedLibraries").removeClass("df");
 		}
 		if (!url) return;
 		ipcRenderer.send("deleteWorkspace", url);
@@ -116,7 +116,7 @@ $(document).ready(function () {
 	});
 
 	ipcRenderer.on("workspaces-updated", (_, workspaces) => {
-		$("#savedLibraries").show();
+		$("#savedLibraries").addClass("df");
 		var saved = $("#savedLibraries").find("#saved");
 		saved.empty();
 		workspaces.forEach(({ url, name, logo }) => {

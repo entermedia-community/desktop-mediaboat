@@ -1907,7 +1907,7 @@ ipcMain.on("openFile", (_, options) => {
 
 ipcMain.on(
 	"openFileWithDefault",
-	(_, { categorypath, filename, dlink, lightbox }) => {
+	(_, { categorypath, filename, dlink, lightbox, useexternalsync = false }) => {
 		const filePath = path.join(currentWorkDirectory, categorypath, filename);
 		if (lightbox) {
 			mainWindow.webContents.send("show-sync-lightbox", {
@@ -1917,6 +1917,9 @@ ipcMain.on(
 		if (fs.existsSync(filePath)) {
 			openFile(filePath);
 		} else {
+			if (useexternalsync) {
+				return;
+			}
 			if (!dlink.startsWith("http:")) {
 				const parsedUrl = parseURL(store.get("homeUrl"), true);
 				dlink = parsedUrl.protocol + "//" + parsedUrl.host + dlink;

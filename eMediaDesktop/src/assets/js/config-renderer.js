@@ -87,31 +87,22 @@ $("#sandbox").click(function () {
 
 $(document).ready(function () {
 	loadPrivateConfig();
-	ipcRenderer.on(
-		"config-init",
-		(_, { workspaces, welcomeDone = false, currentUrl = null }) => {
-			if (welcomeDone) {
-				document.title = "Browse or Add eMedia Libraries";
-
-				workspaces = workspaces.filter((workspace) => workspace.url);
-				if (workspaces.length === 0) {
-					// $("#addNewLibraryBtn").hide();
-				} else {
-					// $("#addNewLibraryBtn").show();
-					var saved = $("#savedLibraries");
-					saved.empty();
-					workspaces.forEach(({ url, name, logo }) => {
-						saved.append(renderSaved(url, name, logo, currentUrl === url));
-					});
-				}
-			} else {
-				// document.title = "Welcome to eMedia Desktop App";
-				// $(".loader").remove();
-				// $("#next").show();
-			}
+	ipcRenderer.on("config-init", (_, { workspaces, currentUrl = null }) => {
+		document.title = "Browse or Add eMedia Libraries";
+		workspaces = workspaces.filter((workspace) => workspace.url);
+		if (workspaces.length > 0) {
+			var saved = $("#savedLibraries");
+			saved.empty();
+			workspaces.forEach(({ url, name, logo }) => {
+				saved.append(renderSaved(url, name, logo, currentUrl === url));
+			});
+			$(".saved-lib").show();
 		}
-	);
-	jQuery(document).on("click", ".edit", function () {
+	});
+
+	jQuery(document).on("click", ".edit", function (e) {
+		e.stopPropagation();
+
 		var card = $(this).parent();
 		var url = card.data("url");
 		var name = card.find("h3").text();
@@ -120,7 +111,10 @@ $(document).ready(function () {
 		modal.find("#formGroupURL").val(url);
 		modal.modal("show");
 	});
-	jQuery(document).on("click", ".delete", function () {
+
+	jQuery(document).on("click", ".delete", function (e) {
+		e.stopPropagation();
+
 		var card = $(this).parent();
 		var url = card.data("url");
 		var name = card.find("h3").text();
@@ -130,14 +124,13 @@ $(document).ready(function () {
 		modal.modal("show");
 	});
 
-	jQuery(document).on("click", "#deleteLibrary", function (e) {
-		e.stopPropagation();
-
+	jQuery(document).on("click", "#deleteLibrary", function () {
 		var url = $(this).data("url");
 		if (!url) return;
 		ipcRenderer.send("deleteWorkspace", url);
 		window.location.reload();
 	});
+
 	function upsertLibrary() {
 		var name = $(this).find("#formGroupName").val();
 		var url = $(this).find("#formGroupURL").val();
@@ -163,6 +156,7 @@ $(document).ready(function () {
 		var logo = [url, "theme/lighttheme/logo.png"].join("/");
 		ipcRenderer.send("upsertWorkspace", { url, name, logo });
 	}
+
 	jQuery(document).on("submit", "#addLibraryForm", upsertLibrary);
 	jQuery(document).on("submit", "#editLibraryForm", upsertLibrary);
 
@@ -170,8 +164,10 @@ $(document).ready(function () {
 		window.location.reload();
 	});
 
-	jQuery(document).on("click", ".library-card", function () {
+	jQuery(document).on("click", ".library-card", function (e) {
+		e.stopPropagation();
 		var url = $(this).data("url");
+		if (!url || url.match(/^http:\/\//)) return;
 		ipcRenderer.send("openWorkspace", url);
 	});
 });

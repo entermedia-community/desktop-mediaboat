@@ -57,7 +57,7 @@ const trayIcon = nativeImage.createFromPath(
 	)
 );
 const loaderPage = `file://${__dirname}/loader.html`;
-const configPage = `file://${__dirname}/config.html`;
+const configPage = `file://${__dirname}/welcome.html`;
 
 const currentVersion = app.getVersion();
 
@@ -356,7 +356,7 @@ ipcMain.on("welcomeDone", () => {
 	store.set("welcomeDone", true);
 });
 
-ipcMain.on("addWorkspace", (_, newWorkspace) => {
+ipcMain.on("upsertWorkspace", (_, newWorkspace) => {
 	let workspaces = store.get("workspaces") || [];
 	workspaces = workspaces.filter((w) => w.url);
 	let drive = defaultWorkDirectory;
@@ -402,6 +402,9 @@ function showLoader() {
 	bounds.y += bounds.height - contentSize[1];
 	bounds.height = contentSize[1];
 
+	if (loaderWindow) {
+		loaderWindow.destroy();
+	}
 	loaderWindow = new BrowserWindow({
 		...bounds,
 		parent: mainWindow,

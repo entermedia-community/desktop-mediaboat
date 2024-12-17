@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Welcome to eMedia Desktop App</title>
+
+		<link href="assets/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
+		<link
+			rel="stylesheet"
+			href="assets/bootstrap/font/bootstrap-icons.min.css"
+		/>
+		<link href="assets/css/config.css" rel="stylesheet" />
+
+		<script src="assets/bootstrap/js/bootstrap.bundle.min.js"></script>
+	</head>
+	<body>
+		<nav class="navbar bg-dark">
+			<div class="d-flex w-100 container p-0">
+				<a class="navbar-brand me-0" href="#">
+					<img
+						src="assets/images/logo.png"
+						alt="Logo"
+						width="150"
+						height="75"
+						class="d-inline-block align-text-top"
+					/>
+				</a>
+				<div class="text-white text-center ms-5 pad-left">
+					<div class="fs-4 fs-md-3 fs-lg-2">
+						Welcome to <b>eMedia Library Browser</b>
+					</div>
+					<p class="m-0">Organized File Storage, Searching and Sharing</p>
+				</div>
+				<div class="pad-right" style="width: 150px"></div>
+			</div>
+		</nav>
+		<main class="container bg-white">
+			<div class="w-100 text-center my-2 pad-left">
+				<!-- <div class="fs-2">Welcome to <b>eMedia Library Browser</b></div> -->
+				<p class="text-muted lead mb-3">
+					Add an existing eMedia library or use a free community library
+				</p>
+			</div>
+			<div class="d-flex h-100">
+				<div class="d-flex flex-column" style="min-width: 200px">
+					<button class="btn btn-wide active" id="privateLibraries">
+						<i class="bi bi-shield-lock"></i>
+						<span>Your Libraries</span>
+					</button>
+					<button class="btn btn-wide" id="communityLibraries">
+						<i class="bi bi-people"></i>
+						<span>Community Libraries</span>
+					</button>
+					<button class="btn btn-wide" id="sandbox">
+						<i class="bi bi-box"></i>
+						<span>Sandbox</span>
+					</button>
+				</div>
+				<div class="d-flex flex-column flex-grow-1 config-content">
+					<div id="configcontent" class="p-2 bg-white">
+						<button
+							type="button"
+							class="btn btn-primary"
+							data-bs-toggle="modal"
+							data-bs-target="#addLibrary"
+						>
+							Add Private Library
+						</button>
+					</div>
+				</div>
+			</div>
+		</main>
+
+		<div
+			class="modal fade"
+			id="addLibrary"
+			tabindex="-1"
+			aria-labelledby="addLibraryLabel"
+			aria-hidden="true"
+		>
+			<div class="modal-dialog">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h1 class="modal-title fs-5" id="addLibraryLabel">Modal title</h1>
+						<button
+							type="button"
+							class="btn-close"
+							data-bs-dismiss="modal"
+							aria-label="Close"
+						></button>
+					</div>
+					<div class="modal-body">...</div>
+					<div class="modal-footer">
+						<button
+							type="button"
+							class="btn btn-secondary"
+							data-bs-dismiss="modal"
+						>
+							Close
+						</button>
+						<button type="button" class="btn btn-primary">Save changes</button>
+					</div>
+				</div>
+			</div>
+		</div>
+		<script
+			src="assets/js/jquery.min.js"
+			onload="if (!window.jQuery) window.$ = window.jQuery = module.exports;"
+		></script>
+		<script src="assets/js/config-renderer.js"></script>
+	</body>
+</html>

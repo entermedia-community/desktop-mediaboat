@@ -1,0 +1,140 @@
+<div class="d-flex flex-column align-items-center">
+	<div id="savedLibraries"></div>
+	<form class="form-container" id="addLibraryForm">
+		<div class="form-floating mb-3">
+			<input
+				type="text"
+				class="form-control"
+				id="formGroupName"
+				placeholder="Library Name"
+				required
+			/>
+			<label for="formGroupName">Library Name</label>
+		</div>
+		<div class="form-floating mb-3">
+			<input
+				type="text"
+				class="form-control"
+				id="formGroupURL"
+				placeholder="e.g. https://einnovation.org/find"
+				required
+			/>
+			<label for="formGroupURL">Library URL</label>
+		</div>
+		<button type="submit" class="btn btn-lg btn-primary fs-6">
+			<i class="bi bi-plus-circle me-1"></i>
+			Add Library
+		</button>
+	</form>
+	<button
+		type="button"
+		id="addNewLibraryBtn"
+		class="btn btn-lg btn-primary fs-6 mt-3"
+		data-bs-toggle="modal"
+		data-bs-target="#addNewLibraryModal"
+		style="display: none"
+	>
+		<i class="bi bi-plus-circle me-1"></i>
+		Add New Private Library
+	</button>
+
+	<div class="h4 text-center mt-5">
+		Don't have a private library of your own?
+	</div>
+
+	<p class="text-center text-muted px-3" style="max-width: 800px">
+		We provide services to help you securely host, manage, and share creative
+		assets with ease. Tailored to your specific needs, our private hosting keeps
+		your work organized, accessible, and 100% in your control.
+	</p>
+	<p class="fw-bold text-center text-muted my-1">
+		Ready to make your life easier?
+	</p>
+	<button type="button" class="btn btn-success fs-6">
+		<i class="bi bi-send-fill me-1"></i>
+		Contact Us
+	</button>
+</div>
+
+<div
+	class="modal fade"
+	id="editLibraryModal"
+	tabindex="-1"
+	aria-labelledby="addLibraryLabel"
+	aria-hidden="true"
+>
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h1 class="modal-title fs-5" id="addLibraryLabel">
+					Edit Saved Library
+				</h1>
+				<button
+					type="button"
+					class="btn-close"
+					data-bs-dismiss="modal"
+					aria-label="Close"
+				></button>
+			</div>
+			<div class="modal-body">
+				<form class="form-container" id="editLibraryForm">
+					<div class="form-floating mb-3">
+						<input
+							type="text"
+							class="form-control"
+							id="formGroupName"
+							placeholder="Library Name"
+						/>
+						<label for="formGroupName">Library Name</label>
+					</div>
+					<div class="form-floating mb-3">
+						<input
+							type="text"
+							class="form-control"
+							id="formGroupURL"
+							placeholder="e.g. https://einnovation.org/find"
+						/>
+						<label for="formGroupURL">Library URL</label>
+					</div>
+					<button type="submit" class="btn btn-lg btn-primary fs-6">
+						<i class="bi bi-pencil-square me-1"></i>
+						Edit Library
+					</button>
+				</form>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div
+	class="modal fade"
+	id="deleteModal"
+	tabindex="-1"
+	aria-labelledby="deleteModalLabel"
+	aria-hidden="true"
+>
+	<div class="modal-dialog modal-dialog-centered">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h1 class="modal-title fs-5" id="deleteModalLabel">Delete Library</h1>
+				<button
+					type="button"
+					class="btn-close"
+					data-bs-dismiss="modal"
+					aria-label="Close"
+				></button>
+			</div>
+			<div class="modal-body">
+				<p>Are you sure you want to delete <span class="dl-name"></span>?</p>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+					Cancel
+				</button>
+				<button type="button" class="btn btn-danger" id="deleteLibrary">
+					Delete
+				</button>
+			</div>
+		</div>
+	</div>
+</div>

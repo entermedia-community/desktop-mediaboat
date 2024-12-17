@@ -66,7 +66,9 @@ function loadCommunityLibraries() {
 	$("#communityLibraries").addClass("active");
 	$("#configcontent").html('<span class="loader"></span>');
 	$(".subheader").text("Select a community library to browse");
-	fetchAndReplace("https://emedialibrary.com/communitylibrarylist.html");
+	fetchAndReplace(
+		"https://emedialibrary.com/libraries/communitylibrarylist.html"
+	);
 }
 $("#communityLibraries").click(function () {
 	loadCommunityLibraries();
@@ -78,7 +80,9 @@ function loadSandbox() {
 	$(".subheader").text(
 		"Try out all the features as an admin in the sandbox library"
 	);
-	fetchAndReplace("https://emedialibrary.com/sandboxlibrarylist.html");
+	fetchAndReplace(
+		"https://emedialibrary.com/libraries/sandboxlibrarylist.html"
+	);
 }
 $("#sandbox").click(function () {
 	loadSandbox();

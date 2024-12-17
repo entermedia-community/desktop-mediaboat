@@ -166,7 +166,7 @@ $(document).ready(function () {
 	jQuery(document).on("click", ".library-card", function (e) {
 		e.stopPropagation();
 		var url = $(this).data("url");
-		if (!url || url.match(/^http:\/\//)) return;
+		if (!url) return;
 		ipcRenderer.send("openWorkspace", url);
 	});
 });

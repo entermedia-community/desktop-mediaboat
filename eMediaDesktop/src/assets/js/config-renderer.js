@@ -22,24 +22,39 @@ function renderSaved(url, name, logo, isActive = false) {
 	return el;
 }
 
-function loadPrivateConfig() {
-	$(".btn-wide").removeClass("active");
-	$("#privateLibraries").addClass("active");
-	$(".subheader").text(
-		"Add an existing eMedia library or use a free community library"
-	);
-	fetch(`file://${__dirname}/private-config.html`)
+function fetchAndReplace(url, callback) {
+	fetch(url)
 		.then((response) => {
 			if (response.ok) {
 				return response.text();
+			} else {
+				throw new Error(response.status);
 			}
 		})
 		.then((response) => {
 			$("#configcontent").html(response);
 		})
 		.then(() => {
-			ipcRenderer.send("configInit");
+			if (callback) callback();
+		})
+		.catch((error) => {
+			$("#configcontent").html(
+				`<div class="alert alert-error">Error: ${
+					error.message || "Unknown error!"
+				}</div>`
+			);
 		});
+}
+
+function loadPrivateConfig() {
+	$(".btn-wide").removeClass("active");
+	$("#privateLibraries").addClass("active");
+	$(".subheader").text(
+		"Add an existing eMedia library or use a free community library"
+	);
+	fetchAndReplace(`file://${__dirname}/private-config.html`, () => {
+		ipcRenderer.send("configInit");
+	});
 }
 
 $("#privateLibraries").click(function () {
@@ -51,15 +66,7 @@ function loadCommunityLibraries() {
 	$("#communityLibraries").addClass("active");
 	$("#configcontent").html('<span class="loader"></span>');
 	$(".subheader").text("Select a community library to browse");
-	fetch("http://localhost:8080/website/communitylibrarylist.html")
-		.then((response) => {
-			if (response.ok) {
-				return response.text();
-			}
-		})
-		.then((response) => {
-			$("#configcontent").html(response);
-		});
+	fetchAndReplace("https://emedialibrary.com/communitylibrarylist.html");
 }
 $("#communityLibraries").click(function () {
 	loadCommunityLibraries();
@@ -71,15 +78,7 @@ function loadSandbox() {
 	$(".subheader").text(
 		"Try out all the features as an admin in the sandbox library"
 	);
-	fetch("http://localhost:8080/website/sandboxlibrarylist.html")
-		.then((response) => {
-			if (response.ok) {
-				return response.text();
-			}
-		})
-		.then((response) => {
-			$("#configcontent").html(response);
-		});
+	fetchAndReplace("https://emedialibrary.com/sandboxlibrarylist.html");
 }
 $("#sandbox").click(function () {
 	loadSandbox();

@@ -1061,60 +1061,6 @@ ipcMain.on("openExternal", (_, url) => {
 	shell.openExternal(url);
 });
 
-function getWorkSpaceMenu() {
-	const workspaces = store.get("workspaces") || [];
-	let subMenus = [];
-	if (workspaces.length === 0) {
-		subMenus = [{ label: "Nothing to show", enabled: false }];
-	}
-	subMenus = workspaces.map((ws) => {
-		return {
-			label: ws.name,
-			id: ws.url,
-			type: "radio",
-			checked: ws.url === store.get("homeUrl"),
-			click() {
-				if (ws.drive) {
-					currentWorkDirectory = ws.drive;
-				} else {
-					ws.drive = defaultWorkDirectory;
-				}
-				store.set("homeUrl", ws.url);
-				store.set("localDrive", ws.drive);
-				openWorkspace(ws.url);
-			},
-		};
-	});
-	subMenus.push({ type: "separator" });
-	const demoMenu = [];
-	Object.keys(demos).forEach((key) => {
-		demoMenu.push({
-			label: key,
-			id: demos[key],
-			type: "radio",
-			checked: demos[key] === store.get("homeUrl"),
-			click() {
-				store.set("homeUrl", demos[key]);
-				store.set("localDrive", defaultWorkDirectory);
-				currentWorkDirectory = defaultWorkDirectory;
-				openWorkspace(demos[key]);
-			},
-		});
-	});
-	subMenus.push({
-		label: "Demo Libraries",
-		submenu: demoMenu,
-	});
-	subMenus.push({ type: "separator" });
-	subMenus.push({
-		label: "Library Settings",
-		click() {
-			openConfigPage();
-		},
-	});
-	return subMenus;
-}
-
 function setMainMenu() {
 	if (!mainWindow) return;
 	const homeUrl = store.get("homeUrl");
@@ -1123,10 +1069,24 @@ function setMainMenu() {
 			label: "eMedia Library",
 			submenu: [
 				{
-					label: "Home",
-					click: () => {
-						mainWindow.show();
-						mainWindow.loadURL(homeUrl);
+					label: "About",
+					click() {
+						dialog
+							.showMessageBox(mainWindow, {
+								type: "info",
+								icon: appIcon,
+								buttons: ["Show Log", "Close"],
+								defaultId: 0,
+								cancelId: 1,
+								title: "Version",
+								message: "eMedia Library v" + currentVersion,
+							})
+							.then(({ response }) => {
+								if (response === 0) {
+									const logFile = electronLog.transports.file.getFile();
+									openFolder(path.dirname(logFile.path));
+								}
+							});
 					},
 				},
 				{
@@ -1136,9 +1096,7 @@ function setMainMenu() {
 						openConfigPage();
 					},
 				},
-				{
-					type: "separator",
-				},
+				{ type: "separator" },
 				{
 					label: "Exit",
 					accelerator: "CmdOrCtrl+Q",
@@ -1154,13 +1112,15 @@ function setMainMenu() {
 			role: "editMenu",
 		},
 		{
-			label: "Libraries",
-			id: "workspaces",
-			submenu: getWorkSpaceMenu(),
-		},
-		{
-			label: "Browser",
+			label: "Window",
 			submenu: [
+				{
+					label: "Home",
+					click: () => {
+						mainWindow.show();
+						mainWindow.loadURL(homeUrl);
+					},
+				},
 				{
 					label: "Back",
 					accelerator: "CmdOrCtrl+Left",
@@ -1187,31 +1147,7 @@ function setMainMenu() {
 					visible: false,
 					acceleratorWorksWhenHidden: true,
 				},
-				{
-					type: "separator",
-				},
-				{
-					label: "Inspect Element",
-					accelerator: "CmdOrCtrl+Shift+I",
-					click() {
-						mainWindow.webContents.openDevTools();
-					},
-				},
-				{
-					label: "Copy Current URL",
-					accelerator: "CmdOrCtrl+Shift+C",
-					click() {
-						const url = mainWindow.webContents.getURL();
-						if (url) {
-							clipboard.writeText(url);
-						}
-					},
-				},
-			],
-		},
-		{
-			label: "Window",
-			submenu: [
+				{ type: "separator" },
 				{
 					label: "Minimize",
 					accelerator: "CmdOrCtrl+M",
@@ -1230,31 +1166,22 @@ function setMainMenu() {
 						}
 					},
 				},
-			],
-		},
-		{
-			label: "Help",
-			role: "help",
-			submenu: [
+				{ type: "separator" },
 				{
-					label: "About",
+					label: "Inspect Element",
+					accelerator: "CmdOrCtrl+Shift+I",
 					click() {
-						dialog
-							.showMessageBox(mainWindow, {
-								type: "info",
-								icon: appIcon,
-								buttons: ["Show Log", "Close"],
-								defaultId: 0,
-								cancelId: 1,
-								title: "Version",
-								message: "eMedia Library v" + currentVersion,
-							})
-							.then(({ response }) => {
-								if (response === 0) {
-									const logFile = electronLog.transports.file.getFile();
-									openFolder(path.dirname(logFile.path));
-								}
-							});
+						mainWindow.webContents.openDevTools();
+					},
+				},
+				{
+					label: "Copy Current URL",
+					accelerator: "CmdOrCtrl+Shift+C",
+					click() {
+						const url = mainWindow.webContents.getURL();
+						if (url) {
+							clipboard.writeText(url);
+						}
 					},
 				},
 			],

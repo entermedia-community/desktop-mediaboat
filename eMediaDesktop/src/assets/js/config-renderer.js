@@ -23,6 +23,11 @@ function renderSaved(url, name, logo, isActive = false) {
 }
 
 function loadPrivateConfig() {
+	$(".btn-wide").removeClass("active");
+	$("#privateLibraries").addClass("active");
+	$(".subheader").text(
+		"Add an existing eMedia library or use a free community library"
+	);
 	fetch(`file://${__dirname}/private-config.html`)
 		.then((response) => {
 			if (response.ok) {
@@ -30,9 +35,7 @@ function loadPrivateConfig() {
 			}
 		})
 		.then((response) => {
-			$(".btn-wide").removeClass("active");
 			$("#configcontent").html(response);
-			$("#privateLibraries").addClass("active");
 		})
 		.then(() => {
 			ipcRenderer.send("configInit");
@@ -46,6 +49,17 @@ $("#privateLibraries").click(function () {
 function loadCommunityLibraries() {
 	$(".btn-wide").removeClass("active");
 	$("#communityLibraries").addClass("active");
+	$("#configcontent").html('<span class="loader"></span>');
+	$(".subheader").text("Select a community library to browse");
+	fetch("http://localhost:8080/website/communitylibrarylist.html")
+		.then((response) => {
+			if (response.ok) {
+				return response.text();
+			}
+		})
+		.then((response) => {
+			$("#configcontent").html(response);
+		});
 }
 $("#communityLibraries").click(function () {
 	loadCommunityLibraries();
@@ -53,6 +67,19 @@ $("#communityLibraries").click(function () {
 function loadSandbox() {
 	$(".btn-wide").removeClass("active");
 	$("#sandbox").addClass("active");
+	$("#configcontent").html('<span class="loader"></span>');
+	$(".subheader").text(
+		"Try out all the features as an admin in the sandbox library"
+	);
+	fetch("http://localhost:8080/website/sandboxlibrarylist.html")
+		.then((response) => {
+			if (response.ok) {
+				return response.text();
+			}
+		})
+		.then((response) => {
+			$("#configcontent").html(response);
+		});
 }
 $("#sandbox").click(function () {
 	loadSandbox();

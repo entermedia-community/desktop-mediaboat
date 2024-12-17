@@ -443,7 +443,6 @@ function openWorkspace(homeUrl) {
 
 ipcMain.on("getExternalSyncEnabled", () => {
 	const externalSyncEnabled = store.get("externalSyncEnabled");
-	console.log("externalSyncEnabled", externalSyncEnabled);
 	mainWindow.webContents.send("set-external-sync", externalSyncEnabled);
 });
 
@@ -1986,12 +1985,6 @@ ipcMain.on(
 			);
 		}
 		const externalSyncEnabled = store.get("externalSyncEnabled");
-		console.log(
-			"externalSyncEnabled",
-			externalSyncEnabled,
-			"useexternalsync",
-			useexternalsync
-		);
 		if (externalSyncEnabled && useexternalsync) {
 			return;
 		}

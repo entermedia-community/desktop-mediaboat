@@ -106,6 +106,8 @@ main.container {
 	overflow-y: auto;
 	border-radius: var(--bs-border-radius);
 	border: 1px solid rgba(70, 170, 70, 0.15);
+	display: flex;
+	flex-direction: column;
 }
 .config-content {
 	height: 100%;
@@ -205,5 +207,26 @@ main.container {
 @media screen and (max-width: 1199px) {
 	.pad-right {
 		width: 0px;
+	}
+}
+.loader {
+	align-self: center;
+	margin-top: 50px;
+	width: 48px;
+	height: 48px;
+	border: 5px solid #378637;
+	border-bottom-color: transparent;
+	border-radius: 50%;
+	display: inline-block;
+	box-sizing: border-box;
+	animation: rotation 1s linear infinite;
+}
+
+@keyframes rotation {
+	0% {
+		transform: rotate(0deg);
+	}
+	100% {
+		transform: rotate(360deg);
 	}
 }

@@ -360,22 +360,22 @@ ipcMain.on("upsertWorkspace", (_, newWorkspace) => {
 	let workspaces = store.get("workspaces") || [];
 	workspaces = workspaces.filter((w) => w.url);
 	let drive = defaultWorkDirectory;
-	const editMode = workspaces.find((w) => w.url === newWorkspace.url);
-	if (!editMode) {
+	const currentIdx = newWorkspace.prevUrl
+		? workspaces.findIndex((w) => w.url === newWorkspace.prevUrl)
+		: -1;
+	delete newWorkspace.prevUrl;
+	if (currentIdx === -1) {
 		newWorkspace.drive = drive;
 		workspaces.push(newWorkspace);
 	} else {
-		drive = editMode.drive;
-		workspaces = workspaces.map((w) => {
-			if (w.url === newWorkspace.url) {
-				return {
-					...newWorkspace,
-					drive: w.drive,
-				};
-			}
-			return w;
-		});
+		drive = workspaces[currentIdx].drive;
+		workspaces[currentIdx] = {
+			...workspaces[currentIdx],
+			...newWorkspace,
+			drive,
+		};
 	}
+
 	store.set("workspaces", workspaces);
 	if (newWorkspace.url === store.get("homeUrl")) {
 		currentWorkDirectory = drive;
@@ -404,6 +404,7 @@ function showLoader() {
 
 	if (loaderWindow) {
 		loaderWindow.destroy();
+		loaderWindow = null;
 	}
 	loaderWindow = new BrowserWindow({
 		...bounds,
@@ -411,7 +412,7 @@ function showLoader() {
 		resizable: false,
 		frame: false,
 		transparent: true,
-		backgroundColor: "rgba(255, 255, 255, 0.25)",
+		backgroundColor: "rgba(255, 255, 255, 0.1)",
 		vibrancy: "fullscreen-ui",
 		backgroundMaterial: "acrylic",
 	});
@@ -432,7 +433,10 @@ function openWorkspace(homeUrl) {
 	mainWindow.loadURL(homeUrl, { userAgent });
 	mainWindow.webContents.on("did-finish-load", () => {
 		mainWindow.webContents.send("set-local-root", currentWorkDirectory);
-		if (loaderWindow) loaderWindow.destroy();
+		if (loaderWindow) {
+			loaderWindow.destroy();
+			loaderWindow = null;
+		}
 	});
 	mainWindow.webContents.on("did-navigate-in-page", () => {
 		setMainMenu();

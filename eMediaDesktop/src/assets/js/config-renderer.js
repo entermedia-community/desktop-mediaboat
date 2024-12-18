@@ -113,6 +113,7 @@ $(document).ready(function () {
 		modal.find("#formGroupName").val(name);
 		modal.find("#formGroupURL").val(url);
 		modal.modal("show");
+		$("#editLibraryForm").data("url", url);
 	});
 
 	jQuery(document).on("click", ".delete", function (e) {
@@ -157,7 +158,8 @@ $(document).ready(function () {
 			return;
 		}
 		var logo = [url, "theme/lighttheme/logo.png"].join("/");
-		ipcRenderer.send("upsertWorkspace", { url, name, logo });
+		var prevUrl = $(this).data("url");
+		ipcRenderer.send("upsertWorkspace", { url, name, logo, prevUrl });
 	}
 
 	jQuery(document).on("submit", "#addLibraryForm", upsertLibrary);

@@ -1,8 +1,19 @@
 <div class="d-flex flex-column align-items-center">
-	<h3 class="mb-2 saved-lib" style="display: none">Saved Libraries</h3>
 	<div id="savedLibraries"></div>
 	<form class="form-container" id="addLibraryForm">
+	
 		<div class="form-floating mb-3">
+			<input
+				type="text"
+				class="form-control"
+				id="formGroupURL"
+				
+				required
+			/>
+			<label for="formGroupURL">URL to the Library <small>Url should contain /find e.g: https://einnovation.org/find</small></label>
+		</div>
+		
+			<div class="form-floating mb-3">
 			<input
 				type="text"
 				class="form-control"
@@ -10,18 +21,9 @@
 				placeholder="Library Name"
 				required
 			/>
-			<label for="formGroupName">Library Name</label>
+			<label for="formGroupName">Label for the Library <small>The name of the library</small></label>
 		</div>
-		<div class="form-floating mb-3">
-			<input
-				type="text"
-				class="form-control"
-				id="formGroupURL"
-				placeholder="e.g. https://einnovation.org/find"
-				required
-			/>
-			<label for="formGroupURL">Library URL</label>
-		</div>
+		
 		<button type="submit" class="btn btn-lg btn-primary fs-6">
 			<i class="bi bi-plus-circle me-1"></i>
 			Add Library
@@ -36,25 +38,22 @@
 		style="display: none"
 	>
 		<i class="bi bi-plus-circle me-1"></i>
-		Add New Private Library
+		Add New Private Library NOT USED?
 	</button>
 
 	<div class="h4 text-center mt-5">
-		Don't have a private library of your own?
+		Create A New Library
 	</div>
 
 	<p class="text-center text-muted px-3" style="max-width: 800px">
-		We provide services to help you securely host, manage, and share creative
-		assets with ease. Tailored to your specific needs, our private hosting keeps
-		your work organized, accessible, and 100% in your control.
+		eMediaLibrary is 100% open source so you can setup your own servers using 
+		<a target="_new" href="https://emedialibrary.com/knowledge/11/docker-installation.html">Docker</a> and 
+		<a target="_new" href="https://github.com/entermedia-community">GitHub</a>. Or email <a href="mailto:cc@emedialibrary.com">cc@emedialibrary.com</a> to quickly deploy a customized hosted library tailored to your specific needs. 
 	</p>
 	<p class="fw-bold text-center text-muted my-1">
-		Ready to make your life easier?
+		
 	</p>
-	<button type="button" class="btn btn-success fs-6">
-		<i class="bi bi-send-fill me-1"></i>
-		Contact Us
-	</button>
+	
 </div>
 
 <div

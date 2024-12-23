@@ -41,6 +41,7 @@
 		"@electron/universal": "^2.0.1",
 		"electron": "32.1.2",
 		"electron-builder": "^25.1.8",
+		"electron-builder-squirrel-windows": "^25.1.8",
 		"gulp": "^5.0.0"
 	},
 	"build": {
@@ -50,7 +51,6 @@
 				{
 					"target": "nsis",
 					"arch": [
-						"x64",
 						"ia32"
 					]
 				}

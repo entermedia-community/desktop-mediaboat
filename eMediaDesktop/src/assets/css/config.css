@@ -49,7 +49,7 @@ body::-webkit-scrollbar-thumb {
 	padding: 0;
 }
 main.container {
-	height: calc(100vh - 142px);
+	min-height: calc(100vh - 142px);
 	padding-top: calc(var(--bs-gutter-x) * 0.5);
 }
 .btn-wide {
@@ -80,11 +80,19 @@ main.container {
 	border: 10px solid transparent;
 	border-left-color: #378637;
 }
+.btn.btn-wide,
+.btn.btn-wide:hover {
+	border: none;
+}
 .btn-wide:not(.active):hover {
 	color: #378637;
 	background-color: rgba(70, 170, 70, 0.25);
 }
 
+.btn-wide .fas {
+	font-size: 2.25rem;
+	margin-bottom: 0.5rem;
+}
 .btn-wide .bi {
 	font-size: 2.25rem;
 }
@@ -101,6 +109,7 @@ main.container {
 .btn-wide:hover .bi-box::before {
 	content: "\f7D2";
 }
+
 #configcontent {
 	height: 100%;
 	overflow-y: auto;
@@ -108,6 +117,9 @@ main.container {
 	border: 1px solid rgba(70, 170, 70, 0.15);
 	display: flex;
 	flex-direction: column;
+}
+.library-container .btn {
+	border: none !important;
 }
 .config-content {
 	height: 100%;
@@ -122,43 +134,63 @@ main.container {
 }
 #savedLibraries {
 	width: 100%;
-	max-width: 800px;
+	max-width: 840px;
 	padding: 16px;
 	margin: 0 auto;
 	display: flex;
 	flex-wrap: wrap;
 	justify-content: center;
-	align-items: center;
 }
 .library-card {
 	width: 220px;
-	height: 120px;
+	text-decoration: none;
 	margin: 8px;
-	border-radius: 1rem;
-	position: relative;
 	text-align: center;
 	cursor: pointer;
-}
-.library-card img {
-	background-color: rgb(250, 250, 250);
+	color: #444444;
+	background-color: #ffffff;
 	box-shadow: 1px 1px 4px rgba(0, 0, 0, 0.25),
 		-1px -1px 4px rgba(255, 255, 255, 0.15);
 	width: 100%;
-	height: 80px;
+	max-width: 250px;
 	object-fit: contain;
-	border: 8px solid rgb(250, 250, 250);
-	border-radius: 1rem;
-	margin-bottom: 4px;
+	border-radius: 0.5rem;
 	overflow: hidden;
+	position: relative;
+	transition: all 0.2s ease-in-out;
 }
-.library-card h4 {
-	font-size: 14px;
-	color: #444444;
-	margin: 0;
+
+a.library-card:hover {
+	color: #555555;
+	box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.25),
+		-2px -2px 8px rgba(255, 255, 255, 0.15);
+	transform: translateY(-4px);
+}
+
+.library-card .library-thumb {
+	height: 80px;
+	width: 100%;
+	padding: 10px 8px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: #f1f1f1;
+}
+.library-card img {
+	width: 100%;
+	height: 100%;
+	max-height: 80px !important;
+	object-fit: contain;
+	padding: 8px;
 }
 .library-card h3 {
-	font-size: 16px;
 	color: #444444;
+	font-size: 18px !important;
+	font-weight: bold;
+	margin: 8px;
+}
+.library-card p {
+	padding: 0 8px 6px;
 	margin: 0;
 }
 .library-card button {
@@ -207,26 +239,5 @@ main.container {
 @media screen and (max-width: 1199px) {
 	.pad-right {
 		width: 0px;
-	}
-}
-.loader {
-	align-self: center;
-	margin-top: 50px;
-	width: 48px;
-	height: 48px;
-	border: 5px solid #378637;
-	border-bottom-color: transparent;
-	border-radius: 50%;
-	display: inline-block;
-	box-sizing: border-box;
-	animation: rotation 1s linear infinite;
-}
-
-@keyframes rotation {
-	0% {
-		transform: rotate(0deg);
-	}
-	100% {
-		transform: rotate(360deg);
 	}
 }

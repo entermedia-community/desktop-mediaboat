@@ -1,5 +1,8 @@
 const { ipcRenderer } = require("electron");
 
+// const extRoot = "http://localhost:8080/website/libraries";
+const extRoot = "https://emedialibrary.com/libraries";
+
 function renderSaved(url, name, logo, isActive = false) {
 	var el = `<div class="library-card ${
 		isActive ? "active" : ""
@@ -66,9 +69,7 @@ function loadCommunityLibraries() {
 	$("#communityLibraries").addClass("active");
 	$("#configcontent").html('<span class="loader"></span>');
 	$(".subheader").text("Select a community library to browse");
-	fetchAndReplace(
-		"https://emedialibrary.com/libraries/communitylibrarylist.html"
-	);
+	fetchAndReplace(`${extRoot}/communitylibrarylist.html?from=desktop`);
 }
 $("#communityLibraries").click(function () {
 	loadCommunityLibraries();
@@ -80,9 +81,7 @@ function loadSandbox() {
 	$(".subheader").text(
 		"Try out all the features as an admin in the sandbox library"
 	);
-	fetchAndReplace(
-		"https://emedialibrary.com/libraries/sandboxlibrarylist.html"
-	);
+	fetchAndReplace(`${extRoot}/sandboxlibrarylist.html?from=desktop`);
 }
 $("#sandbox").click(function () {
 	loadSandbox();

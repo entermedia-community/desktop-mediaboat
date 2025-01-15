@@ -27,7 +27,6 @@ const path = require("node:path");
 const rp = require("request-promise");
 const { parse: parseURL } = require("node:url");
 const qs = require("node:querystring");
-const demos = require("./assets/demos.json");
 
 require("dotenv").config();
 electronLog.initialize();
@@ -329,11 +328,13 @@ function createTray() {
 	const contextMenu = Menu.buildFromTemplate(trayMenu);
 	tray.setContextMenu(contextMenu);
 
-	const dockMenu = Menu.buildFromTemplate([
-		trayMenu[1],
-		{ ...trayMenu[3], label: "Configure Libraries" },
-	]);
-	app.dock.setMenu(dockMenu);
+	if (process.platform === "darwin") {
+		const dockMenu = Menu.buildFromTemplate([
+			trayMenu[1],
+			{ ...trayMenu[3], label: "Settings" },
+		]);
+		app.dock.setMenu(dockMenu);
+	}
 }
 
 function openConfigPage() {

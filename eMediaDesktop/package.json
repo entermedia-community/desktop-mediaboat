@@ -1,21 +1,20 @@
 {
 	"name": "emedia-library",
 	"productName": "eMedia Library",
-	"version": "2.4.2",
+	"version": "2.4.3",
 	"description": "Digital Asset Management Solution",
 	"main": "src/index.js",
 	"homepage": "https://github.com/entermedia-community/desktop-mediaboat",
 	"scripts": {
 		"start": "electron .",
-		"build": "electron-builder",
+		"build": "node cleanup && electron-builder",
 		"postinstall": "electron-builder install-app-deps",
 		"afterSign": "build/notarize.js"
 	},
 	"keywords": [
+		"eMedia Library",
 		"DAM",
-		"Workspace",
-		"EnterMediaDB",
-		"Media Library"
+		"Digital Asset Management"
 	],
 	"author": {
 		"name": "eMedia Library",

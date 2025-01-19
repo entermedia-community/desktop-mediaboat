@@ -1884,11 +1884,6 @@ ipcMain.on("openFolder", (_, options) => {
 
 function openFolder(path) {
 	log("Opening folder: " + path);
-	//if (path.match(/^./)) {
-	//	error("Invalid path: " + path);
-//		return;
-//	}
-
 	try {
 		if (!fs.existsSync(path)) {
 			fs.mkdirSync(path, { recursive: true }, (err) => {

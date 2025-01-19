@@ -25,7 +25,10 @@ function renderSaved(url, name, logo, isActive = false) {
 	return el;
 }
 
-function fetchAndReplace(url, callback) {
+function fetchAndReplace(url, callback, target = "#main") {
+	if (!url.startsWith("file://")) {
+		url += "&oemaxlevel=1";
+	}
 	fetch(url)
 		.then((response) => {
 			if (response.ok) {
@@ -35,13 +38,13 @@ function fetchAndReplace(url, callback) {
 			}
 		})
 		.then((response) => {
-			$("#configcontent").html(response);
+			$(target).html(response);
 		})
 		.then(() => {
 			if (callback) callback();
 		})
 		.catch((error) => {
-			$("#configcontent").html(
+			$(target).html(
 				`<div class="alert alert-error">Error: ${
 					error.message || "Unknown error!"
 				}</div>`
@@ -52,28 +55,28 @@ function fetchAndReplace(url, callback) {
 function loadPrivateConfig() {
 	$(".btn-wide").removeClass("active");
 	$("#privateLibraries").addClass("active");
+	$("#main h2").text("Saved Libraries");
 	$(".subheader").text(
 		"Add an existing eMedia library or use a free community library"
 	);
-	fetchAndReplace(`file://${__dirname}/private-config.html`, () => {
-		ipcRenderer.send("configInit");
-	});
+	$("#privateLibraries").show();
+	fetchAndReplace(
+		`file://${__dirname}/private-config.html`,
+		() => {
+			ipcRenderer.send("configInit");
+		},
+		"#configcontent"
+	);
 }
-
-$("#privateLibraries").click(function () {
-	loadPrivateConfig();
-});
 
 function loadCommunityLibraries() {
 	$(".btn-wide").removeClass("active");
 	$("#communityLibraries").addClass("active");
 	$("#configcontent").html('<span class="loader"></span>');
 	$(".subheader").text("Select a community library to browse");
-	fetchAndReplace(`${extRoot}/communitylibrarylist.html?from=desktop`);
+	fetchAndReplace(`${extRoot}?tab=communitylibrarylist`);
 }
-$("#communityLibraries").click(function () {
-	loadCommunityLibraries();
-});
+
 function loadSandbox() {
 	$(".btn-wide").removeClass("active");
 	$("#sandbox").addClass("active");
@@ -81,14 +84,13 @@ function loadSandbox() {
 	$(".subheader").text(
 		"Try out all the features as an admin in the sandbox library"
 	);
-	fetchAndReplace(`${extRoot}/sandboxlibrarylist.html?from=desktop`);
+	fetchAndReplace(`${extRoot}?tab=sandboxlibrarylist`);
 }
-$("#sandbox").click(function () {
-	loadSandbox();
-});
 
 $(document).ready(function () {
-	loadPrivateConfig();
+	fetchAndReplace(`${extRoot}?`, function () {
+		loadPrivateConfig();
+	});
 	ipcRenderer.on("config-init", (_, { workspaces, currentUrl = null }) => {
 		document.title = "Browse or Add eMedia Libraries";
 		workspaces = workspaces.filter((workspace) => workspace.url);
@@ -102,7 +104,22 @@ $(document).ready(function () {
 		}
 	});
 
-	jQuery(document).on("click", ".edit", function (e) {
+	$("#main").on("click", "#privateLibraries", function (e) {
+		e.preventDefault();
+		loadPrivateConfig();
+	});
+
+	$("#main").on("click", "#communityLibraries", function (e) {
+		e.preventDefault();
+		loadCommunityLibraries();
+	});
+
+	$("#main").on("click", "#sandbox", function (e) {
+		e.preventDefault();
+		loadSandbox();
+	});
+
+	jQuery("#main").on("click", ".edit", function (e) {
 		e.stopPropagation();
 
 		var card = $(this).parent();
@@ -115,7 +132,7 @@ $(document).ready(function () {
 		$("#editLibraryForm").data("url", url);
 	});
 
-	jQuery(document).on("click", ".delete", function (e) {
+	jQuery("#main").on("click", ".delete", function (e) {
 		e.stopPropagation();
 
 		var card = $(this).parent();
@@ -127,7 +144,7 @@ $(document).ready(function () {
 		modal.modal("show");
 	});
 
-	jQuery(document).on("click", "#deleteLibrary", function () {
+	jQuery("#main").on("click", "#deleteLibrary", function () {
 		var url = $(this).data("url");
 		if (!url) return;
 		ipcRenderer.send("deleteWorkspace", url);
@@ -161,14 +178,14 @@ $(document).ready(function () {
 		ipcRenderer.send("upsertWorkspace", { url, name, logo, prevUrl });
 	}
 
-	jQuery(document).on("submit", "#addLibraryForm", upsertLibrary);
-	jQuery(document).on("submit", "#editLibraryForm", upsertLibrary);
+	jQuery("#main").on("submit", "#addLibraryForm", upsertLibrary);
+	jQuery("#main").on("submit", "#editLibraryForm", upsertLibrary);
 
 	ipcRenderer.on("workspaces-updated", () => {
 		window.location.reload();
 	});
 
-	jQuery(document).on("click", ".library-card", function (e) {
+	jQuery("#main").on("click", ".library-card", function (e) {
 		e.stopPropagation();
 		var url = $(this).data("url");
 		if (!url) return;

@@ -1,7 +1,9 @@
 const { ipcRenderer } = require("electron");
 
-// const extRoot = "http://localhost:8080/website/libraries";
-const extRoot = "https://emedialibrary.com/libraries";
+const extRoot = "http://web.localhost.com:8080/libraries";
+// const extRoot = "https://emedialibrary.com/libraries";
+
+let hasPrivateLibraries = false;
 
 function renderSaved(url, name, logo, isActive = false) {
 	var el = `<div class="library-card ${
@@ -42,6 +44,7 @@ function fetchAndReplace(url, callback, target = "#main") {
 		})
 		.then(() => {
 			if (callback) callback();
+			swapOrder(hasPrivateLibraries);
 		})
 		.catch((error) => {
 			$(target).html(
@@ -87,6 +90,17 @@ function loadSandbox() {
 	fetchAndReplace(`${extRoot}?tab=sandboxlibrarylist`);
 }
 
+function swapOrder(hasLib) {
+	hasPrivateLibraries = hasLib;
+	var privateLibraries = $("#privateLibraries");
+	var communityLibraries = $("#communityLibraries");
+	if (!hasLib) {
+		communityLibraries.after(privateLibraries);
+	} else {
+		communityLibraries.before(privateLibraries);
+	}
+}
+var initialLoad = true;
 $(document).ready(function () {
 	fetchAndReplace(`${extRoot}?`, function () {
 		loadPrivateConfig();
@@ -94,6 +108,7 @@ $(document).ready(function () {
 	ipcRenderer.on("config-init", (_, { workspaces, currentUrl = null }) => {
 		document.title = "Browse or Add eMedia Libraries";
 		workspaces = workspaces.filter((workspace) => workspace.url);
+		swapOrder(workspaces.length > 0);
 		if (workspaces.length > 0) {
 			var saved = $("#savedLibraries");
 			saved.empty();
@@ -101,6 +116,9 @@ $(document).ready(function () {
 				saved.append(renderSaved(url, name, logo, currentUrl === url));
 			});
 			$(".saved-lib").show();
+		} else if (initialLoad) {
+			initialLoad = false;
+			loadCommunityLibraries();
 		}
 	});
 
@@ -168,6 +186,15 @@ $(document).ready(function () {
 				alert("Please enter a valid eMedia Library URL");
 				return;
 			}
+		}
+		var communityLibs = $("#privateLibraries").data("blocked-libs");
+		communityLibs = communityLibs.split("|");
+		var urlHost = new URL(url).host;
+		if (communityLibs.includes(urlHost)) {
+			alert(
+				"You cannot add a community library here\n\nUse the Community Libraries tab instead"
+			);
+			return;
 		}
 		if (!name) {
 			alert("Please enter a name for the library");

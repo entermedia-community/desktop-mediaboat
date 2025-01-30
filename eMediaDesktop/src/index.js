@@ -41,9 +41,10 @@ let connectionOptions = {
 	headers: { "X-computername": computerName },
 };
 
+let entermediaKey;
 let mainWindow;
 let loaderWindow;
-let entermediaKey;
+let loaderTimeout;
 
 const store = new Store();
 const appIcon = nativeImage.createFromPath(
@@ -75,6 +76,16 @@ function error(...args) {
 	console.log("\x1b[31m└────────────┘\x1b[0m\n");
 	if (mainWindow) {
 		mainWindow.webContents.send("electron-error", args);
+	}
+}
+
+function hideLoader() {
+	if (loaderTimeout) {
+		clearTimeout(loaderTimeout);
+	}
+	if (loaderWindow) {
+		loaderWindow.destroy();
+		loaderWindow = null;
 	}
 }
 
@@ -125,6 +136,17 @@ const createWindow = () => {
 	if (isDev) {
 		mainWindow.webContents.openDevTools();
 	}
+
+	mainWindow.webContents.on("did-finish-load", () => {
+		hideLoader();
+		mainWindow.webContents.send("set-local-root", currentWorkDirectory);
+	});
+	mainWindow.webContents.on("did-stop-loading", () => {
+		hideLoader();
+	});
+	mainWindow.webContents.on("did-navigate-in-page", () => {
+		setMainMenu();
+	});
 
 	setMainMenu();
 	createTray();
@@ -404,8 +426,7 @@ function showLoader() {
 	bounds.height = contentSize[1];
 
 	if (loaderWindow) {
-		loaderWindow.destroy();
-		loaderWindow = null;
+		hideLoader();
 	}
 	loaderWindow = new BrowserWindow({
 		...bounds,
@@ -413,12 +434,15 @@ function showLoader() {
 		resizable: false,
 		frame: false,
 		transparent: true,
+		fullscreenable: false,
 		backgroundColor: "rgba(255, 255, 255, 0.1)",
-		vibrancy: "fullscreen-ui",
-		backgroundMaterial: "acrylic",
 	});
 	loaderWindow.loadURL(loaderPage);
 	loaderWindow.show();
+	loaderTimeout = setTimeout(() => {
+		loaderWindow.destroy();
+		loaderWindow = null;
+	}, 4000);
 }
 
 function openWorkspace(homeUrl) {
@@ -432,16 +456,6 @@ function openWorkspace(homeUrl) {
 	showLoader();
 
 	mainWindow.loadURL(homeUrl, { userAgent });
-	mainWindow.webContents.on("did-finish-load", () => {
-		mainWindow.webContents.send("set-local-root", currentWorkDirectory);
-		if (loaderWindow) {
-			loaderWindow.destroy();
-			loaderWindow = null;
-		}
-	});
-	mainWindow.webContents.on("did-navigate-in-page", () => {
-		setMainMenu();
-	});
 
 	setMainMenu();
 }
@@ -1139,7 +1153,7 @@ function setMainMenu() {
 					accelerator: "CmdOrCtrl+R",
 					click() {
 						showLoader();
-						mainWindow.reload();
+						mainWindow.webContents.reload();
 					},
 				},
 				{
@@ -1147,7 +1161,7 @@ function setMainMenu() {
 					accelerator: "F5",
 					click() {
 						showLoader();
-						mainWindow.reload();
+						mainWindow.webContents.reloadIgnoringCache();
 					},
 					visible: false,
 					acceleratorWorksWhenHidden: true,

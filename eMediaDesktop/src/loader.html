@@ -1,73 +1,65 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <style>
-      body {
-        width: 100%;
-        height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-        overflow: hidden;
-        box-sizing: border-box;
-      }
-      .container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        width: 120px;
-        height: 120px;
-        border-radius: 16px;
-        margin-bottom: 42px;
-        background-color: rgba(255, 255, 255, 0.95);
-        box-shadow: 0 0 8px rgba(0, 0, 0, 0.25);
-      }
-      .loader {
-        --s: 15px;
-        margin-top: 8px;
-        width: calc(var(--s) * 2.33);
-        aspect-ratio: 1;
-        display: flex;
-        justify-content: space-between;
-        animation: l29-0 1s infinite;
-      }
-      .loader::before,
-      .loader::after {
-        content: "";
-        width: var(--s);
-        --_g: no-repeat radial-gradient(farthest-side, #5f739e 94%, #0000);
-        background: var(--_g) top, var(--_g) bottom;
-        background-size: 100% var(--s);
-        transform-origin: 50% calc(100% - var(--s) / 2);
-        animation: inherit;
-        animation-name: l29-1;
-      }
-      .loader::after {
-        --_s: -1;
-      }
-      p {
-        color: #5f739e;
-        font-weight: bold;
-        font-family: monospace;
-      }
-      @keyframes l29-0 {
-        100% {
-          transform: translateY(calc(var(--s) - 100%));
-        }
-      }
-      @keyframes l29-1 {
-        100% {
-          transform: rotate(calc(var(--_s, 1) * -180deg));
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="loader"></div>
-      <p>Loading...</p>
-    </div>
-  </body>
+	<head>
+		<style>
+			body {
+				width: 100%;
+				height: 100vh;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				padding: 0;
+				overflow: hidden;
+				box-sizing: border-box;
+			}
+			.container {
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				width: 120px;
+				height: 120px;
+				border-radius: 16px;
+				margin-bottom: 42px;
+			}
+			.loader {
+				width: 16px;
+				height: 16px;
+				border-radius: 50%;
+				background: #0d6efd;
+				position: relative;
+			}
+			.loader:before,
+			.loader:after {
+				content: "";
+				position: absolute;
+				border-radius: 50%;
+				inset: 0;
+				background: #fff;
+				transform: rotate(0deg) translate(30px);
+				animation: rotate 1s ease infinite;
+			}
+			.loader:after {
+				animation-delay: 0.5s;
+			}
+			@keyframes rotate {
+				100% {
+					transform: rotate(360deg) translate(30px);
+				}
+			}
+			p {
+				color: #0d6efd;
+				font-weight: bold;
+				font-family: monospace;
+				margin-top: 36px;
+				text-transform: uppercase;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="container">
+			<div class="loader"></div>
+			<p>Loading</p>
+		</div>
+	</body>
 </html>

@@ -1,7 +1,7 @@
 const { ipcRenderer } = require("electron");
 
-const extRoot = "http://web.localhost.com:8080/libraries";
-// const extRoot = "https://emedialibrary.com/libraries";
+// const extRoot = "http://web.localhost.com:8080/libraries";
+const extRoot = "https://emedialibrary.com/libraries";
 
 let hasPrivateLibraries = false;
 

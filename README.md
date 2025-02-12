@@ -1,48 +1,23 @@
-# desktop-mediaboat
+# eMedia Desktop Application
 
+## Prerequisite
 
-# Electron
+node & npm (latest)
 
-## Dependencies
-`npm 6.14+`
+## Install Dependencies
 
-## Install
 ```bash
 npm install
 ```
 
 ## Run
-```
+
+```bash
 npm start
 ```
 
-## Create installers
-Some installers require the origin OS to compile.
+## Build
 
-### Linux
+```bash
+npm build
 ```
-npm run make
-```
-
-### Darwin
-```
-npm run makemac
-```
-
-
-### Windows
-```
-npm run makewin
-```
-
-
-### Build Installers
-Use m39's mediadb docker instance 
-/home/entermedia/enlectron-installer/
-
-
-Current build requires
-node 14.x
-npm 9.x
-
-

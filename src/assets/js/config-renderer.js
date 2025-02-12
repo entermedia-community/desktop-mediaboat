@@ -80,15 +80,15 @@ function loadCommunityLibraries() {
 	fetchAndReplace(`${extRoot}?tab=communitylibrarylist`);
 }
 
-function loadSandbox() {
-	$(".btn-wide").removeClass("active");
-	$("#sandbox").addClass("active");
-	$("#configcontent").html('<span class="loader"></span>');
-	$(".subheader").text(
-		"Try out all the features as an admin in the sandbox library"
-	);
-	fetchAndReplace(`${extRoot}?tab=sandboxlibrarylist`);
-}
+// function loadSandbox() {
+// 	$(".btn-wide").removeClass("active");
+// 	$("#sandbox").addClass("active");
+// 	$("#configcontent").html('<span class="loader"></span>');
+// 	$(".subheader").text(
+// 		"Try out all the features as an admin in the sandbox library"
+// 	);
+//  fetchAndReplace(`${extRoot}?tab=sandboxlibrarylist`);
+// }
 
 function swapOrder(hasLib) {
 	hasPrivateLibraries = hasLib;
@@ -132,10 +132,10 @@ $(document).ready(function () {
 		loadCommunityLibraries();
 	});
 
-	$("#main").on("click", "#sandbox", function (e) {
-		e.preventDefault();
-		loadSandbox();
-	});
+	// $("#main").on("click", "#sandbox", function (e) {
+	// 	e.preventDefault();
+	// 	loadSandbox();
+	// });
 
 	jQuery("#main").on("click", ".edit", function (e) {
 		e.stopPropagation();

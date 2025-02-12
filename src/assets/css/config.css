@@ -134,7 +134,7 @@ main.container {
 }
 #savedLibraries {
 	width: 100%;
-	max-width: 840px;
+	max-width: 940px;
 	padding: 16px;
 	margin: 0 auto;
 	display: flex;
@@ -264,4 +264,25 @@ a.library-card:hover {
 	100% {
 		transform: rotate(360deg);
 	}
+}
+h5 {
+	font-weight: bold;
+	font-size: 20px;
+}
+h5 span.small {
+	font-size: 14px;
+	color: #666666;
+}
+hr.light {
+	border-color: #c1c1c1;
+}
+.template-card {
+	border: none;
+}
+.transition-3d-hover {
+	transition: all 0.2s ease-in-out;
+}
+.transition-3d-hover:hover,
+.transition-3d-hover:focus {
+	transform: translateY(-3px);
 }

@@ -1,4 +1,4 @@
-const { ipcRenderer } = require("electron");
+const { ipcRenderer, shell } = require("electron");
 
 // const extRoot = "http://web.localhost.com:8080/libraries";
 const extRoot = "https://emedialibrary.com/libraries";
@@ -217,5 +217,10 @@ $(document).ready(function () {
 		var url = $(this).data("url");
 		if (!url) return;
 		ipcRenderer.send("openWorkspace", url);
+	});
+
+	jQuery(document).on("click", "a[target='_blank']", function (event) {
+		event.preventDefault();
+		shell.openExternal(this.href);
 	});
 });

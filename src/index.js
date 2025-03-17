@@ -1,7 +1,6 @@
 process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
 
 const axios = require("axios");
-const chokidar = require("chokidar");
 const {
 	app,
 	BrowserWindow,
@@ -279,9 +278,6 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
-	if (autoFolderWatcher) {
-		autoFolderWatcher.close();
-	}
 	saveBounds(true);
 	mainWindow.removeAllListeners("close");
 	mainWindow.destroy();
@@ -460,12 +456,7 @@ function openWorkspace(homeUrl) {
 	setMainMenu();
 }
 
-ipcMain.on("getExternalSyncEnabled", () => {
-	const externalSyncEnabled = store.get("externalSyncEnabled");
-	mainWindow.webContents.send("set-external-sync", externalSyncEnabled);
-});
-
-ipcMain.on("changeLocalDrive", (_, { selectedPath, externalSyncEnabled }) => {
+ipcMain.on("changeLocalDrive", (_, { selectedPath }) => {
 	if (fs.existsSync(selectedPath)) {
 		const currentHome = store.get("homeUrl");
 		let workspaces = store.get("workspaces") || [];
@@ -477,11 +468,6 @@ ipcMain.on("changeLocalDrive", (_, { selectedPath, externalSyncEnabled }) => {
 		});
 		store.set("workspaces", workspaces);
 		store.set("localDrive", selectedPath);
-		if (externalSyncEnabled) {
-			store.set("externalSyncEnabled", true);
-		} else {
-			store.delete("externalSyncEnabled");
-		}
 		currentWorkDirectory = selectedPath;
 		mainWindow.webContents.send("set-local-root", currentWorkDirectory);
 	}
@@ -513,88 +499,6 @@ ipcMain.on("setConnectionOptions", (_, options) => {
 	mainWindow.webContents.send("desktopReady");
 });
 
-function parsePath(p) {
-	return p.replaceAll(path.sep, path.posix.sep);
-}
-
-let autoFolderWatcher;
-const watchedAutoFolders = [];
-async function StartWatcher(workPath) {
-	if (!fs.existsSync(workPath)) {
-		return;
-	}
-	if (!autoFolderWatcher) {
-		autoFolderWatcher = chokidar.watch(workPath, {
-			ignored: [/\.DS_Store/, /Thumbs\.db/],
-			persistent: true,
-			ignoreInitial: true,
-			followSymlinks: false,
-		});
-		autoFolderWatcher
-			.on("add", (p) => {
-				mainWindow.webContents.send("auto-file-added", p);
-			})
-			.on("error", (err) => {
-				log("Chokidar error:", err);
-			})
-			.on("ready", () => {
-				log("Watching for changes on", workPath);
-			});
-	} else {
-		autoFolderWatcher.add(workPath);
-	}
-
-	watchedAutoFolders.push(workPath);
-}
-
-let entityWatcher;
-const watchedEntities = [];
-ipcMain.on("watchFolder", (_, folder) => {
-	if (!folder.id || !folder.path) return;
-	const existing = watchedEntities.some((f) => f.id === folder.id);
-	if (existing) return;
-	if (watchedEntities.length + 1 > 10) {
-		const toRemove = watchedEntities.shift();
-		if (entityWatcher && toRemove) {
-			entityWatcher.unwatch(toRemove.path);
-		}
-	}
-
-	watchedEntities.push(folder);
-
-	const folderFullPath = path.join(currentWorkDirectory, folder.path);
-
-	if (!fs.existsSync(folderFullPath)) {
-		return;
-	}
-
-	if (!entityWatcher) {
-		entityWatcher = chokidar.watch(folderFullPath, {
-			ignored: /^\./,
-			persistent: true,
-			ignoreInitial: true,
-			followSymlinks: false,
-		});
-		entityWatcher.on("add", (p) => {
-			const filePath = p.replace(currentWorkDirectory, "");
-			const catPath = path.dirname(filePath);
-			mainWindow.webContents.send("file-added", parsePath(catPath));
-		});
-		entityWatcher.on("unlink", (p) => {
-			const filePath = p.replace(currentWorkDirectory, "");
-			const catPath = path.dirname(filePath);
-			mainWindow.webContents.send("file-removed", parsePath(catPath));
-		});
-		entityWatcher.on("unlinkDir", (p) => {
-			const filePath = p.replace(currentWorkDirectory, "");
-			const catPath = path.dirname(filePath);
-			mainWindow.webContents.send("file-removed", parsePath(catPath));
-		});
-	} else {
-		entityWatcher.add(folderFullPath);
-	}
-});
-
 function getMediaDbUrl(url) {
 	const mediaDbUrl = store.get("mediadburl");
 	if (!mediaDbUrl) {
@@ -612,10 +516,12 @@ class UploadManager {
 		this.totalUploadsCount = 0;
 		this.activeUploadRequests = {};
 		this.isCancelled = false;
+		this.progressTO = null;
+		this.callbackID = null;
 	}
 
 	async uploadFile({
-		subFolderId,
+		callbackID,
 		sourcePath,
 		filePath,
 		assetId,
@@ -625,13 +531,13 @@ class UploadManager {
 		onCompleted,
 		onError,
 	}) {
+		this.callbackID = callbackID;
 		if (this.isCancelled) {
 			log("Cancelled uploading");
 			return;
 		}
 		log("Uploading: ", filePath);
 		const uploadPromise = this.createUploadPromise(
-			subFolderId,
 			{ sourcePath, filePath, assetId },
 			{
 				onStarted,
@@ -651,13 +557,16 @@ class UploadManager {
 		this.totalUploadsCount++;
 	}
 
-	createUploadPromise(subFolderId, formData, callbacks) {
+	createUploadPromise(formData, callbacks) {
+		const self = this;
 		return {
-			start: async () => {
+			start: async function () {
 				try {
-					if (typeof callbacks.onStarted === "function") {
-						callbacks.onStarted(subFolderId);
-					}
+					mainWindow.webContents.send("upload-started", {
+						callbackID: self.callbackID,
+					});
+
+					if (callbacks.onStarted) callbacks.onStarted(self.callbackID);
 
 					let size = fs.statSync(formData.filePath).size;
 					let loaded = 0;
@@ -671,6 +580,10 @@ class UploadManager {
 						id: formData.assetId || "",
 					};
 
+					if (self.activeUploadRequests[formData.filePath]) {
+						throw new Error("Upload already in progress");
+					}
+
 					const uploadRequest = rp({
 						method: "POST",
 						uri: getMediaDbUrl("services/module/asset/create"),
@@ -679,14 +592,25 @@ class UploadManager {
 							file: {
 								value: fs
 									.createReadStream(formData.filePath)
-									.on("data", (chunk) => {
+									.on("data", function (chunk) {
 										loaded += chunk.length;
-										if (typeof callbacks.onProgress === "function") {
-											callbacks.onProgress({
-												id: subFolderId,
-												loaded,
-												total: size,
-											});
+										if (!self.progressTO) {
+											self.progressTO = setTimeout(() => {
+												self.progressTO = null;
+												if (loaded >= size) return;
+												mainWindow.webContents.send("upload-progress", {
+													callbackID: self.callbackID,
+													loaded,
+													total: size,
+												});
+												if (callbacks.onProgress) {
+													callbacks.onProgress({
+														callbackID: self.callbackID,
+														loaded,
+														total: size,
+													});
+												}
+											}, 1000);
 										}
 									}),
 								options: {
@@ -700,35 +624,42 @@ class UploadManager {
 						headers: connectionOptions.headers,
 					});
 					uploadRequest.then(() => {
-						if (typeof callbacks.onCompleted === "function") {
-							callbacks.onCompleted(subFolderId);
-							delete this.activeUploadRequests[formData.filePath];
-						}
+						mainWindow.webContents.send("upload-completed", {
+							callbackID: self.callbackID,
+						});
+						delete self.activeUploadRequests[formData.filePath];
+						if (callbacks.onCompleted) callbacks.onCompleted(self.callbackID);
 					});
-					this.activeUploadRequests[formData.filePath] = uploadRequest;
+					self.activeUploadRequests[formData.filePath] = uploadRequest;
 				} catch (err) {
-					if (typeof callbacks.onError === "function") {
-						log(err);
+					mainWindow.webContents.send("upload-error", {
+						callbackID: self.callbackID,
+					});
+					delete self.activeUploadRequests[formData.filePath];
+					log(err);
+					if (callbacks.onError) {
 						callbacks.onError(
-							subFolderId,
+							self.callbackID,
 							err.message || JSON.stringify(err) || "Unknown error"
 						);
-						delete this.activeUploadRequests[formData.filePath];
 					}
 				} finally {
-					this.currentUploads--;
-					this.totalUploadsCount--;
-					this.processQueue();
+					self.currentUploads--;
+					self.totalUploadsCount--;
+					self.processQueue();
 				}
 			},
-			// cancel: () => {
-			//   this.currentUploads = 0;
-			//   this.uploadQueue = [];
-			//   this.totalUploadsCount = 0;
-			//   if (typeof callbacks.onCancel === "function") {
-			//     callbacks.onCancel();
-			//   }
-			// },
+			cancel: function () {
+				Object.keys(self.activeUploadRequests).forEach((key) => {
+					self.activeUploadRequests[key].abort?.();
+					self.activeUploadRequests[key].cancel?.();
+				});
+				self.activeUploadRequests = {};
+				self.currentUploads = 0;
+				self.uploadQueue = [];
+				self.totalUploadsCount = 0;
+				if (callbacks.onCancel) callbacks.onCancel();
+			},
 		};
 	}
 
@@ -828,30 +759,26 @@ function getFilesByDirectory(directory) {
 	};
 }
 
-const autoUploadCounter = new UploadCounter();
-const autoUploadManager = new UploadManager();
+const uploadCounter = new UploadCounter();
+const uploadManager = new UploadManager();
 
-let lastAutoProgUpdate = 0;
-let lastUploadedFolder = [];
-async function uploadAutoFolders(folders, index = 0) {
+async function uploadLightbox(folders, index = 0, { callbackID }) {
+	if (!callbackID) {
+		console.log("callbackID not found for upload/Lightbox");
+		return;
+	}
 	if (folders.length === index) {
-		mainWindow.webContents.send("auto-upload-all-complete", lastUploadedFolder);
-		lastUploadedFolder = [];
-		autoUploadCounter.removeAllListeners("completed");
+		uploadCounter.removeAllListeners("completed");
 		return;
 	}
 
-	autoUploadCounter.once("completed", async () => {
-		await uploadAutoFolders(folders, index + 1);
+	uploadCounter.once("completed", async () => {
+		await uploadLightbox(folders, index + 1, { callbackID });
 	});
 
 	const folder = folders[index];
 
-	if (lastUploadedFolder.length !== 2) {
-		lastUploadedFolder = [folder.syncFolderId, 0];
-	}
-
-	const fetchPath = folder.localPath;
+	const fetchPath = path.join(currentWorkDirectory, folder.path);
 
 	let data = {};
 	if (fs.existsSync(fetchPath)) {
@@ -859,7 +786,7 @@ async function uploadAutoFolders(folders, index = 0) {
 	} else {
 		data = { files: [] };
 	}
-	data.categorypath = folder.categoryPath;
+	data.categorypath = folder.path;
 
 	await axios
 		.post(
@@ -871,51 +798,19 @@ async function uploadAutoFolders(folders, index = 0) {
 			if (res.data !== undefined) {
 				const filesToUpload = res.data.filestoupload;
 				if (filesToUpload !== undefined) {
-					lastUploadedFolder[1] += filesToUpload.length;
-					if (
-						filesToUpload.length === 0 &&
-						lastUploadedFolder[0] !== folder.syncFolderId
-					) {
-						mainWindow.webContents.send(
-							"auto-upload-each-complete",
-							lastUploadedFolder
-						);
-					}
-					autoUploadCounter.setTotal(filesToUpload.length);
+					uploadCounter.setTotal(filesToUpload.length);
 					filesToUpload.forEach((item) => {
 						const filePath = path.join(fetchPath, item.path);
-						autoUploadManager.uploadFile({
-							subFolderId: folder.syncFolderId,
+						uploadManager.uploadFile({
+							callbackID,
 							filePath: filePath,
 							assetId: item.id,
-							sourcePath: path.join(folder.categoryPath, item.path),
-							onProgress: ({ loaded }) => {
-								if (lastAutoProgUpdate + 1000 < Date.now()) {
-									lastAutoProgUpdate = Date.now();
-									mainWindow.webContents.send("auto-upload-progress", loaded);
-								}
-							},
+							sourcePath: path.join(folder.path, item.path),
 							onCompleted: () => {
-								if (lastUploadedFolder[0] !== folder.syncFolderId) {
-									mainWindow.webContents.send(
-										"auto-upload-entity-complete",
-										lastUploadedFolder
-									);
-								}
-								lastUploadedFolder[0] = folder.syncFolderId;
-								mainWindow.webContents.send("auto-upload-next", {
-									id: folder.syncFolderId,
-									size: fs.statSync(filePath).size || 0,
-								});
-								autoUploadCounter.incrementCompleted();
+								uploadCounter.incrementCompleted();
 							},
-							onError: (id, err) => {
-								lastUploadedFolder[0] = folder.syncFolderId;
-								autoUploadCounter.incrementCompleted();
-								mainWindow.webContents.send("auto-upload-error", {
-									id,
-									error: err,
-								});
+							onError: () => {
+								uploadCounter.incrementCompleted();
 							},
 						});
 					});
@@ -927,8 +822,8 @@ async function uploadAutoFolders(folders, index = 0) {
 			}
 		})
 		.catch(function (err) {
-			autoUploadCounter.setTotal(0);
-			error("Error on upload/AutoFolders: " + category.path);
+			uploadCounter.setTotal(0);
+			error("Error on upload/Lightbox: " + folder.path);
 			error(err);
 		});
 }
@@ -951,79 +846,8 @@ function getDirectories(p) {
 	return directories;
 }
 
-let subfolders = [];
-ipcMain.on("syncAutoFolders", (_, syncFolders) => {
-	subfolders = [];
-	const ids = [];
-	syncFolders.forEach((folder) => {
-		const localPath = folder.localPath;
-		const folderId = folder.syncFolderId;
-		const categoryPath = folder.categoryPath;
-
-		ids.push(folderId);
-
-		if (!fs.existsSync(localPath)) {
-			fs.mkdirSync(localPath, { recursive: true });
-		}
-
-		if (watchedAutoFolders.indexOf(localPath) === -1) {
-			StartWatcher(localPath);
-		}
-
-		const directories = getDirectories(localPath);
-		directories.forEach((dir) => {
-			subfolders.push({
-				syncFolderId: folderId,
-				localPath: dir,
-				categoryPath: path.join(categoryPath, dir.replace(localPath, "")),
-			});
-		});
-	});
-
-	mainWindow.webContents.send("scan-auto-folder-completed", ids);
-});
-
-ipcMain.on("startAutoFoldersUpload", (_) => {
-	uploadAutoFolders(subfolders);
-});
-
-ipcMain.on("cancelAutoUpload", () => {
-	autoUploadManager.cancelAllUpload();
-	mainWindow.webContents.send("upload-canceled");
-});
-
 ipcMain.on("abortUpload", () => {
-	entityUploadManager.cancelAllUpload();
-});
-const dropUploadManager = new UploadManager();
-const dropUploadCounter = new UploadCounter();
-ipcMain.on("filesDropped", (_, { data, files }) => {
-	// dropUploadCounter.setTotal(files.length);
-	const categoryPath = data.categorypath;
-	const entityId = data.entityid;
-	log("filesDropped", files, categoryPath, entityId);
-
-	let filePaths = [];
-	files.forEach((filePath) => {
-		if (!fs.existsSync(filePath)) {
-			return;
-		}
-		const stats = fs.statSync(filePath);
-		console.log(stats.isDirectory());
-		if (stats.isDirectory()) {
-			console.log(getAllFiles(filePath));
-			filePaths = filePaths.concat(getAllFiles(filePath));
-		} else {
-			filePaths.push(filePath);
-		}
-	});
-	log("filePaths", filePaths);
-	// files.forEach((filePath) => {
-	// 	dropUploadManager.uploadFile({
-	// 		subFolderId: data.categoryid,
-	// 		filePath: filePath,
-	// 	});
-	// });
+	uploadManager.cancelAllUpload();
 });
 
 ipcMain.on("select-dirs", async (_, arg) => {
@@ -1207,132 +1031,6 @@ function setMainMenu() {
 		},
 	];
 	Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-}
-
-ipcMain.on("uploadFolder", (event, options) => {
-	log("uploadFolder called", options);
-	let inSourcepath = options["absPath"];
-	let inMediadbUrl = options["mediadburl"];
-	entermediaKey = options["entermediakey"];
-
-	dialog
-		.showOpenDialog(mainWindow, {
-			properties: ["openFile", "openDirectory"],
-		})
-		.then((result) => {
-			let directory = result.filePaths[0];
-			if (directory != undefined) {
-				store.set("uploaddefaultpath", directory);
-				startFolderUpload(directory, inSourcepath, inMediadbUrl, options);
-			}
-		})
-		.catch((err) => {
-			error(err);
-		});
-});
-
-function startFolderUpload(
-	startingdirectory,
-	inSourcepath,
-	inMediadbUrl,
-	options
-) {
-	let dirname = path.basename(startingdirectory);
-
-	let form1 = new FormData();
-
-	if (options["moduleid"] != null && options["entityid"] != null) {
-		form1.append("moduleid", options["moduleid"]);
-		form1.append("entityid", options["entityid"]);
-	}
-
-	let savingPath = path.join(inSourcepath, dirname);
-	log("Upload start to category:" + savingPath);
-	form1.append("absPath", savingPath);
-	submitForm(
-		form1,
-		inMediadbUrl + "/services/module/userupload/uploadstart.json",
-		function () {
-			loopDirectory(startingdirectory, savingPath, inMediadbUrl);
-			runJavaScript('$("#sidebarUserUploads").trigger("click");');
-			runJavaScript("refreshEntiyDialog();");
-		}
-	);
-}
-
-function submitForm(form, formurl, formCompleted) {
-	log("Submitting Form: " + formurl);
-
-	fetch(formurl, {
-		method: "POST",
-		body: form,
-		useSessionCookie: true,
-		headers: { "X-tokentype": "entermedia", "X-token": entermediaKey },
-	})
-		.then(function (res) {
-			log("Form Submitted");
-			if (typeof formCompleted === "function") {
-				formCompleted();
-			}
-		})
-		.catch((err) => {
-			error(err);
-		});
-}
-
-function runJavaScript(code) {
-	log("Executed: " + code);
-	mainWindow.webContents.executeJavaScript(code);
-}
-
-function loopDirectory(directory, savingPath, inMediadbUrl) {
-	let filecount = 0;
-	let totalsize = 0;
-	fs.readdir(directory, (err, files) => {
-		files.forEach((file) => {
-			let filepath = path.join(directory, file);
-			let stats = fs.statSync(filepath);
-			if (stats.isDirectory()) {
-				log("Subdirectory found: " + filepath);
-				loopDirectory(filepath, savingPath, inMediadbUrl);
-			} else {
-				let fileSizeInBytes = stats.size;
-				totalsize = +fileSizeInBytes;
-			}
-		});
-	});
-
-	//ToDO: Call JSON API to verify files are not already there.
-
-	fs.readdir(directory, (err, files) => {
-		files.forEach((file) => {
-			let filepath = path.join(directory, file);
-			let stats = fs.statSync(filepath);
-			if (stats.isDirectory()) {
-				return;
-			}
-			let filestream = fs.createReadStream(filepath);
-
-			filepath = path.basename(filepath);
-
-			filepath = filepath.replace(":", "");
-			let filenamefinal = filepath.replace(currentWorkDirectory, ""); //remove user home
-			let absPath = path.join(savingPath, filenamefinal);
-			absPath = absPath.split(path.sep).join(path.posix.sep);
-
-			let form = new FormData();
-			form.append("absPath", absPath);
-			form.append("file", filestream);
-			log("Uploading: " + absPath);
-			submitForm(
-				form,
-				inMediadbUrl + "/services/module/asset/create",
-				function () {}
-			);
-			filecount++;
-			//postRequest(inPostUrl, form)
-		});
-	});
 }
 
 // ---------------------- Open file ---------------------
@@ -1524,7 +1222,7 @@ ipcMain.on("downloadAll", (_, categorypath) => {
 
 async function scanFilesRecursive(categories, index = 0) {
 	if (categories.length === index) {
-		mainWindow.webContents.send("scan-entity-complete");
+		mainWindow.webContents.send("scan-complete");
 		return;
 	}
 
@@ -1558,7 +1256,7 @@ async function scanFilesRecursive(categories, index = 0) {
 					filesToUpload.forEach((item) => {
 						folderUploadSize += parseInt(item.size);
 					});
-					mainWindow.webContents.send("scan-entity-progress", {
+					mainWindow.webContents.send("scan-progress", {
 						...category,
 						downloadSize: folderDownloadSize,
 						downloadCount: filesToDownload.length,
@@ -1855,13 +1553,8 @@ ipcMain.on("openFile", (_, options) => {
 
 ipcMain.on(
 	"openFileWithDefault",
-	(_, { categorypath, filename, dlink, lightbox, useexternalsync = false }) => {
+	(_, { categorypath, filename, dlink, useexternalsync = false }) => {
 		const filePath = path.join(currentWorkDirectory, categorypath, filename);
-		if (lightbox) {
-			mainWindow.webContents.send("show-sync-lightbox", {
-				lightbox,
-			});
-		}
 		if (fs.existsSync(filePath)) {
 			openFile(filePath);
 		} else {
@@ -1912,169 +1605,34 @@ function openFolder(path) {
 	}
 }
 
-ipcMain.on(
-	"shouldInternalSyncLightboxShow",
-	(_, { uploadsourcepath, lightbox, useexternalsync = false }) => {
-		let categoryPath;
-		if (!lightbox) {
-			categoryPath = path.join(currentWorkDirectory, uploadsourcepath);
-		} else {
-			categoryPath = path.join(
-				currentWorkDirectory,
-				uploadsourcepath,
-				lightbox
-			);
-		}
-		const externalSyncEnabled = store.get("externalSyncEnabled");
-		if (externalSyncEnabled && useexternalsync) {
-			return;
-		}
-		if (fs.existsSync(categoryPath)) {
-			mainWindow.webContents.send("show-sync-lightbox", {
-				lightbox,
-			});
-		}
-	}
-);
-ipcMain.on(
-	"internalSyncLightboxDown",
-	(_, { uploadsourcepath, lightbox, useexternalsync = false }) => {
-		let categoryPath;
-		if (!lightbox) {
-			categoryPath = uploadsourcepath;
-		} else {
-			categoryPath = path.join(uploadsourcepath, lightbox);
-		}
-		openFolder(path.join(currentWorkDirectory, categoryPath));
-		const externalSyncEnabled = store.get("externalSyncEnabled");
-		if (externalSyncEnabled && useexternalsync) {
-			mainWindow.webContents.send("internal-lightbox-sync-disabled", {
-				lightbox,
-			});
-			return;
-		} else {
-			mainWindow.webContents.send("lightbox-downloading", { lightbox });
-		}
-		log("Syncing: " + categoryPath);
-		fetchSubFolderContent(
-			categoryPath,
-			downloadFilesRecursive,
-			{ topCat: categoryPath, lightbox: true },
-			true
-		);
-	}
-);
-
-ipcMain.on(
-	"internalSyncLightboxUp",
-	(_, { uploadsourcepath, lightbox, entityId }) => {
-		let categoryPath;
-		if (!lightbox) {
-			categoryPath = uploadsourcepath;
-		} else {
-			categoryPath = path.join(uploadsourcepath, lightbox);
-		}
-		fetchSubFolderContent(categoryPath, uploadFilesRecursive, {
-			entityId,
-			lightbox: true,
-		});
-	}
-);
-
-ipcMain.on("uploadAll", async (_, { categorypath, entityId }) => {
-	fetchSubFolderContent(categorypath, uploadFilesRecursive, {
-		entityId: entityId,
-	});
+ipcMain.on("lightboxDownload", (_, { uploadsourcepath, lightbox }) => {
+	const categoryPath = path.join(uploadsourcepath, lightbox);
+	openFolder(path.join(currentWorkDirectory, categoryPath));
+	log("Syncing Down: " + categoryPath);
+	fetchSubFolderContent(
+		categoryPath,
+		downloadFilesRecursive,
+		{ topCat: categoryPath },
+		true
+	);
 });
 
-const entityUploadCounter = new UploadCounter();
-const entityUploadManager = new UploadManager();
+ipcMain.on("lightboxUpload", (_, { uploadsourcepath, lightbox }) => {
+	const categoryPath = path.join(uploadsourcepath, lightbox);
+	log("Syncing Up: " + categoryPath);
+	fetchSubFolderContent(
+		categoryPath,
+		uploadLightbox,
+		{ callbackID: categoryPath },
+		true
+	);
+});
 
-let lastEntityProgUpdate = 0;
-async function uploadFilesRecursive(categories, index = 0, options = {}) {
-	if (categories.length === index) {
-		mainWindow.webContents.send("entity-upload-complete", options);
-		entityUploadCounter.removeAllListeners("completed");
-		return;
-	}
-
-	entityUploadCounter.once("completed", async () => {
-		await uploadFilesRecursive(categories, index + 1, options);
+ipcMain.on("uploadAll", async (_, { categorypath }) => {
+	fetchSubFolderContent(categorypath, uploadLightbox, {
+		callbackID: categorypath,
 	});
-
-	const category = categories[index];
-	const fetchPath = path.join(currentWorkDirectory, category.path);
-
-	let data = {};
-	if (fs.existsSync(fetchPath)) {
-		data = readDirectory(fetchPath, true);
-	}
-	data.categorypath = category.path;
-	data.entityid = options["entityId"];
-
-	await axios
-		.post(
-			getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
-			data,
-			{ headers: connectionOptions.headers }
-		)
-		.then(function (res) {
-			if (res.data !== undefined) {
-				const filesToUpload = res.data.filestoupload;
-				if (filesToUpload !== undefined) {
-					entityUploadCounter.setTotal(filesToUpload.length);
-					filesToUpload.forEach((item) => {
-						const filePath = path.join(fetchPath, item.path);
-						entityUploadManager.uploadFile({
-							subFolderId: options["entityId"],
-							filePath: filePath,
-							assetId: item.id,
-							sourcePath: path.join(category.path, item.path),
-							onProgress: ({ id, loaded }) => {
-								if (lastEntityProgUpdate + 1000 < Date.now()) {
-									lastEntityProgUpdate = Date.now();
-									mainWindow.webContents.send("entity-upload-progress", {
-										id,
-										index: category.index,
-										loaded,
-										...options,
-									});
-								}
-							},
-							onCompleted: () => {
-								const f = fs.statSync(filePath);
-								mainWindow.webContents.send("entity-upload-next", {
-									id: options["entityId"],
-									index: category.index,
-									size: f.size,
-									...options,
-								});
-								entityUploadCounter.incrementCompleted();
-							},
-							onError: (id, err) => {
-								entityUploadCounter.incrementCompleted();
-								mainWindow.webContents.send("entity-upload-error", {
-									id,
-									index: category.index,
-									error: err,
-									...options,
-								});
-							},
-						});
-					});
-				} else {
-					throw new Error("No files found");
-				}
-			} else {
-				throw new Error("No data found");
-			}
-		})
-		.catch(function (err) {
-			entityUploadCounter.setTotal(0);
-			error("Error on upload/FilesRecursive: " + category.path);
-			error(err);
-		});
-}
+});
 
 ipcMain.on("trashExtraFiles", async (_, { categorypath }) => {
 	fetchSubFolderContent(categorypath, trashFilesRecursive);

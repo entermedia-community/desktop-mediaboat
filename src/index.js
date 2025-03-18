@@ -562,11 +562,6 @@ async function uploadFilesRecursive(files, identifier) {
 
 	updateOverallProgress();
 
-	setTimeout(() => {
-		console.log("TEST: Aborting upload after 6 seconds");
-		abortControllers[identifier].abort();
-	}, 6000);
-
 	// Process files one by one
 	const processNextFile = async () => {
 		if (abortControllers[identifier] === undefined) return;
@@ -679,6 +674,14 @@ ipcMain.on("cancel-upload", (_, identifier) => {
 	abortControllers[identifier]?.abort();
 	delete abortControllers[identifier];
 	mainWindow.webContents.send("upload-cancelled");
+});
+
+ipcMain.on("cancel=all-upload", () => {
+	Object.keys(abortControllers).forEach((key) => {
+		abortControllers[key].abort();
+		delete abortControllers[key];
+	});
+	mainWindow.webContents.send("upload-all-cancelled");
 });
 
 ipcMain.on("check-uploads", () => {

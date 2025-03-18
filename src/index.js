@@ -27,6 +27,8 @@ const rp = require("request-promise");
 const { parse: parseURL } = require("node:url");
 const qs = require("node:querystring");
 
+const { got } = require("got-cjs");
+
 require("dotenv").config();
 electronLog.initialize();
 electronLog.transports.console.level = "debug";
@@ -508,210 +510,180 @@ function getMediaDbUrl(url) {
 	return mediaDbUrl + "/" + url;
 }
 
-class UploadManager {
-	constructor(maxConcurrentUploads = 4) {
-		this.uploadQueue = [];
-		this.maxConcurrentUploads = maxConcurrentUploads;
-		this.currentUploads = 0;
-		this.totalUploadsCount = 0;
-		this.activeUploadRequests = {};
-		this.isCancelled = false;
-		this.progressTO = null;
-		this.callbackID = null;
+const abortControllers = {};
+
+function validateDupes(identifier, identifiers) {
+	for (let i = 0; i < identifiers.length; i++) {
+		const identifier2 = identifiers[i];
+		if (identifier === identifier2) return true;
+		else if (identifier.startsWith(identifier2)) return true;
+		else if (identifier2.startsWith(identifier)) return true;
+	}
+	return false;
+}
+
+async function uploadFilesRecursive(files, identifier) {
+	//Check if the same identifier is already being processed
+	if (Object.keys(abortControllers).length > 3) {
+		mainWindow.webContents.send("too-many-uploads", {
+			identifier,
+		});
+		return;
+	}
+	if (
+		abortControllers[identifier] !== undefined ||
+		validateDupes(identifier, Object.keys(abortControllers))
+	) {
+		mainWindow.webContents.send("duplicate-upload", {
+			identifier,
+		});
+		return;
 	}
 
-	async uploadFile({
-		callbackID,
-		sourcePath,
-		filePath,
-		assetId,
-		onStarted,
-		onCancel,
-		onProgress,
-		onCompleted,
-		onError,
-	}) {
-		this.callbackID = callbackID;
-		if (this.isCancelled) {
-			log("Cancelled uploading");
+	// Create abort controller
+	abortControllers[identifier] = new AbortController();
+
+	let currentFileIndex = 0;
+	let totalFiles = files.length;
+	let completedFiles = 0;
+	let failedFiles = 0;
+
+	// Function to update overall progress
+	const updateOverallProgress = () => {
+		mainWindow.webContents.send("upload-progress-update", {
+			completed: completedFiles,
+			failed: failedFiles,
+			total: totalFiles,
+			remaining: totalFiles - completedFiles - failedFiles,
+			percent: Math.round((completedFiles / totalFiles) * 100),
+			identifier,
+		});
+	};
+
+	updateOverallProgress();
+
+	setTimeout(() => {
+		console.log("TEST: Aborting upload after 6 seconds");
+		abortControllers[identifier].abort();
+	}, 6000);
+
+	// Process files one by one
+	const processNextFile = async () => {
+		if (abortControllers[identifier] === undefined) return;
+		// Check if we've processed all files
+		if (currentFileIndex >= totalFiles) {
+			mainWindow.webContents.send("upload-completed", {
+				success: true,
+				completed: completedFiles,
+				failed: failedFiles,
+				total: totalFiles,
+				identifier,
+			});
+			delete abortControllers[identifier];
 			return;
 		}
-		log("Uploading: ", filePath);
-		const uploadPromise = this.createUploadPromise(
-			{ sourcePath, filePath, assetId },
-			{
-				onStarted,
-				onProgress,
-				onCancel,
-				onCompleted,
-				onError,
-			}
-		);
 
-		if (this.currentUploads < this.maxConcurrentUploads) {
-			this.currentUploads++;
-			uploadPromise.start();
-		} else {
-			this.uploadQueue.push(uploadPromise);
-		}
-		this.totalUploadsCount++;
-	}
+		const currentFile = files[currentFileIndex];
+		currentFile.size = fs.statSync(currentFile.path).size;
 
-	createUploadPromise(formData, callbacks) {
-		const self = this;
-		return {
-			start: async function () {
-				try {
-					mainWindow.webContents.send("upload-started", {
-						callbackID: self.callbackID,
-					});
-
-					if (callbacks.onStarted) callbacks.onStarted(self.callbackID);
-
-					let size = fs.statSync(formData.filePath).size;
-					let loaded = 0;
-
-					const jsonrequest = {
-						sourcepath: formData.sourcePath.replaceAll(
-							path.sep,
-							path.posix.sep
-						),
-						filesize: size,
-						id: formData.assetId || "",
-					};
-
-					if (self.activeUploadRequests[formData.filePath]) {
-						throw new Error("Upload already in progress");
-					}
-
-					const uploadRequest = rp({
-						method: "POST",
-						uri: getMediaDbUrl("services/module/asset/create"),
-						formData: {
-							jsonrequest: JSON.stringify(jsonrequest),
-							file: {
-								value: fs
-									.createReadStream(formData.filePath)
-									.on("data", function (chunk) {
-										loaded += chunk.length;
-										if (!self.progressTO) {
-											self.progressTO = setTimeout(() => {
-												self.progressTO = null;
-												if (loaded >= size) return;
-												mainWindow.webContents.send("upload-progress", {
-													callbackID: self.callbackID,
-													loaded,
-													total: size,
-												});
-												if (callbacks.onProgress) {
-													callbacks.onProgress({
-														callbackID: self.callbackID,
-														loaded,
-														total: size,
-													});
-												}
-											}, 1000);
-										}
-									}),
-								options: {
-									filename: path.basename(formData.filePath),
-									contentType: mime.contentType(
-										path.extname(formData.filePath)
-									),
-								},
-							},
-						},
-						headers: connectionOptions.headers,
-					});
-					uploadRequest.then(() => {
-						mainWindow.webContents.send("upload-completed", {
-							callbackID: self.callbackID,
-						});
-						delete self.activeUploadRequests[formData.filePath];
-						if (callbacks.onCompleted) callbacks.onCompleted(self.callbackID);
-					});
-					self.activeUploadRequests[formData.filePath] = uploadRequest;
-				} catch (err) {
-					mainWindow.webContents.send("upload-error", {
-						callbackID: self.callbackID,
-					});
-					delete self.activeUploadRequests[formData.filePath];
-					log(err);
-					if (callbacks.onError) {
-						callbacks.onError(
-							self.callbackID,
-							err.message || JSON.stringify(err) || "Unknown error"
-						);
-					}
-				} finally {
-					self.currentUploads--;
-					self.totalUploadsCount--;
-					self.processQueue();
-				}
-			},
-			cancel: function () {
-				Object.keys(self.activeUploadRequests).forEach((key) => {
-					self.activeUploadRequests[key].abort?.();
-					self.activeUploadRequests[key].cancel?.();
-				});
-				self.activeUploadRequests = {};
-				self.currentUploads = 0;
-				self.uploadQueue = [];
-				self.totalUploadsCount = 0;
-				if (callbacks.onCancel) callbacks.onCancel();
-			},
-		};
-	}
-
-	processQueue() {
-		if (
-			this.currentUploads < this.maxConcurrentUploads &&
-			this.uploadQueue.length > 0
-		) {
-			const nextUpload = this.uploadQueue.shift();
-			this.currentUploads++;
-			nextUpload.start();
-		}
-	}
-
-	cancelAllUpload() {
-		this.isCancelled = true;
-		Object.keys(this.activeUploadRequests).forEach((key) => {
-			this.activeUploadRequests[key].abort();
-			this.activeUploadRequests[key].cancel();
+		// Update current file status to "uploading"
+		mainWindow.webContents.send("file-status-update", {
+			index: currentFileIndex,
+			name: currentFile.name,
+			size: currentFile.size,
+			status: "uploading",
+			progress: 0,
+			identifier,
 		});
-		this.activeUploadRequests = {};
-		this.currentUploads = 0;
-		this.uploadQueue = [];
-		this.totalUploadsCount = 0;
-		this.isCancelled = false;
-	}
+
+		const jsonrequest = {
+			sourcepath: currentFile.sourcePath.replaceAll(path.sep, path.posix.sep),
+			filesize: currentFile.size,
+			id: "",
+		};
+
+		// Create form data for this single file
+		const formData = new FormData();
+		formData.append("jsonrequest", JSON.stringify(jsonrequest));
+		const fileStream = fs.createReadStream(currentFile.path);
+		formData.append("file", fileStream, { filename: currentFile.name });
+
+		// Debounce progress updates
+		let lastProgressUpdate = 0;
+
+		try {
+			// Upload the file with progress tracking
+			await got
+				.post(getMediaDbUrl("services/module/asset/create"), {
+					body: formData,
+					headers: {
+						...formData.getHeaders(),
+						...connectionOptions.headers,
+					},
+					signal: abortControllers[identifier].signal,
+				})
+				.on("uploadProgress", (progress) => {
+					// Send individual file progress
+					if (Date.now() - lastProgressUpdate < 1000) return;
+					lastProgressUpdate = Date.now();
+					mainWindow.webContents.send("file-progress-update", {
+						index: currentFileIndex,
+						fileName: currentFile.name,
+						loaded: progress.transferred,
+						total: progress.total,
+						percent: progress.percent,
+						identifier,
+					});
+				});
+
+			// Mark file as completed
+			completedFiles++;
+			mainWindow.webContents.send("file-status-update", {
+				index: currentFileIndex,
+				name: currentFile.name,
+				size: currentFile.size,
+				status: "completed",
+				progress: 100,
+				identifier,
+			});
+		} catch (error) {
+			// Mark file as failed
+			failedFiles++;
+			mainWindow.webContents.send("file-status-update", {
+				index: currentFileIndex,
+				name: currentFile.name,
+				size: currentFile.size,
+				status: "failed",
+				error: error.message,
+				identifier,
+			});
+
+			console.error(`Error uploading file ${currentFile.name}:`);
+		}
+
+		// Update overall progress
+		updateOverallProgress();
+
+		// Move to next file
+		currentFileIndex++;
+
+		// Process the next file
+		processNextFile();
+	};
+
+	// Start processing files
+	processNextFile();
 }
 
-class UploadCounter extends EventEmitter {
-	constructor() {
-		super();
-		this.totalUploads = 0;
-		this.completedUploads = 0;
-	}
+ipcMain.on("cancel-upload", (_, identifier) => {
+	abortControllers[identifier]?.abort();
+	delete abortControllers[identifier];
+	mainWindow.webContents.send("upload-cancelled");
+});
 
-	setTotal(count) {
-		this.totalUploads = count;
-		this.completedUploads = 0;
-		if (count === 0) {
-			this.emit("completed");
-		}
-	}
-
-	incrementCompleted() {
-		this.completedUploads++;
-		if (this.completedUploads >= this.totalUploads) {
-			this.emit("completed");
-			this.completedUploads = 0;
-			this.totalUploads = 0;
-		}
-	}
-}
+ipcMain.on("check-uploads", () => {
+	mainWindow.webContents.send("check-uploads", Object.keys(abortControllers));
+});
 
 function getDirectoryStats(dirPath) {
 	let totalFiles = 0;
@@ -759,73 +731,54 @@ function getFilesByDirectory(directory) {
 	};
 }
 
-const uploadCounter = new UploadCounter();
-const uploadManager = new UploadManager();
-
-async function uploadLightbox(folders, index = 0, { callbackID }) {
-	if (!callbackID) {
-		console.log("callbackID not found for upload/Lightbox");
+async function uploadLightbox(folders, identifier) {
+	if (!identifier) {
+		console.log("identifier not found for upload/Lightbox");
 		return;
 	}
-	if (folders.length === index) {
-		uploadCounter.removeAllListeners("completed");
+	if (folders.length === 0) {
+		console.log("folders not found for upload/Lightbox");
 		return;
 	}
+	const filesToUpload = [];
+	const fetchFilesToUpload = async (folders, index) => {
+		const folder = folders[index];
+		try {
+			const fetchPath = path.join(currentWorkDirectory, folder.path);
+			let data = {};
+			if (fs.existsSync(fetchPath)) {
+				data = getFilesByDirectory(fetchPath, true);
+			} else {
+				data = { files: [] };
+			}
+			data.categorypath = folder.path;
+			const res = await axios.post(
+				getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
+				data,
+				{ headers: connectionOptions.headers }
+			);
 
-	uploadCounter.once("completed", async () => {
-		await uploadLightbox(folders, index + 1, { callbackID });
-	});
-
-	const folder = folders[index];
-
-	const fetchPath = path.join(currentWorkDirectory, folder.path);
-
-	let data = {};
-	if (fs.existsSync(fetchPath)) {
-		data = getFilesByDirectory(fetchPath, true);
-	} else {
-		data = { files: [] };
-	}
-	data.categorypath = folder.path;
-
-	await axios
-		.post(
-			getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
-			data,
-			{ headers: connectionOptions.headers }
-		)
-		.then(function (res) {
 			if (res.data !== undefined) {
-				const filesToUpload = res.data.filestoupload;
-				if (filesToUpload !== undefined) {
-					uploadCounter.setTotal(filesToUpload.length);
-					filesToUpload.forEach((item) => {
-						const filePath = path.join(fetchPath, item.path);
-						uploadManager.uploadFile({
-							callbackID,
-							filePath: filePath,
-							assetId: item.id,
-							sourcePath: path.join(folder.path, item.path),
-							onCompleted: () => {
-								uploadCounter.incrementCompleted();
-							},
-							onError: () => {
-								uploadCounter.incrementCompleted();
-							},
+				const ftu = res.data.filestoupload;
+				if (ftu !== undefined) {
+					ftu.forEach((file) => {
+						const filePath = path.join(fetchPath, file.path);
+						filesToUpload.push({
+							path: filePath,
+							name: path.basename(filePath),
+							size: parseInt(file.size),
+							sourcePath: path.join(folder.path, file.path),
 						});
 					});
-				} else {
-					throw new Error("No files found");
 				}
-			} else {
-				throw new Error("No data found");
 			}
-		})
-		.catch(function (err) {
-			uploadCounter.setTotal(0);
+		} catch (err) {
 			error("Error on upload/Lightbox: " + folder.path);
 			error(err);
-		});
+		}
+	};
+	await fetchFilesToUpload(folders, 0);
+	uploadFilesRecursive(filesToUpload, identifier);
 }
 
 function getDirectories(p) {
@@ -1198,7 +1151,7 @@ async function fetchSubFolderContent(
 						addExtraFoldersToList(categories, categorypath);
 					}
 					if (args) {
-						callback(categories, 0, args);
+						callback(categories, args);
 					} else {
 						callback(categories);
 					}
@@ -1620,18 +1573,11 @@ ipcMain.on("lightboxDownload", (_, { uploadsourcepath, lightbox }) => {
 ipcMain.on("lightboxUpload", (_, { uploadsourcepath, lightbox }) => {
 	const categoryPath = path.join(uploadsourcepath, lightbox);
 	log("Syncing Up: " + categoryPath);
-	fetchSubFolderContent(
-		categoryPath,
-		uploadLightbox,
-		{ callbackID: categoryPath },
-		true
-	);
+	fetchSubFolderContent(categoryPath, uploadLightbox, categoryPath, true);
 });
 
 ipcMain.on("uploadAll", async (_, { categorypath }) => {
-	fetchSubFolderContent(categorypath, uploadLightbox, {
-		callbackID: categorypath,
-	});
+	fetchSubFolderContent(categorypath, uploadLightbox, categorypath);
 });
 
 ipcMain.on("trashExtraFiles", async (_, { categorypath }) => {

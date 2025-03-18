@@ -1,4 +1,4 @@
-const { ipcRenderer, webUtils } = require("electron");
+const { ipcRenderer } = require("electron");
 
 process.once("loaded", () => {
 	window.addEventListener("message", (evt) => {

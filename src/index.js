@@ -23,7 +23,6 @@ const fs = require("fs");
 const mime = require("mime-types");
 const OS = require("os");
 const path = require("node:path");
-const rp = require("request-promise");
 const { parse: parseURL } = require("node:url");
 const qs = require("node:querystring");
 
@@ -512,34 +511,19 @@ function getMediaDbUrl(url) {
 
 const abortControllers = {};
 
-function validateDupes(identifier, identifiers) {
+function isValidUpload(identifier) {
+	if (abortControllers[identifier] !== undefined) return false;
+	const identifiers = Object.keys(abortControllers);
 	for (let i = 0; i < identifiers.length; i++) {
 		const identifier2 = identifiers[i];
-		if (identifier === identifier2) return true;
-		else if (identifier.startsWith(identifier2)) return true;
-		else if (identifier2.startsWith(identifier)) return true;
+		if (identifier === identifier2) return false;
+		else if (identifier.startsWith(identifier2)) return false;
+		else if (identifier2.startsWith(identifier)) return false;
 	}
-	return false;
+	return true;
 }
 
 async function uploadFilesRecursive(files, identifier) {
-	//Check if the same identifier is already being processed
-	if (Object.keys(abortControllers).length > 3) {
-		mainWindow.webContents.send("too-many-uploads", {
-			identifier,
-		});
-		return;
-	}
-	if (
-		abortControllers[identifier] !== undefined ||
-		validateDupes(identifier, Object.keys(abortControllers))
-	) {
-		mainWindow.webContents.send("duplicate-upload", {
-			identifier,
-		});
-		return;
-	}
-
 	// Create abort controller
 	abortControllers[identifier] = new AbortController();
 
@@ -555,7 +539,9 @@ async function uploadFilesRecursive(files, identifier) {
 			failed: failedFiles,
 			total: totalFiles,
 			remaining: totalFiles - completedFiles - failedFiles,
-			percent: Math.round((completedFiles / totalFiles) * 100),
+			percent: Math.round(
+				(completedFiles / (totalFiles ? totalFiles : 1)) * 100
+			),
 			identifier,
 		});
 	};
@@ -567,28 +553,34 @@ async function uploadFilesRecursive(files, identifier) {
 		if (abortControllers[identifier] === undefined) return;
 		// Check if we've processed all files
 		if (currentFileIndex >= totalFiles) {
+			delete abortControllers[identifier];
 			mainWindow.webContents.send("upload-completed", {
 				success: true,
 				completed: completedFiles,
 				failed: failedFiles,
 				total: totalFiles,
 				identifier,
+				remainingUploads: Object.keys(abortControllers),
 			});
-			delete abortControllers[identifier];
 			return;
 		}
 
 		const currentFile = files[currentFileIndex];
 		currentFile.size = fs.statSync(currentFile.path).size;
+		currentFile.mime = mime.lookup(currentFile.name);
 
-		// Update current file status to "uploading"
-		mainWindow.webContents.send("file-status-update", {
+		const fileStatusPayload = {
 			index: currentFileIndex,
 			name: currentFile.name,
 			size: currentFile.size,
+			identifier,
+		};
+
+		// Update current file status to "uploading"
+		mainWindow.webContents.send("file-status-update", {
+			...fileStatusPayload,
 			status: "uploading",
 			progress: 0,
-			identifier,
 		});
 
 		const jsonrequest = {
@@ -622,35 +614,27 @@ async function uploadFilesRecursive(files, identifier) {
 					if (Date.now() - lastProgressUpdate < 1000) return;
 					lastProgressUpdate = Date.now();
 					mainWindow.webContents.send("file-progress-update", {
-						index: currentFileIndex,
-						fileName: currentFile.name,
+						...fileStatusPayload,
 						loaded: progress.transferred,
 						total: progress.total,
 						percent: progress.percent,
-						identifier,
 					});
 				});
 
 			// Mark file as completed
 			completedFiles++;
 			mainWindow.webContents.send("file-status-update", {
-				index: currentFileIndex,
-				name: currentFile.name,
-				size: currentFile.size,
+				...fileStatusPayload,
 				status: "completed",
 				progress: 100,
-				identifier,
 			});
 		} catch (error) {
 			// Mark file as failed
 			failedFiles++;
 			mainWindow.webContents.send("file-status-update", {
-				index: currentFileIndex,
-				name: currentFile.name,
-				size: currentFile.size,
+				...fileStatusPayload,
 				status: "failed",
 				error: error.message,
-				identifier,
 			});
 
 			console.error(`Error uploading file ${currentFile.name}:`);
@@ -673,7 +657,7 @@ async function uploadFilesRecursive(files, identifier) {
 ipcMain.on("cancel-upload", (_, identifier) => {
 	abortControllers[identifier]?.abort();
 	delete abortControllers[identifier];
-	mainWindow.webContents.send("upload-cancelled");
+	mainWindow.webContents.send("upload-cancelled", identifier);
 });
 
 ipcMain.on("cancel=all-upload", () => {
@@ -781,6 +765,7 @@ async function uploadLightbox(folders, identifier) {
 		}
 	};
 	await fetchFilesToUpload(folders, 0);
+	mainWindow.webContents.send("upload-started", identifier);
 	uploadFilesRecursive(filesToUpload, identifier);
 }
 
@@ -1575,13 +1560,26 @@ ipcMain.on("lightboxDownload", (_, { uploadsourcepath, lightbox }) => {
 
 ipcMain.on("lightboxUpload", (_, { uploadsourcepath, lightbox }) => {
 	const categoryPath = path.join(uploadsourcepath, lightbox);
+	//Check if the same categoryPath is already being processed
+	if (Object.keys(abortControllers).length > 3) {
+		mainWindow.webContents.send("too-many-uploads", {
+			categoryPath,
+		});
+		return;
+	}
+	if (!isValidUpload(categoryPath)) {
+		mainWindow.webContents.send("duplicate-upload", {
+			categoryPath,
+		});
+		return;
+	}
 	log("Syncing Up: " + categoryPath);
-	fetchSubFolderContent(categoryPath, uploadLightbox, categoryPath, true);
+	fetchSubFolderContent(categoryPath, uploadLightbox, categoryPath);
 });
 
-ipcMain.on("uploadAll", async (_, { categorypath }) => {
-	fetchSubFolderContent(categorypath, uploadLightbox, categorypath);
-});
+// ipcMain.on("uploadAll", async (_, { categorypath }) => {
+// 	fetchSubFolderContent(categorypath, uploadLightbox, categorypath);
+// });
 
 ipcMain.on("trashExtraFiles", async (_, { categorypath }) => {
 	fetchSubFolderContent(categorypath, trashFilesRecursive);

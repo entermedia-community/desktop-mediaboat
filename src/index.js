@@ -17,7 +17,6 @@ const {
 const electronLog = require("electron-log");
 const Store = require("electron-store");
 const { download: eDownload, CancelError } = require("electron-dl");
-const { EventEmitter } = require("events");
 const FormData = require("form-data");
 const fs = require("fs");
 const mime = require("mime-types");
@@ -509,12 +508,12 @@ function getMediaDbUrl(url) {
 	return mediaDbUrl + "/" + url;
 }
 
-const abortControllers = {};
+const uploadAbortControllers = {};
 const cancelledUploads = {};
 
 function isValidUpload(identifier) {
-	if (abortControllers[identifier] !== undefined) return false;
-	const identifiers = Object.keys(abortControllers);
+	if (uploadAbortControllers[identifier] !== undefined) return false;
+	const identifiers = Object.keys(uploadAbortControllers);
 	for (let i = 0; i < identifiers.length; i++) {
 		const identifier2 = identifiers[i];
 		if (identifier === identifier2) return false;
@@ -544,7 +543,7 @@ async function uploadFilesRecursive(files, identifier) {
 
 	// Function to update overall progress
 	const updateOverallProgress = () => {
-		mainWindow.webContents.send("upload-progress-update", {
+		mainWindow.webContents.send("sync-progress-update", {
 			completed: completedFiles,
 			failed: failedFiles,
 			total: totalFiles,
@@ -561,25 +560,26 @@ async function uploadFilesRecursive(files, identifier) {
 	// Process files one by one
 	const processNextFile = async () => {
 		if (cancelledUploads[identifier]) {
-			delete abortControllers[identifier];
+			delete uploadAbortControllers[identifier];
 			delete cancelledUploads[identifier];
 			return;
 		}
 		// Check if we've processed all files
 		if (currentFileIndex >= totalFiles) {
-			delete abortControllers[identifier];
-			mainWindow.webContents.send("upload-completed", {
+			delete uploadAbortControllers[identifier];
+			mainWindow.webContents.send("sync-completed", {
 				success: true,
 				completed: completedFiles,
 				failed: failedFiles,
 				total: totalFiles,
 				identifier,
-				remainingUploads: Object.keys(abortControllers),
+				remaining: Object.keys(uploadAbortControllers),
 			});
 			return;
 		}
+
 		// Create abort controller
-		abortControllers[identifier] = new AbortController();
+		uploadAbortControllers[identifier] = new AbortController();
 
 		const currentFile = files[currentFileIndex];
 		currentFile.size = fs.statSync(currentFile.path).size;
@@ -623,7 +623,7 @@ async function uploadFilesRecursive(files, identifier) {
 						...formData.getHeaders(),
 						...connectionOptions.headers,
 					},
-					signal: abortControllers[identifier].signal,
+					signal: uploadAbortControllers[identifier].signal,
 				})
 				.on("uploadProgress", (progress) => {
 					// Send individual file progress
@@ -670,24 +670,24 @@ async function uploadFilesRecursive(files, identifier) {
 	processNextFile();
 }
 
-ipcMain.on("cancel-upload", (_, { identifier }) => {
-	cancelledUploads[identifier] = true;
-	abortControllers[identifier]?.abort();
-	delete abortControllers[identifier];
-	mainWindow.webContents.send("upload-cancelled", identifier);
+ipcMain.on("cancelSync", (_, { identifier, isDownload }) => {
+	if (isDownload) {
+		cancelledDownloads[identifier] = true;
+		downloadAbortControllers[identifier]?.cancel();
+		delete downloadAbortControllers[identifier];
+	} else {
+		cancelledUploads[identifier] = true;
+		uploadAbortControllers[identifier]?.abort();
+		delete uploadAbortControllers[identifier];
+	}
+	mainWindow.webContents.send("sync-cancelled", { identifier, isDownload });
 });
 
-ipcMain.on("cancel=all-upload", () => {
-	Object.keys(abortControllers).forEach((key) => {
-		cancelledUploads[key] = true;
-		abortControllers[key].abort();
-		delete abortControllers[key];
+ipcMain.on("check-sync", () => {
+	mainWindow.webContents.send("check-sync", {
+		up_identifiers: Object.keys(uploadAbortControllers),
+		dn_identifiers: Object.keys(downloadAbortControllers),
 	});
-	mainWindow.webContents.send("upload-all-cancelled");
-});
-
-ipcMain.on("check-uploads", () => {
-	mainWindow.webContents.send("check-uploads", Object.keys(abortControllers));
 });
 
 function getDirectoryStats(dirPath) {
@@ -783,7 +783,7 @@ async function uploadLightbox(folders, identifier) {
 		}
 	};
 	await fetchFilesToUpload(folders, 0);
-	mainWindow.webContents.send("upload-started", {
+	mainWindow.webContents.send("sync-started", {
 		total: filesToUpload.length,
 		identifier,
 	});
@@ -1173,15 +1173,6 @@ async function fetchSubFolderContent(
 		});
 }
 
-ipcMain.on("downloadAll", (_, categorypath) => {
-	fetchSubFolderContent(
-		categorypath,
-		downloadFilesRecursive,
-		{ topCat: categorypath },
-		true
-	);
-});
-
 async function scanFilesRecursive(categories, index = 0) {
 	if (categories.length === index) {
 		mainWindow.webContents.send("scan-complete");
@@ -1369,6 +1360,21 @@ ipcMain.on("scanAll", (_, categorypath) => {
 // 	}
 // }
 
+const downloadAbortControllers = {};
+const cancelledDownloads = {};
+
+function isValidDownload(identifier) {
+	if (downloadAbortControllers[identifier] !== undefined) return false;
+	const identifiers = Object.keys(downloadAbortControllers);
+	for (let i = 0; i < identifiers.length; i++) {
+		const identifier2 = identifiers[i];
+		if (identifier === identifier2) return false;
+		else if (identifier.startsWith(identifier2)) return false;
+		else if (identifier2.startsWith(identifier)) return false;
+	}
+	return true;
+}
+
 async function downloadFilesRecursive(files, identifier) {
 	let currentFileIndex = 0;
 	let totalFiles = files.length;
@@ -1377,7 +1383,7 @@ async function downloadFilesRecursive(files, identifier) {
 
 	// Function to update overall progress
 	const updateOverallProgress = () => {
-		mainWindow.webContents.send("download-progress-update", {
+		mainWindow.webContents.send("sync-progress-update", {
 			completed: completedFiles,
 			failed: failedFiles,
 			total: totalFiles,
@@ -1386,74 +1392,119 @@ async function downloadFilesRecursive(files, identifier) {
 			// 	(completedFiles / (totalFiles ? totalFiles : 1)) * 100
 			// ),
 			identifier,
+			isDownload: true,
 		});
 	};
 
 	updateOverallProgress();
 
-	let data = {};
-	if (fs.existsSync(fetchPath)) {
-		data = readDirectory(fetchPath, false);
-	}
+	const processNextFile = async () => {
+		if (cancelledDownloads[identifier]) {
+			delete downloadAbortControllers[identifier];
+			delete cancelledDownloads[identifier];
+			return;
+		}
+		// Check if we've processed all files
+		if (currentFileIndex >= totalFiles) {
+			delete downloadAbortControllers[identifier];
+			mainWindow.webContents.send("sync-completed", {
+				success: true,
+				completed: completedFiles,
+				failed: failedFiles,
+				total: totalFiles,
+				identifier,
+				remaining: Object.keys(downloadAbortControllers),
+				isDownload: true,
+			});
+			return;
+		}
 
-	data.categorypath = category.path;
+		const currentFile = files[currentFileIndex];
+		currentFile.size = currentFile.size;
+		currentFile.mime = mime.lookup(currentFile.name);
 
-	await axios
-		.post(
-			getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
-			data,
-			{
-				headers: connectionOptions.headers,
-			}
-		)
-		.then(function (res) {
-			if (res.data !== undefined) {
-				const filesToDownload = res.data.filestodownload;
-				if (filesToDownload !== undefined) {
-					batchDownloadCounter.setTotal(filesToDownload.length);
-					filesToDownload.forEach((item) => {
-						let assetId = item.id;
-						const parsedUrl = parseURL(store.get("homeUrl"), true);
-						batchDownloadManager.downloadFile({
-							downloadItemId: assetId,
-							downloadUrl:
-								parsedUrl.protocol + "//" + parsedUrl.host + item.url,
-							directory: path.join(currentWorkDirectory, category.path),
-							onTotalProgress: ({ transferredBytes, totalBytes }) => {
-								if (lastBatchDlProgUpdate + 1000 < Date.now()) {
-									lastBatchDlProgUpdate = Date.now();
-									mainWindow.webContents.send("download-batch-progress", {
-										transferredBytes:
-											currentDownloadProgress[options.topCat] +
-											transferredBytes,
-										totalBytes,
-										...options,
-									});
-								}
-							},
-							onCompleted: ({ fileSize }) => {
-								currentDownloadProgress[options.topCat] += fileSize;
-								mainWindow.webContents.send("download-batch-next", {
-									categoryPath: category.path,
-									assetId,
-									...options,
-								});
-								batchDownloadCounter.incrementCompleted();
-							},
-						});
-					});
-				} else {
-					throw new Error("No files found");
-				}
-			} else {
-				throw new Error("No data found");
-			}
-		})
-		.catch(function (err) {
-			batchDownloadCounter.setTotal(0);
-			error("Error on download Folder: " + category.path);
-			error(err);
+		const fileStatusPayload = {
+			index: currentFileIndex,
+			name: clipTextMiddle(currentFile.name),
+			size: currentFile.size,
+			identifier,
+		};
+
+		// Update current file status to "downloading"
+		mainWindow.webContents.send("file-status-update", {
+			...fileStatusPayload,
+			status: "downloading",
+			progress: 0,
+			isDownload: true,
 		});
+
+		// Debounce progress updates
+		let lastProgressUpdate = 0;
+
+		try {
+			// Download the file with progress tracking
+			downloadAbortControllers[identifier] = await eDownload(
+				mainWindow,
+				currentFile.url,
+				{
+					directory: currentFile.saveTo,
+					// onTotalProgress,
+					onProgress: (progress) => {
+						// Send individual file progress
+						if (Date.now() - lastProgressUpdate < 1000) return;
+						lastProgressUpdate = Date.now();
+						mainWindow.webContents.send("file-progress-update", {
+							...fileStatusPayload,
+							loaded: progress.transferredBytes,
+							total: progress.totalBytes,
+							percent: progress.percent,
+							isDownload: true,
+						});
+					},
+					onCompleted: () => {
+						// Mark file as completed
+						completedFiles++;
+						mainWindow.webContents.send("file-status-update", {
+							...fileStatusPayload,
+							status: "completed",
+							progress: 100,
+							isDownload: true,
+						});
+					},
+					openFolderWhenDone: true,
+					overwrite: true,
+					saveAs: currentFile.saveTo === undefined,
+					showBadge: true,
+					showProgressBar: true,
+				}
+			);
+		} catch (error) {
+			if (!error instanceof CancelError) {
+				// Mark file as failed
+				failedFiles++;
+				mainWindow.webContents.send("file-status-update", {
+					...fileStatusPayload,
+					status: "failed",
+					error: error.message,
+					isDownload: true,
+				});
+
+				console.error(`Error downloading file ${currentFile.name}:`);
+			}
+		}
+
+		// Update overall progress
+		updateOverallProgress();
+
+		// Move to next file
+		currentFileIndex++;
+
+		// Process the next file
+		setTimeout(processNextFile, 500);
+	};
+
+	// Start processing files
+	processNextFile();
 }
 
 async function downloadLightbox(folders, identifier) {
@@ -1465,6 +1516,8 @@ async function downloadLightbox(folders, identifier) {
 		console.log("folders not found for download/Lightbox");
 		return;
 	}
+
+	const downloadURLRoot = parseURL(store.get("homeUrl"), true);
 	const filesToDownload = [];
 	const fetchFilesToDownload = async (folders, index) => {
 		const folder = folders[index];
@@ -1492,7 +1545,12 @@ async function downloadLightbox(folders, identifier) {
 							path: filePath,
 							name: path.basename(filePath),
 							size: parseInt(file.size),
-							sourcePath: path.join(folder.path, file.path),
+							url:
+								downloadURLRoot.protocol +
+								"//" +
+								downloadURLRoot.host +
+								file.url,
+							saveTo: fetchPath,
 						});
 					});
 				}
@@ -1503,10 +1561,13 @@ async function downloadLightbox(folders, identifier) {
 		}
 	};
 	await fetchFilesToDownload(folders, 0);
-	mainWindow.webContents.send("download-started", {
+
+	mainWindow.webContents.send("sync-started", {
 		total: filesToDownload.length,
 		identifier,
+		isDownload: true,
 	});
+
 	downloadFilesRecursive(filesToDownload, identifier);
 }
 
@@ -1591,22 +1652,32 @@ function openFolder(path) {
 	}
 }
 
-ipcMain.on("lightboxDownload", (_, { uploadsourcepath, lightbox }) => {
-	const categoryPath = path.join(uploadsourcepath, lightbox);
-	openFolder(path.join(currentWorkDirectory, categoryPath));
+function handleLightboxDownload(categoryPath) {
+	//Check if the same categoryPath is already being processed
+	if (Object.keys(uploadAbortControllers).length > 3) {
+		mainWindow.webContents.send("too-many-downloads", {
+			categoryPath,
+		});
+		return;
+	}
+	if (!isValidDownload(categoryPath)) {
+		mainWindow.webContents.send("duplicate-download", {
+			categoryPath,
+		});
+		return;
+	}
 	log("Syncing Down: " + categoryPath);
-	fetchSubFolderContent(
-		categoryPath,
-		downloadFilesRecursive,
-		{ topCat: categoryPath },
-		true
-	);
+	fetchSubFolderContent(categoryPath, downloadLightbox, categoryPath);
+}
+
+ipcMain.on("lightboxDownload", (_, { toplevelcategorypath, lightbox }) => {
+	const categoryPath = path.join(toplevelcategorypath, lightbox);
+	handleLightboxDownload(categoryPath);
 });
 
-ipcMain.on("lightboxUpload", (_, { uploadsourcepath, lightbox }) => {
-	const categoryPath = path.join(uploadsourcepath, lightbox);
+function handleLightboxUpload(categoryPath) {
 	//Check if the same categoryPath is already being processed
-	if (Object.keys(abortControllers).length > 3) {
+	if (Object.keys(uploadAbortControllers).length > 3) {
 		mainWindow.webContents.send("too-many-uploads", {
 			categoryPath,
 		});
@@ -1620,11 +1691,20 @@ ipcMain.on("lightboxUpload", (_, { uploadsourcepath, lightbox }) => {
 	}
 	log("Syncing Up: " + categoryPath);
 	fetchSubFolderContent(categoryPath, uploadLightbox, categoryPath);
+}
+
+ipcMain.on("lightboxUpload", (_, { toplevelcategorypath, lightbox }) => {
+	const categoryPath = path.join(toplevelcategorypath, lightbox);
+	handleLightboxUpload(categoryPath);
 });
 
-// ipcMain.on("uploadAll", async (_, { categorypath }) => {
-// 	fetchSubFolderContent(categorypath, uploadLightbox, categorypath);
-// });
+ipcMain.on("continueSync", async (_, { categorypath, isDownload }) => {
+	if (isDownload) {
+		handleLightboxDownload(categorypath);
+	} else {
+		handleLightboxUpload(categorypath);
+	}
+});
 
 ipcMain.on("trashExtraFiles", async (_, { categorypath }) => {
 	fetchSubFolderContent(categorypath, trashFilesRecursive);

@@ -510,6 +510,7 @@ function getMediaDbUrl(url) {
 }
 
 const abortControllers = {};
+const cancelledUploads = {};
 
 function isValidUpload(identifier) {
 	if (abortControllers[identifier] !== undefined) return false;
@@ -523,10 +524,19 @@ function isValidUpload(identifier) {
 	return true;
 }
 
-async function uploadFilesRecursive(files, identifier) {
-	// Create abort controller
-	abortControllers[identifier] = new AbortController();
+function clipTextMiddle(text, maxLength = 100) {
+	if (text.length <= maxLength) {
+		return text;
+	}
 
+	const charsPerSide = Math.floor((maxLength - 3) / 2);
+	const leftSide = text.substring(0, charsPerSide);
+	const rightSide = text.substring(text.length - charsPerSide);
+
+	return leftSide + "..." + rightSide;
+}
+
+async function uploadFilesRecursive(files, identifier) {
 	let currentFileIndex = 0;
 	let totalFiles = files.length;
 	let completedFiles = 0;
@@ -538,10 +548,10 @@ async function uploadFilesRecursive(files, identifier) {
 			completed: completedFiles,
 			failed: failedFiles,
 			total: totalFiles,
-			remaining: totalFiles - completedFiles - failedFiles,
-			percent: Math.round(
-				(completedFiles / (totalFiles ? totalFiles : 1)) * 100
-			),
+			// remaining: totalFiles - completedFiles - failedFiles,
+			// percent: Math.round(
+			// 	(completedFiles / (totalFiles ? totalFiles : 1)) * 100
+			// ),
 			identifier,
 		});
 	};
@@ -550,7 +560,11 @@ async function uploadFilesRecursive(files, identifier) {
 
 	// Process files one by one
 	const processNextFile = async () => {
-		if (abortControllers[identifier] === undefined) return;
+		if (cancelledUploads[identifier]) {
+			delete abortControllers[identifier];
+			delete cancelledUploads[identifier];
+			return;
+		}
 		// Check if we've processed all files
 		if (currentFileIndex >= totalFiles) {
 			delete abortControllers[identifier];
@@ -564,6 +578,8 @@ async function uploadFilesRecursive(files, identifier) {
 			});
 			return;
 		}
+		// Create abort controller
+		abortControllers[identifier] = new AbortController();
 
 		const currentFile = files[currentFileIndex];
 		currentFile.size = fs.statSync(currentFile.path).size;
@@ -571,7 +587,7 @@ async function uploadFilesRecursive(files, identifier) {
 
 		const fileStatusPayload = {
 			index: currentFileIndex,
-			name: currentFile.name,
+			name: clipTextMiddle(currentFile.name),
 			size: currentFile.size,
 			identifier,
 		};
@@ -647,14 +663,15 @@ async function uploadFilesRecursive(files, identifier) {
 		currentFileIndex++;
 
 		// Process the next file
-		processNextFile();
+		setTimeout(processNextFile, 500);
 	};
 
 	// Start processing files
 	processNextFile();
 }
 
-ipcMain.on("cancel-upload", (_, identifier) => {
+ipcMain.on("cancel-upload", (_, { identifier }) => {
+	cancelledUploads[identifier] = true;
 	abortControllers[identifier]?.abort();
 	delete abortControllers[identifier];
 	mainWindow.webContents.send("upload-cancelled", identifier);
@@ -662,6 +679,7 @@ ipcMain.on("cancel-upload", (_, identifier) => {
 
 ipcMain.on("cancel=all-upload", () => {
 	Object.keys(abortControllers).forEach((key) => {
+		cancelledUploads[key] = true;
 		abortControllers[key].abort();
 		delete abortControllers[key];
 	});
@@ -765,7 +783,10 @@ async function uploadLightbox(folders, identifier) {
 		}
 	};
 	await fetchFilesToUpload(folders, 0);
-	mainWindow.webContents.send("upload-started", identifier);
+	mainWindow.webContents.send("upload-started", {
+		total: filesToUpload.length,
+		identifier,
+	});
 	uploadFilesRecursive(filesToUpload, identifier);
 }
 
@@ -1222,183 +1243,153 @@ ipcMain.on("scanAll", (_, categorypath) => {
 	fetchSubFolderContent(categorypath, scanFilesRecursive);
 });
 
-class DownloadManager {
-	constructor() {
-		this.downloadItems = {};
-		this.downloadQueue = [];
-		this.isDownloading = false;
-		this.isCancelled = false;
-	}
+// class DownloadManager {
+// 	constructor() {
+// 		this.downloadItems = {};
+// 		this.downloadQueue = [];
+// 		this.isDownloading = false;
+// 		this.isCancelled = false;
+// 	}
 
-	async downloadFile({
-		downloadItemId,
-		downloadUrl,
-		directory = undefined,
-		onStarted = () => {},
-		onCancel = () => {},
-		onTotalProgress = () => {},
-		onProgress = () => {},
-		onCompleted = () => {},
-		openFolderWhenDone = false,
-	}) {
-		if (!downloadItemId) {
-			error("Invalid downloadItemId");
-			return;
-		}
-		if (!downloadUrl) {
-			error("Invalid downloadUrl");
-			return;
-		}
-		if (directory !== undefined) {
-			if (!fs.existsSync(directory)) {
-				try {
-					fs.mkdirSync(directory, { recursive: true });
-				} catch (e) {
-					error(directory + " doesn't exist");
-					return;
-				}
-			}
-		}
-		if (this.isCancelled) {
-			log("Cancelled downloading");
-			return;
-		}
-		const downloadPromise = this.createDownloadPromise({
-			downloadItemId,
-			downloadUrl,
-			directory,
-			onProgress,
-			onStarted,
-			onTotalProgress,
-			onCompleted,
-			onCancel,
-			openFolderWhenDone,
+// 	async downloadFile({
+// 		downloadItemId,
+// 		downloadUrl,
+// 		directory = undefined,
+// 		onStarted = () => {},
+// 		onCancel = () => {},
+// 		onTotalProgress = () => {},
+// 		onProgress = () => {},
+// 		onCompleted = () => {},
+// 		openFolderWhenDone = false,
+// 	}) {
+// 		if (!downloadItemId) {
+// 			error("Invalid downloadItemId");
+// 			return;
+// 		}
+// 		if (!downloadUrl) {
+// 			error("Invalid downloadUrl");
+// 			return;
+// 		}
+// 		if (directory !== undefined) {
+// 			if (!fs.existsSync(directory)) {
+// 				try {
+// 					fs.mkdirSync(directory, { recursive: true });
+// 				} catch (e) {
+// 					error(directory + " doesn't exist");
+// 					return;
+// 				}
+// 			}
+// 		}
+// 		if (this.isCancelled) {
+// 			log("Cancelled downloading");
+// 			return;
+// 		}
+// 		const downloadPromise = this.createDownloadPromise({
+// 			downloadItemId,
+// 			downloadUrl,
+// 			directory,
+// 			onProgress,
+// 			onStarted,
+// 			onTotalProgress,
+// 			onCompleted,
+// 			onCancel,
+// 			openFolderWhenDone,
+// 		});
+
+// 		this.downloadQueue.push(downloadPromise);
+// 		this.processQueue();
+// 	}
+
+// 	createDownloadPromise({
+// 		downloadItemId,
+// 		downloadUrl,
+// 		directory,
+// 		onProgress,
+// 		onCancel,
+// 		onStarted,
+// 		onCompleted,
+// 		onTotalProgress,
+// 		onError,
+// 		openFolderWhenDone,
+// 	}) {
+// 		return {
+// 			start: async () => {
+// 				log("Downloading: " + downloadUrl);
+// 				log("Save dest: " + directory);
+// 				try {
+// 					const downloadItem = await eDownload(mainWindow, downloadUrl, {
+// 						directory,
+// 						onStarted,
+// 						onTotalProgress,
+// 						onProgress,
+// 						onCancel,
+// 						onCompleted,
+// 						openFolderWhenDone,
+// 						overwrite: true,
+// 						saveAs: directory === undefined,
+// 						showBadge: false,
+// 					});
+// 					this.downloadItems[downloadItemId] = downloadItem;
+// 				} catch (e) {
+// 					log("Error downloading " + downloadUrl);
+// 					log(e.message || e);
+// 					if (e instanceof CancelError) {
+// 						onCancel();
+// 					} else {
+// 						onError(e);
+// 					}
+// 				} finally {
+// 					this.isDownloading = false;
+// 					this.processQueue();
+// 				}
+// 			},
+// 		};
+// 	}
+
+// 	processQueue() {
+// 		if (!this.isDownloading && this.downloadQueue.length > 0) {
+// 			const nextDownload = this.downloadQueue.shift();
+// 			this.isDownloading = true;
+// 			nextDownload.start();
+// 		}
+// 	}
+
+// 	cancelAllDownload() {
+// 		this.isCancelled = true;
+// 		Object.keys(this.downloadItems).forEach((downloadItemId) => {
+// 			const download = this.downloadItems[downloadItemId];
+// 			if (download) {
+// 				download.cancel();
+// 			}
+// 		});
+// 		this.downloadItems = {};
+// 		this.isDownloading = false;
+// 		this.downloadQueue = [];
+// 		this.isCancelled = false;
+// 	}
+// }
+
+async function downloadFilesRecursive(files, identifier) {
+	let currentFileIndex = 0;
+	let totalFiles = files.length;
+	let completedFiles = 0;
+	let failedFiles = 0;
+
+	// Function to update overall progress
+	const updateOverallProgress = () => {
+		mainWindow.webContents.send("download-progress-update", {
+			completed: completedFiles,
+			failed: failedFiles,
+			total: totalFiles,
+			// remaining: totalFiles - completedFiles - failedFiles,
+			// percent: Math.round(
+			// 	(completedFiles / (totalFiles ? totalFiles : 1)) * 100
+			// ),
+			identifier,
 		});
+	};
 
-		this.downloadQueue.push(downloadPromise);
-		this.processQueue();
-	}
-
-	createDownloadPromise({
-		downloadItemId,
-		downloadUrl,
-		directory,
-		onProgress,
-		onCancel,
-		onStarted,
-		onCompleted,
-		onTotalProgress,
-		onError,
-		openFolderWhenDone,
-	}) {
-		return {
-			start: async () => {
-				log("Downloading: " + downloadUrl);
-				log("Save dest: " + directory);
-				try {
-					const downloadItem = await eDownload(mainWindow, downloadUrl, {
-						directory,
-						onStarted,
-						onTotalProgress,
-						onProgress,
-						onCancel,
-						onCompleted,
-						openFolderWhenDone,
-						overwrite: true,
-						saveAs: directory === undefined,
-						showBadge: false,
-					});
-					this.downloadItems[downloadItemId] = downloadItem;
-				} catch (e) {
-					log("Error downloading " + downloadUrl);
-					log(e.message || e);
-					if (e instanceof CancelError) {
-						onCancel();
-					} else {
-						onError(e);
-					}
-				} finally {
-					this.isDownloading = false;
-					this.processQueue();
-				}
-			},
-		};
-	}
-
-	processQueue() {
-		if (!this.isDownloading && this.downloadQueue.length > 0) {
-			const nextDownload = this.downloadQueue.shift();
-			this.isDownloading = true;
-			nextDownload.start();
-		}
-	}
-
-	cancelAllDownload() {
-		this.isCancelled = true;
-		Object.keys(this.downloadItems).forEach((downloadItemId) => {
-			const download = this.downloadItems[downloadItemId];
-			if (download) {
-				download.cancel();
-			}
-		});
-		this.downloadItems = {};
-		this.isDownloading = false;
-		this.downloadQueue = [];
-		this.isCancelled = false;
-	}
-}
-
-class DownloadCounter extends EventEmitter {
-	constructor() {
-		super();
-		this.totalDownloads = 0;
-		this.completedDownloads = 0;
-	}
-
-	setTotal(count) {
-		this.totalDownloads = count;
-		this.completedDownloads = 0;
-		if (count === 0) {
-			this.emit("completed");
-		}
-	}
-
-	incrementCompleted() {
-		this.completedDownloads++;
-		if (this.completedDownloads >= this.totalDownloads) {
-			this.emit("completed");
-			this.completedDownloads = 0;
-			this.totalDownloads = 0;
-		}
-	}
-}
-
-const batchDownloadManager = new DownloadManager();
-const batchDownloadCounter = new DownloadCounter();
-
-// const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)); // test
-
-let lastBatchDlProgUpdate = 0;
-const currentDownloadProgress = {};
-async function downloadFilesRecursive(categories, index = 0, options = {}) {
-	if (categories.length === index) {
-		log("Batch download complete");
-		mainWindow.webContents.send("download-batch-complete", options);
-		batchDownloadCounter.removeAllListeners("completed");
-		delete currentDownloadProgress[options.topCat];
-		return;
-	}
-
-	if (!currentDownloadProgress[options.topCat]) {
-		currentDownloadProgress[options.topCat] = 0;
-	}
-
-	batchDownloadCounter.once("completed", async () => {
-		await downloadFilesRecursive(categories, index + 1, options);
-	});
-
-	let category = categories[index];
-	let fetchPath = path.join(currentWorkDirectory, category.path);
+	updateOverallProgress();
 
 	let data = {};
 	if (fs.existsSync(fetchPath)) {
@@ -1463,6 +1454,60 @@ async function downloadFilesRecursive(categories, index = 0, options = {}) {
 			error("Error on download Folder: " + category.path);
 			error(err);
 		});
+}
+
+async function downloadLightbox(folders, identifier) {
+	if (!identifier) {
+		console.log("identifier not found for download/Lightbox");
+		return;
+	}
+	if (folders.length === 0) {
+		console.log("folders not found for download/Lightbox");
+		return;
+	}
+	const filesToDownload = [];
+	const fetchFilesToDownload = async (folders, index) => {
+		const folder = folders[index];
+		try {
+			const fetchPath = path.join(currentWorkDirectory, folder.path);
+			let data = {};
+			if (fs.existsSync(fetchPath)) {
+				data = getFilesByDirectory(fetchPath, true);
+			} else {
+				data = { files: [] };
+			}
+			data.categorypath = folder.path;
+			const res = await axios.post(
+				getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
+				data,
+				{ headers: connectionOptions.headers }
+			);
+
+			if (res.data !== undefined) {
+				const ftd = res.data.filestodownload;
+				if (ftd !== undefined) {
+					ftd.forEach((file) => {
+						const filePath = path.join(fetchPath, file.path);
+						filesToDownload.push({
+							path: filePath,
+							name: path.basename(filePath),
+							size: parseInt(file.size),
+							sourcePath: path.join(folder.path, file.path),
+						});
+					});
+				}
+			}
+		} catch (err) {
+			error("Error on upload/Lightbox: " + folder.path);
+			error(err);
+		}
+	};
+	await fetchFilesToDownload(folders, 0);
+	mainWindow.webContents.send("download-started", {
+		total: filesToDownload.length,
+		identifier,
+	});
+	downloadFilesRecursive(filesToDownload, identifier);
 }
 
 ipcMain.on("fetchFiles", (_, options) => {
@@ -1634,7 +1679,6 @@ function trashFilesRecursive(categories, index = 0) {
 		});
 }
 
-const indieDownloadManager = new DownloadManager();
 ipcMain.on("start-download", async (event, { orderitemid, file }) => {
 	const parsedUrl = parseURL(store.get("homeUrl"), true);
 	indieDownloadManager.downloadFile({

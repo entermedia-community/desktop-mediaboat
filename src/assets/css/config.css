@@ -118,6 +118,10 @@ main.container {
 	display: flex;
 	flex-direction: column;
 }
+#configcontent .card-thumbnail img {
+	max-height: 250px;
+	object-fit: cover;
+}
 .library-container .btn {
 	border: none !important;
 }
@@ -270,7 +274,7 @@ h5 {
 	font-size: 20px;
 }
 h5 span.small {
-	font-size: 14px;
+	font-size: 12px;
 	color: #666666;
 }
 hr.light {

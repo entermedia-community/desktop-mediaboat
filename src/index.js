@@ -627,7 +627,7 @@ async function uploadFilesRecursive(files, identifier) {
 				})
 				.on("uploadProgress", (progress) => {
 					// Send individual file progress
-					if (Date.now() - lastProgressUpdate < 1000) return;
+					if (Date.now() - lastProgressUpdate < 500) return;
 					lastProgressUpdate = Date.now();
 					mainWindow.webContents.send("file-progress-update", {
 						...fileStatusPayload,
@@ -663,7 +663,7 @@ async function uploadFilesRecursive(files, identifier) {
 		currentFileIndex++;
 
 		// Process the next file
-		setTimeout(processNextFile, 500);
+		setTimeout(processNextFile, 1000);
 	};
 
 	// Start processing files
@@ -1451,7 +1451,7 @@ async function downloadFilesRecursive(files, identifier) {
 					// onTotalProgress,
 					onProgress: (progress) => {
 						// Send individual file progress
-						if (Date.now() - lastProgressUpdate < 1000) return;
+						if (Date.now() - lastProgressUpdate < 500) return;
 						lastProgressUpdate = Date.now();
 						mainWindow.webContents.send("file-progress-update", {
 							...fileStatusPayload,
@@ -1500,7 +1500,7 @@ async function downloadFilesRecursive(files, identifier) {
 		currentFileIndex++;
 
 		// Process the next file
-		setTimeout(processNextFile, 500);
+		setTimeout(processNextFile, 1000);
 	};
 
 	// Start processing files
@@ -1654,7 +1654,7 @@ function openFolder(path) {
 
 function handleLightboxDownload(categoryPath) {
 	//Check if the same categoryPath is already being processed
-	if (Object.keys(uploadAbortControllers).length > 3) {
+	if (Object.keys(downloadAbortControllers).length > 3) {
 		mainWindow.webContents.send("too-many-downloads", {
 			categoryPath,
 		});

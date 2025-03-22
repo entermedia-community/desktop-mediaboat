@@ -360,19 +360,13 @@ function openConfigPage() {
 }
 
 ipcMain.on("configInit", () => {
-	const welcomeDone = store.get("welcomeDone");
-	const workspaces = store.get("workspaces");
-	const homeUrl = store.get("homeUrl");
+	const workspaces = store.get("workspaces") || [];
+	const currentUrl = store.get("homeUrl");
 	mainWindow.webContents.send("config-init", {
-		welcomeDone: welcomeDone,
 		workspaces,
-		currentUrl: homeUrl,
+		currentUrl,
 	});
 	setMainMenu();
-});
-
-ipcMain.on("welcomeDone", () => {
-	store.set("welcomeDone", true);
 });
 
 ipcMain.on("upsertWorkspace", (_, newWorkspace) => {

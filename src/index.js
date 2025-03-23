@@ -9,22 +9,20 @@ const {
 	Menu,
 	Tray,
 	shell,
-	screen,
 	session,
 	nativeImage,
 	clipboard,
 } = require("electron");
-const electronLog = require("electron-log");
 const Store = require("electron-store");
-const { download: eDownload, CancelError } = require("electron-dl");
 const FormData = require("form-data");
+const electronLog = require("electron-log");
+const { download: eDownload, CancelError } = require("electron-dl");
 const fs = require("fs");
 const mime = require("mime-types");
 const OS = require("os");
 const path = require("node:path");
 const { parse: parseURL } = require("node:url");
 const qs = require("node:querystring");
-
 const { got } = require("got-cjs");
 
 require("dotenv").config();
@@ -42,7 +40,7 @@ let connectionOptions = {
 
 let mainWindow;
 let loaderWindow;
-let loaderTimeout;
+// let loaderTimeout;
 
 const store = new Store();
 const appIcon = nativeImage.createFromPath(
@@ -54,7 +52,7 @@ const trayIcon = nativeImage.createFromPath(
 		`assets/images/em${process.platform === "darwin" ? "" : "s"}.png`
 	)
 );
-const loaderPage = `file://${__dirname}/loader.html`;
+
 const configPage = `file://${__dirname}/welcome.html`;
 
 const currentVersion = app.getVersion();
@@ -77,27 +75,8 @@ function error(...args) {
 	}
 }
 
-function hideLoader() {
-	if (loaderTimeout) {
-		clearTimeout(loaderTimeout);
-	}
-	if (loaderWindow) {
-		loaderWindow.destroy();
-		loaderWindow = null;
-	}
-}
-
 const createWindow = () => {
-	let bounds = store.get("lastBounds");
-	if (!bounds) {
-		const display = screen.getPrimaryDisplay();
-		bounds = display.bounds;
-	}
 	mainWindow = new BrowserWindow({
-		x: bounds.x + 50,
-		y: bounds.y + 50,
-		width: bounds.width,
-		height: bounds.height,
 		icon: appIcon,
 		webPreferences: {
 			preload: path.join(__dirname, "preload.js"),
@@ -106,14 +85,14 @@ const createWindow = () => {
 			contextIsolation: false,
 			enableRemoteModule: true,
 		},
-		vibrancy: "fullscreen-ui",
-		backgroundMaterial: "acrylic",
+		show: false,
 	});
 
-	mainWindow.setVisibleOnAllWorkspaces(true);
-
-	mainWindow.on("move", saveBounds);
-	mainWindow.on("resize", saveBounds);
+	mainWindow.once("ready-to-show", () => {
+		hideLoader();
+		mainWindow.maximize();
+		mainWindow.setVisibleOnAllWorkspaces(true);
+	});
 
 	mainWindow.on("close", (event) => {
 		if (app.isQuitting) return false;
@@ -160,6 +139,7 @@ function createContextMenu() {
 				label: "Refresh",
 				enabled: true,
 				click() {
+					showLoader();
 					mainWindow.webContents.reload();
 				},
 			},
@@ -277,25 +257,9 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
-	saveBounds(true);
 	mainWindow.removeAllListeners("close");
 	mainWindow.destroy();
 });
-
-let saveBoundTimeout;
-function saveBounds(immediate = false) {
-	clearTimeout(saveBoundTimeout);
-	if (immediate) {
-		const bounds = mainWindow.getBounds();
-		store.set("lastBounds", bounds);
-		return;
-	}
-	saveBoundTimeout = setTimeout(() => {
-		const bounds = mainWindow.getBounds();
-		log("Saving bounds to store: ", bounds);
-		store.set("lastBounds", bounds);
-	}, 1000);
-}
 
 function showApp(reload = false) {
 	if (mainWindow) {
@@ -306,7 +270,7 @@ function showApp(reload = false) {
 		mainWindow.show();
 		if (reload) {
 			const homeUrl = store.get("homeUrl");
-			mainWindow.loadURL(homeUrl);
+			openWorkspace(homeUrl);
 		}
 	}
 }
@@ -369,6 +333,7 @@ ipcMain.on("configInit", () => {
 });
 
 ipcMain.handle("connection-established", async (_, options) => {
+	hideLoader();
 	try {
 		let homeUrl = await store.get("homeUrl");
 		if (homeUrl) {
@@ -441,29 +406,38 @@ ipcMain.on("deleteWorkspace", (_, url) => {
 });
 
 function showLoader() {
-	const bounds = mainWindow.getBounds();
-	const contentSize = mainWindow.getContentSize();
-	bounds.y += bounds.height - contentSize[1];
-	bounds.height = contentSize[1];
+	hideLoader(function () {
+		loaderWindow = new BrowserWindow({
+			width: 400,
+			height: 400,
+			alwaysOnTop: true,
+			resizable: false,
+			frame: false,
+			movable: false,
+			show: false,
+			hasShadow: false,
+		});
 
-	if (loaderWindow) {
-		hideLoader();
-	}
-	loaderWindow = new BrowserWindow({
-		...bounds,
-		parent: mainWindow,
-		resizable: false,
-		frame: false,
-		transparent: true,
-		fullscreenable: false,
-		backgroundColor: "rgba(255, 255, 255, 0.1)",
+		loaderWindow.loadFile(`${__dirname}/loader.html`);
+		loaderWindow.once("ready-to-show", () => {
+			loaderWindow.show();
+		});
+		// loaderTimeout = setTimeout(() => {
+		// 	loaderWindow.destroy();
+		// 	loaderWindow = null;
+		// }, 4000);
 	});
-	loaderWindow.loadURL(loaderPage);
-	loaderWindow.show();
-	loaderTimeout = setTimeout(() => {
+}
+
+function hideLoader(cb = null) {
+	// if (loaderTimeout) {
+	// 	clearTimeout(loaderTimeout);
+	// }
+	if (loaderWindow) {
 		loaderWindow.destroy();
 		loaderWindow = null;
-	}, 4000);
+	}
+	if (cb) cb();
 }
 
 function openWorkspace(homeUrl) {
@@ -910,7 +884,7 @@ function setMainMenu() {
 					label: "Home",
 					click: () => {
 						mainWindow.show();
-						mainWindow.loadURL(homeUrl);
+						openWorkspace(homeUrl);
 					},
 				},
 				{

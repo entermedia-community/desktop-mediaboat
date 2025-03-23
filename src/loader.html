@@ -2,64 +2,76 @@
 <html lang="en">
 	<head>
 		<style>
+			html,
 			body {
-				width: 100%;
+				background-color: transparent;
+			}
+			body {
+				width: 100vw;
 				height: 100vh;
 				display: flex;
+				flex-direction: column;
 				align-items: center;
 				justify-content: center;
 				padding: 0;
 				overflow: hidden;
 				box-sizing: border-box;
 			}
-			.container {
-				display: flex;
-				flex-direction: column;
-				align-items: center;
-				justify-content: center;
-				width: 120px;
-				height: 120px;
-				border-radius: 16px;
-				margin-bottom: 42px;
+			img {
+				position: absolute;
+				width: 150px;
+				aspect-ratio: 1;
+				/* animation: dl1 1s infinite linear; */
 			}
 			.loader {
-				width: 16px;
-				height: 16px;
-				border-radius: 50%;
-				background: #0d6efd;
-				position: relative;
-			}
-			.loader:before,
-			.loader:after {
-				content: "";
 				position: absolute;
+				width: 160px;
+				aspect-ratio: 1;
 				border-radius: 50%;
-				inset: 0;
-				background: #fff;
-				transform: rotate(0deg) translate(30px);
-				animation: rotate 1s ease infinite;
+				border: 2px solid #fff;
+				border-left-color: #64ae58;
+				border-right-color: #64ae58;
+				animation: dl2 1s infinite linear;
+				z-index: 10;
 			}
-			.loader:after {
-				animation-delay: 0.5s;
-			}
-			@keyframes rotate {
-				100% {
-					transform: rotate(360deg) translate(30px);
+			/* @keyframes dl1 {
+				to {
+					transform: rotate(-1turn);
+				}
+			} */
+			@keyframes dl2 {
+				to {
+					transform: rotate(1turn);
 				}
 			}
-			p {
-				color: #0d6efd;
-				font-weight: bold;
-				font-family: monospace;
-				margin-top: 36px;
+			button {
+				position: absolute;
+				bottom: 40px;
+				left: 50%;
+				transform: translateX(-50%);
+				background-color: transparent;
+				border: none;
+				padding: 8px 16px;
+				color: #8f8f8f;
+				cursor: pointer;
 				text-transform: uppercase;
 			}
 		</style>
 	</head>
 	<body>
-		<div class="container">
-			<div class="loader"></div>
-			<p>Loading</p>
-		</div>
+		<img src="assets/images/icon.png" alt="Icon" />
+		<div class="loader"></div>
+		<button id="close" style="display: none">hide</button>
+		<script>
+			document.addEventListener("DOMContentLoaded", () => {
+				const close = document.getElementById("close");
+				setTimeout(() => {
+					close.style.display = "block";
+				}, 5000);
+				close.addEventListener("click", () => {
+					window.close();
+				});
+			});
+		</script>
 	</body>
 </html>

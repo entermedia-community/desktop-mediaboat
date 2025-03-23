@@ -55,18 +55,20 @@
 				color: #8f8f8f;
 				cursor: pointer;
 				text-transform: uppercase;
+				opacity: 0;
+				transition: opacity 0.2s ease-in-out;
 			}
 		</style>
 	</head>
 	<body>
 		<img src="assets/images/icon.png" alt="Icon" />
 		<div class="loader"></div>
-		<button id="close" style="display: none">hide</button>
+		<button id="close">hide</button>
 		<script>
 			document.addEventListener("DOMContentLoaded", () => {
 				const close = document.getElementById("close");
 				setTimeout(() => {
-					close.style.display = "block";
+					close.style.opacity = 1;
 				}, 5000);
 				close.addEventListener("click", () => {
 					window.close();

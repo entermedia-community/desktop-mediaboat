@@ -40,7 +40,6 @@ let connectionOptions = {
 	headers: { "X-computername": computerName },
 };
 
-let entermediaKey;
 let mainWindow;
 let loaderWindow;
 let loaderTimeout;
@@ -369,6 +368,38 @@ ipcMain.on("configInit", () => {
 	setMainMenu();
 });
 
+ipcMain.handle("connection-established", async (_, options) => {
+	try {
+		let homeUrl = await store.get("homeUrl");
+		if (homeUrl) {
+			const parsedUrl = parseURL(homeUrl);
+			const filter = { urls: ["*" + "://" + parsedUrl.hostname + "/*"] };
+			session.defaultSession.webRequest.onBeforeSendHeaders(
+				filter,
+				(details, callback) => {
+					Object.keys(options.headers).forEach((header) => {
+						details.requestHeaders[header] = options.headers[header];
+					});
+					callback({ requestHeaders: details.requestHeaders });
+				}
+			);
+		}
+	} catch (error) {
+		log(error);
+	} finally {
+		connectionOptions = {
+			...options,
+			headers: {
+				...options.headers,
+				"X-computername": computerName,
+			},
+		};
+		store.set("mediadburl", options.mediadb);
+	}
+
+	return { computerName, localRoot: currentWorkDirectory };
+});
+
 ipcMain.on("upsertWorkspace", (_, newWorkspace) => {
 	let workspaces = store.get("workspaces") || [];
 	workspaces = workspaces.filter((w) => w.url);
@@ -465,32 +496,6 @@ ipcMain.on("changeLocalDrive", (_, { selectedPath }) => {
 		currentWorkDirectory = selectedPath;
 		mainWindow.webContents.send("set-local-root", currentWorkDirectory);
 	}
-});
-
-ipcMain.on("setConnectionOptions", (_, options) => {
-	let homeUrl = store.get("homeUrl");
-	if (!homeUrl) return;
-	const parsedUrl = parseURL(homeUrl);
-	const filter = { urls: ["*" + "://" + parsedUrl.hostname + "/*"] };
-	session.defaultSession.webRequest.onBeforeSendHeaders(
-		filter,
-		(details, callback) => {
-			Object.keys(options.headers).forEach((header) => {
-				details.requestHeaders[header] = options.headers[header];
-			});
-			callback({ requestHeaders: details.requestHeaders });
-		}
-	);
-
-	connectionOptions = {
-		...options,
-		headers: {
-			...options.headers,
-			"X-computername": computerName,
-		},
-	};
-	store.set("mediadburl", options.mediadb);
-	mainWindow.webContents.send("desktopReady");
 });
 
 function getMediaDbUrl(url) {
@@ -1215,132 +1220,6 @@ async function scanFilesRecursive(categories, index = 0) {
 ipcMain.on("scanAll", (_, categorypath) => {
 	fetchSubFolderContent(categorypath, scanFilesRecursive);
 });
-
-// class DownloadManager {
-// 	constructor() {
-// 		this.downloadItems = {};
-// 		this.downloadQueue = [];
-// 		this.isDownloading = false;
-// 		this.isCancelled = false;
-// 	}
-
-// 	async downloadFile({
-// 		downloadItemId,
-// 		downloadUrl,
-// 		directory = undefined,
-// 		onStarted = () => {},
-// 		onCancel = () => {},
-// 		onTotalProgress = () => {},
-// 		onProgress = () => {},
-// 		onCompleted = () => {},
-// 		openFolderWhenDone = false,
-// 	}) {
-// 		if (!downloadItemId) {
-// 			error("Invalid downloadItemId");
-// 			return;
-// 		}
-// 		if (!downloadUrl) {
-// 			error("Invalid downloadUrl");
-// 			return;
-// 		}
-// 		if (directory !== undefined) {
-// 			if (!fs.existsSync(directory)) {
-// 				try {
-// 					fs.mkdirSync(directory, { recursive: true });
-// 				} catch (e) {
-// 					error(directory + " doesn't exist");
-// 					return;
-// 				}
-// 			}
-// 		}
-// 		if (this.isCancelled) {
-// 			log("Cancelled downloading");
-// 			return;
-// 		}
-// 		const downloadPromise = this.createDownloadPromise({
-// 			downloadItemId,
-// 			downloadUrl,
-// 			directory,
-// 			onProgress,
-// 			onStarted,
-// 			onTotalProgress,
-// 			onCompleted,
-// 			onCancel,
-// 			openFolderWhenDone,
-// 		});
-
-// 		this.downloadQueue.push(downloadPromise);
-// 		this.processQueue();
-// 	}
-
-// 	createDownloadPromise({
-// 		downloadItemId,
-// 		downloadUrl,
-// 		directory,
-// 		onProgress,
-// 		onCancel,
-// 		onStarted,
-// 		onCompleted,
-// 		onTotalProgress,
-// 		onError,
-// 		openFolderWhenDone,
-// 	}) {
-// 		return {
-// 			start: async () => {
-// 				log("Downloading: " + downloadUrl);
-// 				log("Save dest: " + directory);
-// 				try {
-// 					const downloadItem = await eDownload(mainWindow, downloadUrl, {
-// 						directory,
-// 						onStarted,
-// 						onTotalProgress,
-// 						onProgress,
-// 						onCancel,
-// 						onCompleted,
-// 						openFolderWhenDone,
-// 						overwrite: true,
-// 						saveAs: directory === undefined,
-// 						showBadge: false,
-// 					});
-// 					this.downloadItems[downloadItemId] = downloadItem;
-// 				} catch (e) {
-// 					log("Error downloading " + downloadUrl);
-// 					log(e.message || e);
-// 					if (e instanceof CancelError) {
-// 						onCancel();
-// 					} else {
-// 						onError(e);
-// 					}
-// 				} finally {
-// 					this.isDownloading = false;
-// 					this.processQueue();
-// 				}
-// 			},
-// 		};
-// 	}
-
-// 	processQueue() {
-// 		if (!this.isDownloading && this.downloadQueue.length > 0) {
-// 			const nextDownload = this.downloadQueue.shift();
-// 			this.isDownloading = true;
-// 			nextDownload.start();
-// 		}
-// 	}
-
-// 	cancelAllDownload() {
-// 		this.isCancelled = true;
-// 		Object.keys(this.downloadItems).forEach((downloadItemId) => {
-// 			const download = this.downloadItems[downloadItemId];
-// 			if (download) {
-// 				download.cancel();
-// 			}
-// 		});
-// 		this.downloadItems = {};
-// 		this.isDownloading = false;
-// 		this.downloadQueue = [];
-// 		this.isCancelled = false;
-// 	}
-// }
 
 const downloadAbortControllers = {};
 const cancelledDownloads = {};

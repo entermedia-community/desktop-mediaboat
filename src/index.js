@@ -38,22 +38,16 @@ let connectionOptions = {
 	headers: { "X-computername": computerName },
 };
 
-let mainWindow;
-let loaderWindow;
+let mainWindow = null;
+let loaderWindow = null;
 // let loaderTimeout;
+
+let tray = null;
 
 const store = new Store();
 const appIcon = nativeImage.createFromPath(
 	path.join(__dirname, "../images/icon.png")
 );
-const trayIcon = nativeImage.createFromPath(
-	path.join(
-		__dirname,
-		`assets/images/em${process.platform === "darwin" ? "" : "s"}.png`
-	)
-);
-
-const configPage = `file://${__dirname}/welcome.html`;
 
 const currentVersion = app.getVersion();
 
@@ -126,7 +120,6 @@ const createWindow = () => {
 	});
 
 	setMainMenu();
-	createTray();
 	createContextMenu();
 };
 
@@ -218,6 +211,7 @@ if (!gotTheLock) {
 	});
 
 	app.whenReady().then(() => {
+		createTray();
 		createWindow();
 		app.on("activate", () => {
 			if (BrowserWindow.getAllWindows().length === 0) {
@@ -304,7 +298,10 @@ function createTray() {
 			app.quit();
 		},
 	});
-	const tray = new Tray(trayIcon);
+	const trayIcon = nativeImage.createFromPath(
+		path.join(__dirname, `assets/images/ems.png`)
+	);
+	tray = new Tray(trayIcon);
 	tray.setToolTip("eMedia Library");
 	const contextMenu = Menu.buildFromTemplate(trayMenu);
 	tray.setContextMenu(contextMenu);
@@ -319,7 +316,7 @@ function createTray() {
 }
 
 function openConfigPage() {
-	mainWindow.loadURL(configPage);
+	mainWindow.loadFile(path.join(__dirname, "welcome.html"));
 }
 
 ipcMain.on("configInit", () => {
@@ -418,7 +415,7 @@ function showLoader() {
 			hasShadow: false,
 		});
 
-		loaderWindow.loadFile(`${__dirname}/loader.html`);
+		loaderWindow.loadFile(path.join(__dirname, "loader.html"));
 		loaderWindow.once("ready-to-show", () => {
 			loaderWindow.show();
 		});

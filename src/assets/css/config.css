@@ -35,18 +35,19 @@ body {
 	padding: 0;
 	background-size: 100vw 100vh;
 	scrollbar-width: thin;
-	scrollbar-color: #666666 #0a0a0a;
+	scrollbar-color: #f1f1f1 #8a8a8a;
 }
 body::-webkit-scrollbar {
 	width: 6px;
-	background-color: #0a0a0a;
+	background-color: #f1f1f1;
 }
 body::-webkit-scrollbar-thumb {
-	background-color: #666666;
+	background-color: #8a8a8a;
 	border-radius: 6px;
 }
 .navbar {
 	padding: 0;
+	background: url("../images/body-bg.jpg") repeat;
 }
 main.container {
 	min-height: calc(100vh - 142px);

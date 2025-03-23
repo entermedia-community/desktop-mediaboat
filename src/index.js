@@ -505,18 +505,6 @@ function getMediaDbUrl(url) {
 const uploadAbortControllers = {};
 const cancelledUploads = {};
 
-function isValidUpload(identifier) {
-	if (uploadAbortControllers[identifier] !== undefined) return false;
-	const identifiers = Object.keys(uploadAbortControllers);
-	for (let i = 0; i < identifiers.length; i++) {
-		const identifier2 = identifiers[i];
-		if (identifier === identifier2) return false;
-		else if (identifier.startsWith(identifier2)) return false;
-		else if (identifier2.startsWith(identifier)) return false;
-	}
-	return true;
-}
-
 function clipTextMiddle(text, maxLength = 100) {
 	if (text.length <= maxLength) {
 		return text;
@@ -1357,18 +1345,6 @@ ipcMain.on("scanAll", (_, categorypath) => {
 const downloadAbortControllers = {};
 const cancelledDownloads = {};
 
-function isValidDownload(identifier) {
-	if (downloadAbortControllers[identifier] !== undefined) return false;
-	const identifiers = Object.keys(downloadAbortControllers);
-	for (let i = 0; i < identifiers.length; i++) {
-		const identifier2 = identifiers[i];
-		if (identifier === identifier2) return false;
-		else if (identifier.startsWith(identifier2)) return false;
-		else if (identifier2.startsWith(identifier)) return false;
-	}
-	return true;
-}
-
 async function downloadFilesRecursive(files, identifier) {
 	let currentFileIndex = 0;
 	let totalFiles = files.length;
@@ -1620,14 +1596,14 @@ ipcMain.on(
 	}
 );
 
-ipcMain.on("openFolder", (_, options) => {
-	if (
-		!options["path"].startsWith("/") &&
-		!options["path"].match(/^[a-zA-Z]:/)
-	) {
-		options["path"] = path.join(currentWorkDirectory, options["path"]);
+ipcMain.on("openFolder", (_, { path: folderPath, lightbox = null }) => {
+	if (!folderPath.startsWith("/") && !folderPath.match(/^[a-zA-Z]:/)) {
+		folderPath = path.join(currentWorkDirectory, folderPath);
 	}
-	openFolder(options["path"]);
+	if (lightbox && lightbox.length > 0) {
+		folderPath = path.join(folderPath, lightbox);
+	}
+	openFolder(folderPath);
 });
 
 function openFolder(path) {
@@ -1646,57 +1622,94 @@ function openFolder(path) {
 	}
 }
 
-function handleLightboxDownload(categoryPath) {
+function isValidDownload(identifier) {
+	if (downloadAbortControllers[identifier] !== undefined) return false;
+	const identifiers = Object.keys(downloadAbortControllers);
+	for (let i = 0; i < identifiers.length; i++) {
+		const identifier2 = identifiers[i];
+		if (identifier === identifier2) return false;
+		else if (identifier.startsWith(identifier2)) return false;
+		else if (identifier2.startsWith(identifier)) return false;
+	}
+	return true;
+}
+
+function handleLightboxDownload(categoryPath, notifyDuplicate = true) {
 	//Check if the same categoryPath is already being processed
 	if (Object.keys(downloadAbortControllers).length > 3) {
 		mainWindow.webContents.send("too-many-downloads", {
 			categoryPath,
 		});
-		return;
+		return false;
 	}
 	if (!isValidDownload(categoryPath)) {
-		mainWindow.webContents.send("duplicate-download", {
-			categoryPath,
-		});
-		return;
+		if (notifyDuplicate) {
+			mainWindow.webContents.send("duplicate-download", {
+				categoryPath,
+			});
+		}
+		return false;
 	}
+	downloadAbortControllers[categoryPath] = true;
 	log("Syncing Down: " + categoryPath);
 	fetchSubFolderContent(categoryPath, downloadLightbox, categoryPath);
+	return true;
 }
 
-ipcMain.on("lightboxDownload", (_, { toplevelcategorypath, lightbox }) => {
-	const categoryPath = path.join(toplevelcategorypath, lightbox);
-	handleLightboxDownload(categoryPath);
-});
+ipcMain.handle(
+	"lightboxDownload",
+	async (_, { toplevelcategorypath, lightbox }) => {
+		const categoryPath = path.join(toplevelcategorypath, lightbox);
+		return handleLightboxDownload(categoryPath);
+	}
+);
 
-function handleLightboxUpload(categoryPath) {
+function isValidUpload(identifier) {
+	if (uploadAbortControllers[identifier] !== undefined) return false;
+	const ongoing = Object.keys(uploadAbortControllers);
+	for (let i = 0; i < ongoing.length; i++) {
+		if (identifier === ongoing[i]) return false;
+		else if (identifier.startsWith(ongoing[i])) return false;
+		else if (ongoing[i].startsWith(identifier)) return false;
+	}
+	return true;
+}
+
+function handleLightboxUpload(categoryPath, notifyDuplicate = true) {
 	//Check if the same categoryPath is already being processed
 	if (Object.keys(uploadAbortControllers).length > 3) {
 		mainWindow.webContents.send("too-many-uploads", {
 			categoryPath,
 		});
-		return;
+		return false;
 	}
 	if (!isValidUpload(categoryPath)) {
-		mainWindow.webContents.send("duplicate-upload", {
-			categoryPath,
-		});
-		return;
+		if (notifyDuplicate) {
+			mainWindow.webContents.send("duplicate-upload", {
+				categoryPath,
+			});
+		}
+		return false;
 	}
+	uploadAbortControllers[categoryPath] = true;
 	log("Syncing Up: " + categoryPath);
 	fetchSubFolderContent(categoryPath, uploadLightbox, categoryPath);
+	return true;
 }
 
-ipcMain.on("lightboxUpload", (_, { toplevelcategorypath, lightbox }) => {
-	const categoryPath = path.join(toplevelcategorypath, lightbox);
-	handleLightboxUpload(categoryPath);
-});
+ipcMain.handle(
+	"lightboxUpload",
+	async (_, { toplevelcategorypath, lightbox }) => {
+		const categoryPath = path.join(toplevelcategorypath, lightbox);
+		return handleLightboxUpload(categoryPath);
+	}
+);
 
 ipcMain.on("continueSync", async (_, { categorypath, isDownload }) => {
 	if (isDownload) {
-		handleLightboxDownload(categorypath);
+		handleLightboxDownload(categorypath, false);
 	} else {
-		handleLightboxUpload(categorypath);
+		handleLightboxUpload(categorypath, false);
 	}
 });
 

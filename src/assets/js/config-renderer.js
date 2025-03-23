@@ -169,7 +169,8 @@ $(document).ready(function () {
 		window.location.reload();
 	});
 
-	function upsertLibrary() {
+	function upsertLibrary(e) {
+		e.preventDefault();
 		var name = $(this).find("#formGroupName").val();
 		var url = $(this).find("#formGroupURL").val();
 		if (!url) {

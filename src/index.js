@@ -641,11 +641,11 @@ async function uploadFilesRecursive(files, identifier) {
 ipcMain.on("cancelSync", (_, { identifier, isDownload }) => {
 	if (isDownload) {
 		cancelledDownloads[identifier] = true;
-		downloadAbortControllers[identifier]?.cancel();
+		downloadAbortControllers[identifier]?.cancel?.();
 		delete downloadAbortControllers[identifier];
 	} else {
 		cancelledUploads[identifier] = true;
-		uploadAbortControllers[identifier]?.abort();
+		uploadAbortControllers[identifier]?.abort?.();
 		delete uploadAbortControllers[identifier];
 	}
 	mainWindow.webContents.send("sync-cancelled", { identifier, isDownload });

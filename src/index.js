@@ -677,18 +677,31 @@ function getDirectoryStats(dirPath) {
 	};
 }
 
-function getFilesByDirectory(directory) {
+function getFilesByDirectory(rootDirectory) {
+	if (!fs.existsSync(rootDirectory)) {
+		log("Directory not found: " + rootDirectory);
+		return { files: [] };
+	}
 	let filePaths = [];
-	let files = fs.readdirSync(directory);
-	files.forEach((file) => {
-		const ext = path.extname(file).toLowerCase();
-		if (file.startsWith(".") || ext === ".ini" || ext === ".db") return;
-		let filepath = path.join(directory, file);
-		let stats = fs.statSync(filepath);
-		if (stats.isFile()) {
-			filePaths.push({ path: file, size: stats.size, abspath: filepath });
-		}
-	});
+	function searchFiles(directory) {
+		const files = fs.readdirSync(directory);
+		files.forEach((file) => {
+			const ext = path.extname(file).toLowerCase();
+			if (file.startsWith(".") || ext === ".ini" || ext === ".db") return;
+			const abspath = path.join(directory, file);
+			const stats = fs.statSync(abspath);
+			if (stats.isDirectory()) {
+				searchFiles(abspath);
+			} else {
+				filePaths.push({
+					path: abspath.substring(rootDirectory.length + 1),
+					size: stats.size,
+					abspath,
+				});
+			}
+		});
+	}
+	searchFiles(rootDirectory);
 	return {
 		files: filePaths,
 	};
@@ -704,7 +717,7 @@ async function uploadLightbox(folders, identifier) {
 		return;
 	}
 	const filesToUpload = [];
-	const fetchFilesToUpload = async (folders, index) => {
+	const fetchFilesToUpload = async (folders, index = 0) => {
 		const folder = folders[index];
 		try {
 			const fetchPath = path.join(currentWorkDirectory, folder.path);
@@ -722,6 +735,9 @@ async function uploadLightbox(folders, identifier) {
 			);
 
 			if (res.data !== undefined) {
+				if (typeof res.data === "string") {
+					res.data = JSON.parse(res.data);
+				}
 				const ftu = res.data.filestoupload;
 				if (ftu !== undefined) {
 					ftu.forEach((file) => {
@@ -740,30 +756,8 @@ async function uploadLightbox(folders, identifier) {
 			error(err);
 		}
 	};
-	await fetchFilesToUpload(folders, 0);
-	mainWindow.webContents.send("sync-started", {
-		total: filesToUpload.length,
-		identifier,
-	});
+	await fetchFilesToUpload(folders);
 	uploadFilesRecursive(filesToUpload, identifier);
-}
-
-function getDirectories(p) {
-	const directories = [];
-	directories.push(p);
-	function fetchDirectories(p) {
-		const items = fs.readdirSync(p);
-		items.forEach((item) => {
-			const itemPath = path.join(p, item);
-			const stats = fs.statSync(itemPath);
-			if (stats.isDirectory()) {
-				directories.push(itemPath);
-				directories.concat(fetchDirectories(itemPath));
-			}
-		});
-	}
-	fetchDirectories(p);
-	return directories;
 }
 
 ipcMain.on("abortUpload", () => {
@@ -997,30 +991,6 @@ function readDirectory(directory, append = false) {
 	};
 }
 
-function getAllFiles(rootDirectory) {
-	if (!fs.existsSync(rootDirectory)) {
-		log("Directory not found: " + rootDirectory);
-		return [];
-	}
-	let filePaths = [];
-	function searchFiles(directory) {
-		let files = fs.readdirSync(directory);
-		files.forEach((file) => {
-			if (file.startsWith(".")) return;
-			let filepath = path.join(directory, file);
-			console.log(filepath);
-			let stats = fs.statSync(filepath);
-			if (stats.isDirectory()) {
-				searchFiles(filepath);
-			} else {
-				filePaths.push(filepath);
-			}
-		});
-	}
-	searchFiles(rootDirectory);
-	return filePaths;
-}
-
 function addExtraFoldersToList(categories, categoryPath) {
 	let rootPath;
 	let rootLevel;
@@ -1089,34 +1059,31 @@ function addExtraFoldersToList(categories, categoryPath) {
 	return newCategories;
 }
 
-async function fetchSubFolderContent(
-	categorypath,
-	callback,
-	args = null,
-	ignoreExtra = false
-) {
-	if (!categorypath) return;
+async function fetchSubFolderContent(categorypath, callback, args = null) {
+	let categories = [];
+	if (!categorypath) return categories;
 	log("Fetching from: " + categorypath);
 	const url = getMediaDbUrl("services/module/asset/entity/pullfolderlist.json");
-	axios
-		.post(
+	try {
+		const res = await axios.post(
 			url,
 			{ categorypath: categorypath },
 			{ headers: connectionOptions.headers }
-		)
-		.then(function (res) {
-			if (res.data !== undefined) {
-				const categories = res.data.categories;
-				if (categories && categories.length >= 0) {
-					if (categories.length > 0) {
-						const dir = path.join(currentWorkDirectory, categories[0].path);
-						if (!fs.existsSync(dir)) {
-							fs.mkdirSync(dir, { recursive: true });
-						}
+		);
+
+		if (res.data !== undefined) {
+			categories = res.data.categories;
+			if (categories && categories.length >= 0) {
+				if (categories.length > 0) {
+					const dir = path.join(currentWorkDirectory, categories[0].path);
+					if (!fs.existsSync(dir)) {
+						fs.mkdirSync(dir, { recursive: true });
 					}
-					if (!ignoreExtra) {
-						addExtraFoldersToList(categories, categorypath);
-					}
+				}
+
+				addExtraFoldersToList(categories, categorypath);
+
+				if (callback) {
 					if (args) {
 						callback(categories, args);
 					} else {
@@ -1124,73 +1091,77 @@ async function fetchSubFolderContent(
 					}
 				}
 			}
-		})
-		.catch(function (err) {
-			error("Error loading: " + url);
-			error(err);
-		});
+		}
+	} catch (err) {
+		error("Error loading: " + url);
+		error(err);
+	}
+	return categories;
 }
 
-async function scanFilesRecursive(categories, index = 0) {
-	if (categories.length === index) {
-		mainWindow.webContents.send("scan-complete");
-		return;
-	}
+async function scanFiles(categories) {
+	const result = {
+		hasUploads: false,
+		hasDownloads: false,
+	};
 
-	let category = categories[index];
-	let fetchPath = path.join(currentWorkDirectory, category.path);
+	async function scanFilesRecursive(cats, index = 0) {
+		if (index >= cats.length) return;
+		let category = cats[index];
+		let fetchPath = path.join(currentWorkDirectory, category.path);
 
-	let data = {};
-	if (fs.existsSync(fetchPath)) {
-		data = readDirectory(fetchPath, false);
-	}
-	data.categorypath = category.path;
+		let data = {};
+		if (fs.existsSync(fetchPath)) {
+			data = getFilesByDirectory(fetchPath, true);
+		} else {
+			data = { files: [] };
+		}
+		data.categorypath = category.path;
 
-	await axios
-		.post(
-			getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
-			data,
-			{
-				headers: connectionOptions.headers,
-			}
-		)
-		.then(function (res) {
-			if (res.data !== undefined) {
-				const filesToDownload = res.data.filestodownload;
-				const filesToUpload = res.data.filestoupload;
-				if (filesToDownload !== undefined) {
-					let folderDownloadSize = 0;
-					filesToDownload.forEach((item) => {
-						folderDownloadSize += parseInt(item.size);
-					});
-					let folderUploadSize = 0;
-					filesToUpload.forEach((item) => {
-						folderUploadSize += parseInt(item.size);
-					});
-					mainWindow.webContents.send("scan-progress", {
-						...category,
-						downloadSize: folderDownloadSize,
-						downloadCount: filesToDownload.length,
-						uploadSize: folderUploadSize,
-						uploadCount: filesToUpload.length,
-					});
-					scanFilesRecursive(categories, index + 1);
-				} else {
-					throw new Error("No files found");
+		await axios
+			.post(
+				getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
+				data,
+				{
+					headers: connectionOptions.headers,
 				}
-			} else {
-				throw new Error("No data found");
-			}
-		})
-		.catch(function (err) {
-			error("Error on scan Folder: " + category.path);
-			error(err);
-		});
-}
+			)
+			.then(function (res) {
+				if (res.data !== undefined) {
+					const filesToDownload = res.data.filestodownload;
+					const filesToUpload = res.data.filestoupload;
+					if (!result.hasUploads) {
+						result.hasUploads = filesToUpload && filesToUpload.length > 0;
+					}
+					if (!result.hasDownloads) {
+						result.hasDownloads = filesToDownload && filesToDownload.length > 0;
+					}
+					if (!result.hasDownloads || !result.hasUploads) {
+						scanFilesRecursive(cats, index + 1);
+					}
+				} else {
+					throw new Error("No data found");
+				}
+			})
+			.catch(function (err) {
+				error("Error on scan Folder: " + category.path);
+				error(err);
+			});
+	}
 
-ipcMain.on("scanAll", (_, categorypath) => {
-	fetchSubFolderContent(categorypath, scanFilesRecursive);
-});
+	await scanFilesRecursive(categories);
+
+	return result;
+}
+ipcMain.handle(
+	"scanChanges",
+	async (_, { toplevelcategorypath, lightbox = "" }) => {
+		const categoryPath = path.join(toplevelcategorypath, lightbox);
+		const categories = await fetchSubFolderContent(categoryPath);
+		const result = await scanFiles(categories);
+		return result;
+	}
+);
 
 const downloadAbortControllers = {};
 const cancelledDownloads = {};
@@ -1291,7 +1262,7 @@ async function downloadFilesRecursive(files, identifier) {
 							isDownload: true,
 						});
 					},
-					openFolderWhenDone: true,
+					openFolderWhenDone: currentFileIndex === totalFiles - 1,
 					overwrite: true,
 					saveAs: currentFile.saveTo === undefined,
 					showBadge: true,
@@ -1508,7 +1479,7 @@ function handleLightboxDownload(categoryPath, notifyDuplicate = true) {
 
 ipcMain.handle(
 	"lightboxDownload",
-	async (_, { toplevelcategorypath, lightbox }) => {
+	async (_, { toplevelcategorypath, lightbox = "" }) => {
 		const categoryPath = path.join(toplevelcategorypath, lightbox);
 		return handleLightboxDownload(categoryPath);
 	}
@@ -1549,7 +1520,7 @@ function handleLightboxUpload(categoryPath, notifyDuplicate = true) {
 
 ipcMain.handle(
 	"lightboxUpload",
-	async (_, { toplevelcategorypath, lightbox }) => {
+	async (_, { toplevelcategorypath, lightbox = "" }) => {
 		const categoryPath = path.join(toplevelcategorypath, lightbox);
 		return handleLightboxUpload(categoryPath);
 	}
@@ -1578,7 +1549,9 @@ function trashFilesRecursive(categories, index = 0) {
 	let data = {};
 
 	if (fs.existsSync(fetchpath)) {
-		data = readDirectory(fetchpath, true);
+		data = getFilesByDirectory(fetchpath, true);
+	} else {
+		data = { files: [] };
 	}
 
 	data.categorypath = category.path;

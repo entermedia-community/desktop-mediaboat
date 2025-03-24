@@ -52,20 +52,30 @@ const appIcon = nativeImage.createFromPath(
 const currentVersion = app.getVersion();
 
 function log(...args) {
-	console.log("\n┌────────────┐");
-	electronLog.debug(...args);
-	console.log("└────────────┘\n");
-	if (mainWindow) {
-		mainWindow.webContents.send("electron-log", args);
+	try {
+		console.log("\n┌────────────┐");
+		electronLog.debug(...args);
+		console.log("└────────────┘\n");
+	} catch (e) {
+		console.error(e);
+	} finally {
+		if (mainWindow) {
+			mainWindow.webContents.send("electron-log", args);
+		}
 	}
 }
 
 function error(...args) {
-	console.log("\n\x1b[31m┌────────────┐\x1b[0m");
-	electronLog.error(...args);
-	console.log("\x1b[31m└────────────┘\x1b[0m\n");
-	if (mainWindow) {
-		mainWindow.webContents.send("electron-error", args);
+	try {
+		console.log("\n\x1b[31m┌────────────┐\x1b[0m");
+		electronLog.error(...args);
+		console.log("\x1b[31m└────────────┘\x1b[0m\n");
+	} catch (e) {
+		console.error(e);
+	} finally {
+		if (mainWindow) {
+			mainWindow.webContents.send("electron-error", args);
+		}
 	}
 }
 
@@ -611,7 +621,7 @@ async function uploadFilesRecursive(files, identifier) {
 				error: error.message,
 			});
 
-			console.error(`Error uploading file ${currentFile.name}:`);
+			error(`Error uploading file ${currentFile.name}:`);
 		}
 
 		// Update overall progress
@@ -709,11 +719,11 @@ function getFilesByDirectory(rootDirectory) {
 
 async function uploadLightbox(folders, identifier) {
 	if (!identifier) {
-		console.log("identifier not found for upload/Lightbox");
+		log("identifier not found for upload/Lightbox");
 		return;
 	}
 	if (folders.length === 0) {
-		console.log("folders not found for upload/Lightbox");
+		log("folders not found for upload/Lightbox");
 		return;
 	}
 	const filesToUpload = [];
@@ -1280,7 +1290,7 @@ async function downloadFilesRecursive(files, identifier) {
 					isDownload: true,
 				});
 
-				console.error(`Error downloading file ${currentFile.name}:`);
+				error(`Error downloading file ${currentFile.name}:`);
 			}
 		}
 
@@ -1300,11 +1310,11 @@ async function downloadFilesRecursive(files, identifier) {
 
 async function downloadLightbox(folders, identifier) {
 	if (!identifier) {
-		console.log("identifier not found for download/Lightbox");
+		log("identifier not found for download/Lightbox");
 		return;
 	}
 	if (folders.length === 0) {
-		console.log("folders not found for download/Lightbox");
+		log("folders not found for download/Lightbox");
 		return;
 	}
 

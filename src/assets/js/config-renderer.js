@@ -219,9 +219,4 @@ $(document).ready(function () {
 		if (!url) return;
 		ipcRenderer.send("openWorkspace", url);
 	});
-
-	jQuery(document).on("click", "a[target='_blank']", function (event) {
-		event.preventDefault();
-		shell.openExternal(this.href);
-	});
 });

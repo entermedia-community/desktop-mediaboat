@@ -687,31 +687,29 @@ function getDirectoryStats(dirPath) {
 	};
 }
 
-function getFilesByDirectory(rootDirectory) {
-	if (!fs.existsSync(rootDirectory)) {
-		log("Directory not found: " + rootDirectory);
+function getFilesByDirectory(directory) {
+	if (!fs.existsSync(directory)) {
+		log("Directory not found: " + directory);
 		return { files: [] };
 	}
+
 	let filePaths = [];
-	function searchFiles(directory) {
-		const files = fs.readdirSync(directory);
-		files.forEach((file) => {
-			const ext = path.extname(file).toLowerCase();
-			if (file.startsWith(".") || ext === ".ini" || ext === ".db") return;
-			const abspath = path.join(directory, file);
-			const stats = fs.statSync(abspath);
-			if (stats.isDirectory()) {
-				searchFiles(abspath);
-			} else {
-				filePaths.push({
-					path: abspath.substring(rootDirectory.length + 1),
-					size: stats.size,
-					abspath,
-				});
-			}
-		});
-	}
-	searchFiles(rootDirectory);
+
+	const files = fs.readdirSync(directory);
+	files.forEach((file) => {
+		const ext = path.extname(file).toLowerCase();
+		if (file.startsWith(".") || ext === ".ini" || ext === ".db") return;
+		const abspath = path.join(directory, file);
+		const stats = fs.statSync(abspath);
+		if (!stats.isDirectory()) {
+			filePaths.push({
+				path: path.basename(abspath),
+				size: stats.size,
+				abspath,
+			});
+		}
+	});
+
 	return {
 		files: filePaths,
 	};
@@ -728,6 +726,7 @@ async function uploadLightbox(folders, identifier) {
 	}
 	const filesToUpload = [];
 	const fetchFilesToUpload = async (folders, index = 0) => {
+		if (index >= folders.length) return;
 		const folder = folders[index];
 		try {
 			const fetchPath = path.join(currentWorkDirectory, folder.path);
@@ -765,6 +764,7 @@ async function uploadLightbox(folders, identifier) {
 			error("Error on upload/Lightbox: " + folder.path);
 			error(err);
 		}
+		await fetchFilesToUpload(folders, index + 1);
 	};
 	await fetchFilesToUpload(folders);
 	uploadFilesRecursive(filesToUpload, identifier);
@@ -1110,13 +1110,14 @@ async function fetchSubFolderContent(categorypath, callback, args = null) {
 }
 
 async function scanFiles(categories) {
-	const result = {
+	let result = {
 		hasUploads: false,
 		hasDownloads: false,
 	};
 
 	async function scanFilesRecursive(cats, index = 0) {
-		if (index >= cats.length) return;
+		if (index >= cats.length || (result.hasDownloads && result.hasUploads))
+			return;
 		let category = cats[index];
 		let fetchPath = path.join(currentWorkDirectory, category.path);
 
@@ -1128,41 +1129,38 @@ async function scanFiles(categories) {
 		}
 		data.categorypath = category.path;
 
-		await axios
-			.post(
+		try {
+			const res = await axios.post(
 				getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
 				data,
-				{
-					headers: connectionOptions.headers,
-				}
-			)
-			.then(function (res) {
-				if (res.data !== undefined) {
-					const filesToDownload = res.data.filestodownload;
+				{ headers: connectionOptions.headers }
+			);
+			if (res.data !== undefined) {
+				if (!result.hasUploads) {
 					const filesToUpload = res.data.filestoupload;
-					if (!result.hasUploads) {
-						result.hasUploads = filesToUpload && filesToUpload.length > 0;
-					}
-					if (!result.hasDownloads) {
-						result.hasDownloads = filesToDownload && filesToDownload.length > 0;
-					}
-					if (!result.hasDownloads || !result.hasUploads) {
-						scanFilesRecursive(cats, index + 1);
-					}
-				} else {
-					throw new Error("No data found");
+					result.hasUploads = filesToUpload && filesToUpload.length > 0;
 				}
-			})
-			.catch(function (err) {
-				error("Error on scan Folder: " + category.path);
-				error(err);
-			});
+				if (!result.hasDownloads) {
+					const filesToDownload = res.data.filestodownload;
+					result.hasDownloads = filesToDownload && filesToDownload.length > 0;
+				}
+				if (!result.hasDownloads || !result.hasUploads) {
+					await scanFilesRecursive(cats, index + 1);
+				}
+			} else {
+				throw new Error("No data found");
+			}
+		} catch (err) {
+			error("Error on scan Folder: " + category.path);
+			error(err);
+		}
 	}
 
 	await scanFilesRecursive(categories);
 
 	return result;
 }
+
 ipcMain.handle(
 	"scanChanges",
 	async (_, { toplevelcategorypath, lightbox = "" }) => {
@@ -1272,7 +1270,7 @@ async function downloadFilesRecursive(files, identifier) {
 							isDownload: true,
 						});
 					},
-					openFolderWhenDone: currentFileIndex === totalFiles - 1,
+					openFolderWhenDone: false,
 					overwrite: true,
 					saveAs: currentFile.saveTo === undefined,
 					showBadge: true,
@@ -1321,6 +1319,7 @@ async function downloadLightbox(folders, identifier) {
 	const downloadURLRoot = parseURL(store.get("homeUrl"), true);
 	const filesToDownload = [];
 	const fetchFilesToDownload = async (folders, index) => {
+		if (index >= folders.length) return;
 		const folder = folders[index];
 		try {
 			const fetchPath = path.join(currentWorkDirectory, folder.path);
@@ -1360,6 +1359,7 @@ async function downloadLightbox(folders, identifier) {
 			error("Error on upload/Lightbox: " + folder.path);
 			error(err);
 		}
+		await fetchFilesToDownload(folders, index + 1);
 	};
 	await fetchFilesToDownload(folders, 0);
 
@@ -1466,7 +1466,6 @@ function isValidDownload(identifier) {
 }
 
 function handleLightboxDownload(categoryPath, notifyDuplicate = true) {
-	//Check if the same categoryPath is already being processed
 	if (Object.keys(downloadAbortControllers).length > 3) {
 		mainWindow.webContents.send("too-many-downloads", {
 			categoryPath,
@@ -1491,6 +1490,7 @@ ipcMain.handle(
 	"lightboxDownload",
 	async (_, { toplevelcategorypath, lightbox = "" }) => {
 		const categoryPath = path.join(toplevelcategorypath, lightbox);
+		openFolder(path.join(currentWorkDirectory, categoryPath));
 		return handleLightboxDownload(categoryPath);
 	}
 );

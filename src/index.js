@@ -1318,7 +1318,7 @@ async function downloadFilesRecursive(files, identifier) {
 					openFolderWhenDone: false,
 					overwrite: true,
 					saveAs: currentFile.saveTo === undefined,
-					showBadge: true,
+					showBadge: false,
 					showProgressBar: true,
 				}
 			);

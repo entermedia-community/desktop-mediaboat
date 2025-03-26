@@ -24,6 +24,7 @@ const path = require("node:path");
 const { parse: parseURL } = require("node:url");
 const qs = require("node:querystring");
 const { got } = require("got-cjs");
+const { it } = require("node:test");
 
 require("dotenv").config();
 electronLog.initialize();
@@ -33,7 +34,11 @@ const isDev = process.env.NODE_ENV === "development";
 const computerName = OS.userInfo().username + OS.hostname();
 
 let defaultWorkDirectory = path.join(app.getPath("home"), "eMedia" + path.sep);
+let defaultDownloadDirectory = app.getPath("downloads");
+
 let currentWorkDirectory = defaultWorkDirectory;
+let currentDownloadDirectory = defaultDownloadDirectory;
+
 let connectionOptions = {
 	headers: { "X-computername": computerName },
 };
@@ -106,6 +111,10 @@ const createWindow = () => {
 
 	const homeUrl = store.get("homeUrl");
 	const localDrive = store.get("localDrive");
+	const localDownload = store.get("localDownload");
+	if (localDownload) {
+		currentDownloadDirectory = localDownload;
+	}
 	app.allowRendererProcessReuse = false;
 	if (!homeUrl || !localDrive) {
 		openConfigPage();
@@ -127,6 +136,73 @@ const createWindow = () => {
 	});
 	mainWindow.webContents.on("did-navigate-in-page", () => {
 		setMainMenu();
+	});
+	session.defaultSession.on("will-download", async (e, item) => {
+		// e.preventDefault();
+		const filename = item.getFilename();
+		item.setSavePath(path.join(currentDownloadDirectory, filename));
+		item.once("done", () => {
+			openFolder(currentDownloadDirectory);
+		});
+
+		// console.log("Downloading: ", item.getURL());
+		// const url = item.getURL();
+		// const total = item.getTotalBytes();
+		// const id = "d-" + Date.now();
+		// let lastProgressUpdate = 0;
+
+		// try {
+		// 	await eDownload(mainWindow, url, {
+		// 		directory: currentDownloadDirectory,
+		// 		onStarted: () => {
+		// 			mainWindow.webContents.send("download-update", {
+		// 				id,
+		// 				status: "started",
+		// 				percent: 0,
+		// 				loaded: 0,
+		// 				total,
+		// 			});
+		// 		},
+		// 		onProgress: (progress) => {
+		// 			if (Date.now() - lastProgressUpdate < 500) return;
+		// 			lastProgressUpdate = Date.now();
+		// 			mainWindow.webContents.send("download-update", {
+		// 				id,
+		// 				status: "progress",
+		// 				loaded: progress.transferredBytes,
+		// 				total,
+		// 				percent: progress.percent,
+		// 			});
+		// 		},
+		// 		onCompleted: () => {
+		// 			mainWindow.webContents.send("download-update", {
+		// 				id,
+		// 				status: "completed",
+		// 				percent: 100,
+		// 				loaded: total,
+		// 				total,
+		// 			});
+		// 		},
+		// 		onError: (error) => {
+		// 			mainWindow.webContents.send("download-update", {
+		// 				id,
+		// 				status: "error",
+		// 				error,
+		// 			});
+		// 		},
+		// 		openFolderWhenDone: true,
+		// 		overwrite: true,
+		// 		saveAs: false,
+		// 		showBadge: true,
+		// 		showProgressBar: true,
+		// 	});
+		// } catch (e) {
+		// 	mainWindow.webContents.send("download-update", {
+		// 		id,
+		// 		status: "error",
+		// 		error: e,
+		// 	});
+		// }
 	});
 
 	setMainMenu();
@@ -369,7 +445,11 @@ ipcMain.handle("connection-established", async (_, options) => {
 		store.set("mediadburl", options.mediadb);
 	}
 
-	return { computerName, localRoot: currentWorkDirectory };
+	return {
+		computerName,
+		rootPath: currentWorkDirectory,
+		downloadPath: currentDownloadDirectory,
+	};
 });
 
 ipcMain.on("upsertWorkspace", (_, newWorkspace) => {
@@ -462,21 +542,28 @@ function openWorkspace(homeUrl) {
 	setMainMenu();
 }
 
-ipcMain.on("changeLocalDrive", (_, { selectedPath }) => {
-	if (fs.existsSync(selectedPath)) {
+ipcMain.on("changeDesktopSettings", (_, { rootPath, downloadPath }) => {
+	if (fs.existsSync(rootPath)) {
 		const currentHome = store.get("homeUrl");
 		let workspaces = store.get("workspaces") || [];
 		workspaces = workspaces.map((w) => {
 			if (w.url === currentHome) {
-				w.drive = selectedPath;
+				w.drive = rootPath;
 			}
 			return w;
 		});
 		store.set("workspaces", workspaces);
-		store.set("localDrive", selectedPath);
-		currentWorkDirectory = selectedPath;
-		mainWindow.webContents.send("set-local-root", currentWorkDirectory);
+		store.set("localDrive", rootPath);
+		currentWorkDirectory = rootPath;
 	}
+	if (fs.existsSync(downloadPath)) {
+		store.set("localDownload", downloadPath);
+		currentDownloadDirectory = downloadPath;
+	}
+	mainWindow.webContents.send("set-local-root", {
+		rootPath: currentWorkDirectory,
+		downloadPath: currentDownloadDirectory,
+	});
 });
 
 function getMediaDbUrl(url) {
@@ -1598,35 +1685,6 @@ function trashFilesRecursive(categories, index = 0) {
 			error(err);
 		});
 }
-
-ipcMain.on("start-download", async (event, { orderitemid, file }) => {
-	const parsedUrl = parseURL(store.get("homeUrl"), true);
-	indieDownloadManager.downloadFile({
-		downloadItemId: orderitemid,
-		downloadUrl:
-			parsedUrl.protocol + "//" + parsedUrl.host + file.itemdownloadurl,
-		onStarted: () => {
-			mainWindow.webContents.send(`download-started-${orderitemid}`);
-		},
-		onCancel: () => {
-			mainWindow.webContents.send(`download-abort-${orderitemid}`);
-		},
-		onProgress: ({ transferredBytes, totalBytes }) => {
-			mainWindow.webContents.send(`download-progress-${orderitemid}`, {
-				loaded: transferredBytes,
-				total: totalBytes,
-			});
-		},
-		onCompleted: (filePath) => {
-			mainWindow.webContents.send(`download-finished-${orderitemid}`, filePath);
-			log("Download Complete: " + filePath);
-		},
-		onError: (err) => {
-			mainWindow.webContents.send(`download-error-${orderitemid}`, err);
-		},
-		openFolderWhenDone: true,
-	});
-});
 
 ipcMain.on("onOpenFile", (_, path) => {
 	let downloadpath = app.getPath("downloads");

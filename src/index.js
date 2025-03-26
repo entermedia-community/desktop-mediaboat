@@ -24,7 +24,6 @@ const path = require("node:path");
 const { parse: parseURL } = require("node:url");
 const qs = require("node:querystring");
 const { got } = require("got-cjs");
-const { it } = require("node:test");
 
 require("dotenv").config();
 electronLog.initialize();
@@ -137,72 +136,25 @@ const createWindow = () => {
 	mainWindow.webContents.on("did-navigate-in-page", () => {
 		setMainMenu();
 	});
-	session.defaultSession.on("will-download", async (e, item) => {
+	session.defaultSession.on("will-download", async (_, item) => {
 		// e.preventDefault();
 		const filename = item.getFilename();
 		item.setSavePath(path.join(currentDownloadDirectory, filename));
-		item.once("done", () => {
-			openFolder(currentDownloadDirectory);
+		item.once("done", (_, state) => {
+			if (state === "completed") {
+				mainWindow.webContents.send("download-update", {
+					filename,
+					message: "Successfully downloaded " + filename,
+				});
+				openFolder(currentDownloadDirectory);
+			} else if (state === "interrupted") {
+				mainWindow.webContents.send("download-update", {
+					filename,
+					message: "Failed to download " + filename,
+					error: true,
+				});
+			}
 		});
-
-		// console.log("Downloading: ", item.getURL());
-		// const url = item.getURL();
-		// const total = item.getTotalBytes();
-		// const id = "d-" + Date.now();
-		// let lastProgressUpdate = 0;
-
-		// try {
-		// 	await eDownload(mainWindow, url, {
-		// 		directory: currentDownloadDirectory,
-		// 		onStarted: () => {
-		// 			mainWindow.webContents.send("download-update", {
-		// 				id,
-		// 				status: "started",
-		// 				percent: 0,
-		// 				loaded: 0,
-		// 				total,
-		// 			});
-		// 		},
-		// 		onProgress: (progress) => {
-		// 			if (Date.now() - lastProgressUpdate < 500) return;
-		// 			lastProgressUpdate = Date.now();
-		// 			mainWindow.webContents.send("download-update", {
-		// 				id,
-		// 				status: "progress",
-		// 				loaded: progress.transferredBytes,
-		// 				total,
-		// 				percent: progress.percent,
-		// 			});
-		// 		},
-		// 		onCompleted: () => {
-		// 			mainWindow.webContents.send("download-update", {
-		// 				id,
-		// 				status: "completed",
-		// 				percent: 100,
-		// 				loaded: total,
-		// 				total,
-		// 			});
-		// 		},
-		// 		onError: (error) => {
-		// 			mainWindow.webContents.send("download-update", {
-		// 				id,
-		// 				status: "error",
-		// 				error,
-		// 			});
-		// 		},
-		// 		openFolderWhenDone: true,
-		// 		overwrite: true,
-		// 		saveAs: false,
-		// 		showBadge: true,
-		// 		showProgressBar: true,
-		// 	});
-		// } catch (e) {
-		// 	mainWindow.webContents.send("download-update", {
-		// 		id,
-		// 		status: "error",
-		// 		error: e,
-		// 	});
-		// }
 	});
 
 	setMainMenu();

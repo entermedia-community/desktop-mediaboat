@@ -1581,13 +1581,17 @@ ipcMain.handle(
 	}
 );
 
-ipcMain.on("continueSync", async (_, { categorypath, isDownload }) => {
-	if (isDownload) {
-		handleLightboxDownload(categorypath, false);
-	} else {
-		handleLightboxUpload(categorypath, false);
+ipcMain.handle(
+	"continueSync",
+	async (_, { toplevelcategorypath, isDownload }) => {
+		if (isDownload) {
+			openFolder(path.join(currentWorkDirectory, toplevelcategorypath));
+			return handleLightboxDownload(toplevelcategorypath, false);
+		} else {
+			return handleLightboxUpload(toplevelcategorypath, false);
+		}
 	}
-});
+);
 
 ipcMain.on("trashExtraFiles", async (_, { categorypath }) => {
 	fetchSubFolderContent(categorypath, trashFilesRecursive);

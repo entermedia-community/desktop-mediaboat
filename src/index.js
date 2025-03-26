@@ -136,11 +136,17 @@ const createWindow = () => {
 	mainWindow.webContents.on("did-navigate-in-page", () => {
 		setMainMenu();
 	});
-	session.defaultSession.on("will-download", async (_, item) => {
+	mainWindow.webContents.session.on("will-download", async (_, item) => {
 		// e.preventDefault();
 		const filename = item.getFilename();
-		item.setSavePath(path.join(currentDownloadDirectory, filename));
+		let savePath = item.getSavePath();
+		if (!savePath) {
+			savePath = path.join(currentDownloadDirectory, filename);
+			item.setSavePath(savePath);
+		}
+
 		item.once("done", (_, state) => {
+			if (!item.getSavePath().startsWith(currentDownloadDirectory)) return;
 			if (state === "completed") {
 				mainWindow.webContents.send("download-update", {
 					filename,

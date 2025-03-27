@@ -6,8 +6,8 @@
 	"main": "src/index.js",
 	"homepage": "https://github.com/entermedia-community/desktop-mediaboat",
 	"scripts": {
-		"start": "electron .",
-		"build": "node cleanup && electron-builder",
+		"start": "NODE_ENV=development electron .",
+		"build": "node cleanup && NODE_ENV=production node ./build/builder.js",
 		"postinstall": "electron-builder install-app-deps",
 		"afterSign": "build/notarize.js"
 	},

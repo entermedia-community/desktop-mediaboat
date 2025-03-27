@@ -1,5 +1,3 @@
-process.env["ELECTRON_DISABLE_SECURITY_WARNINGS"] = "true";
-
 const axios = require("axios");
 const {
 	app,
@@ -26,10 +24,23 @@ const qs = require("node:querystring");
 const { got } = require("got-cjs");
 
 require("dotenv").config();
+
 electronLog.initialize();
 electronLog.transports.console.level = "debug";
 electronLog.transports.console.format = "│{h}:{i}:{s}.{ms}│ {text}";
+
 const isDev = process.env.NODE_ENV === "development";
+
+if (process.defaultApp) {
+	if (process.argv.length >= 2) {
+		app.setAsDefaultProtocolClient("emedia", process.execPath, [
+			path.resolve(process.argv[1]),
+		]);
+	}
+} else {
+	app.setAsDefaultProtocolClient("emedia");
+}
+
 let computerName = OS.userInfo().username + OS.hostname();
 computerName = computerName.replace(/[^A-Za-z0-9@\.\-]/g, "_");
 
@@ -253,6 +264,11 @@ if (!gotTheLock) {
 			if (mainWindow.isMinimized()) mainWindow.restore();
 			mainWindow.focus();
 		}
+		const fromUrl = commandLine.pop();
+
+		if (fromUrl.startsWith("emedia://")) {
+			handleDeepLink(fromUrl);
+		}
 	});
 
 	app.whenReady().then(() => {
@@ -279,7 +295,11 @@ if (process.defaultApp) {
 }
 
 app.on("open-url", (_, url) => {
-	const parsedUrl = parseURL(url);
+	handleDeepLink(url);
+});
+
+function handleDeepLink(url) {
+	const parsedUrl = parseURL(url, true);
 	const query = qs.parse(parsedUrl.query);
 	if (query.page === "config") {
 		openConfigPage();
@@ -287,7 +307,7 @@ app.on("open-url", (_, url) => {
 		log(query.url);
 		openWorkspace(query.url);
 	}
-});
+}
 
 app.on("window-all-closed", () => {
 	if (process.platform !== "darwin") {
@@ -495,8 +515,7 @@ function openWorkspace(homeUrl) {
 			userAgent +
 			" eMediaDesktop/" +
 			app.getVersion() +
-			" APIVersion/" +
-			process.env.EMEDIA_API_VERSION +
+			" APIVersion/1" +
 			" ComputerName/" +
 			computerName;
 	}

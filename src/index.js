@@ -1485,6 +1485,10 @@ ipcMain.on(
 	(_, { customRoot, path: folderPath, lightbox = null }) => {
 		let rootDir = currentWorkDirectory;
 		if (customRoot && customRoot.length > 0) {
+			if (customRoot.startsWith("$HOME")) {
+				customRoot = customRoot.replace("$HOME", OS.homedir());
+			}
+			customRoot = path.normalize(customRoot);
 			rootDir = customRoot;
 		}
 		if (!folderPath.startsWith("/") && !folderPath.match(/^[a-zA-Z]:/)) {

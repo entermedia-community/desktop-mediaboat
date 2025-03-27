@@ -30,7 +30,8 @@ electronLog.initialize();
 electronLog.transports.console.level = "debug";
 electronLog.transports.console.format = "│{h}:{i}:{s}.{ms}│ {text}";
 const isDev = process.env.NODE_ENV === "development";
-const computerName = OS.userInfo().username + OS.hostname();
+let computerName = OS.userInfo().username + OS.hostname();
+computerName = computerName.replace(/[^A-Za-z0-9@\.\-]/g, "_");
 
 let defaultWorkDirectory = path.join(app.getPath("home"), "eMedia" + path.sep);
 let defaultDownloadDirectory = app.getPath("downloads");
@@ -492,7 +493,7 @@ function openWorkspace(homeUrl) {
 	if (userAgent.indexOf("ComputerName") === -1) {
 		userAgent =
 			userAgent +
-			"eMediaLibrary/" +
+			" eMediaDesktop/" +
 			app.getVersion() +
 			" APIVersion/" +
 			process.env.EMEDIA_API_VERSION +
@@ -1479,15 +1480,22 @@ ipcMain.on(
 	}
 );
 
-ipcMain.on("openFolder", (_, { path: folderPath, lightbox = null }) => {
-	if (!folderPath.startsWith("/") && !folderPath.match(/^[a-zA-Z]:/)) {
-		folderPath = path.join(currentWorkDirectory, folderPath);
+ipcMain.on(
+	"openFolder",
+	(_, { customRoot, path: folderPath, lightbox = null }) => {
+		let rootDir = currentWorkDirectory;
+		if (customRoot && customRoot.length > 0) {
+			rootDir = customRoot;
+		}
+		if (!folderPath.startsWith("/") && !folderPath.match(/^[a-zA-Z]:/)) {
+			folderPath = path.join(rootDir, folderPath);
+		}
+		if (lightbox && lightbox.length > 0) {
+			folderPath = path.join(folderPath, lightbox);
+		}
+		openFolder(folderPath);
 	}
-	if (lightbox && lightbox.length > 0) {
-		folderPath = path.join(folderPath, lightbox);
-	}
-	openFolder(folderPath);
-});
+);
 
 function openFolder(path) {
 	log("Opening folder: " + path);

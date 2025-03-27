@@ -490,7 +490,14 @@ function openWorkspace(homeUrl) {
 
 	let userAgent = mainWindow.webContents.getUserAgent();
 	if (userAgent.indexOf("ComputerName") === -1) {
-		userAgent = userAgent + "eMediaLibrary/2.5.5 ComputerName/" + computerName;
+		userAgent =
+			userAgent +
+			"eMediaLibrary/" +
+			app.getVersion() +
+			" APIVersion/" +
+			process.env.EMEDIA_API_VERSION +
+			" ComputerName/" +
+			computerName;
 	}
 
 	showLoader();

@@ -703,7 +703,7 @@ async function uploadFilesRecursive(files, identifier) {
 		currentFileIndex++;
 
 		// Process the next file
-		setTimeout(processNextFile, 1000);
+		setTimeout(processNextFile, 100);
 	};
 
 	// Start processing files
@@ -1371,7 +1371,7 @@ async function downloadFilesRecursive(files, identifier) {
 		currentFileIndex++;
 
 		// Process the next file
-		setTimeout(processNextFile, 1000);
+		setTimeout(processNextFile, 100);
 	};
 
 	// Start processing files

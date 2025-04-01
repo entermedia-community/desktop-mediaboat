@@ -27,7 +27,7 @@ require("dotenv").config();
 
 electronLog.initialize();
 electronLog.transports.console.level = "debug";
-electronLog.transports.console.format = "│{h}:{i}:{s}.{ms}│ {text}";
+electronLog.transports.console.format = "[ {h}:{i}:{s}.{ms} ] {text}";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -69,9 +69,9 @@ const currentVersion = app.getVersion();
 
 function log(...args) {
 	try {
-		console.log("\n┌────────────┐");
+		console.log("\n");
 		electronLog.debug(...args);
-		console.log("└────────────┘\n");
+		console.log("\n");
 	} catch (e) {
 		console.error(e);
 	} finally {
@@ -83,9 +83,9 @@ function log(...args) {
 
 function error(...args) {
 	try {
-		console.log("\n\x1b[31m┌────────────┐\x1b[0m");
+		console.log("\n");
 		electronLog.error(...args);
-		console.log("\x1b[31m└────────────┘\x1b[0m\n");
+		console.log("\n");
 	} catch (e) {
 		console.error(e);
 	} finally {

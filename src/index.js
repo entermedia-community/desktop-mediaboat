@@ -1511,7 +1511,7 @@ ipcMain.on(
 			rootDir = customRoot;
 		}
 		if (!folderPath.startsWith("/") && !folderPath.match(/^[a-zA-Z]:/)) {
-			folderPath = path.join(rootDir, folderPath);
+			folderPath = path.join(rootDir, path.normalize(folderPath));
 		}
 		if (lightbox && lightbox.length > 0) {
 			folderPath = path.join(folderPath, lightbox);

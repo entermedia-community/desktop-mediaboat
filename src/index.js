@@ -113,6 +113,8 @@ const createWindow = () => {
 			? {
 					titleBarOverlay: {
 						height: 32,
+						color: "#151515",
+						symbolColor: "#ffffff",
 					},
 			  }
 			: {}),
@@ -260,7 +262,7 @@ function createContextMenu() {
 			{
 				id: "inspect",
 				label: "Inspect Element",
-				visible: isDev,
+				// visible: isDev,
 				click() {
 					mainWindow.webContents.inspectElement(props.x, props.y);
 				},

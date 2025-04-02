@@ -69,7 +69,7 @@ body::-webkit-scrollbar-thumb {
 	position: fixed;
 	z-index: 99999;
 	top: 0;
-	background: url("../images/body-bg.jpg") repeat;
+	background: #151515;
 }
 .navbar {
 	padding: 0;

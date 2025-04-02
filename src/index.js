@@ -351,7 +351,24 @@ function showApp(reload = false) {
 		}
 	}
 }
-
+function showAbout() {
+	dialog
+		.showMessageBox(mainWindow, {
+			type: "info",
+			icon: appIcon,
+			buttons: ["Show Log", "Close"],
+			defaultId: 0,
+			cancelId: 1,
+			title: "Version",
+			message: "eMedia Library v" + currentVersion,
+		})
+		.then(({ response }) => {
+			if (response === 0) {
+				const logFile = electronLog.transports.file.getFile();
+				openFolder(path.dirname(logFile.path));
+			}
+		});
+}
 function createTray() {
 	const trayMenu = [];
 	trayMenu.push({
@@ -372,6 +389,13 @@ function createTray() {
 		click() {
 			openConfigPage();
 		},
+		accelerator: "CmdOrCtrl+,",
+	});
+	trayMenu.push({
+		label: "About",
+		click() {
+			showAbout();
+		},
 	});
 	trayMenu.push({ type: "separator" });
 	trayMenu.push({
@@ -380,6 +404,7 @@ function createTray() {
 			app.isQuitting = true;
 			app.quit();
 		},
+		accelerator: "CmdOrCtrl+Q",
 	});
 	const trayIcon = nativeImage.createFromPath(
 		path.join(__dirname, `assets/images/ems.png`)
@@ -446,6 +471,7 @@ ipcMain.handle("connection-established", async (_, options) => {
 		computerName,
 		rootPath: currentWorkDirectory,
 		downloadPath: currentDownloadDirectory,
+		platform: process.platform,
 	};
 });
 
@@ -967,9 +993,11 @@ function setMainMenu() {
 		{
 			label: "Edit",
 			role: "editMenu",
+			id: "editMenu",
 		},
 		{
 			label: "Window",
+			id: "windowMenu",
 			submenu: [
 				{
 					label: "Home",
@@ -1046,6 +1074,24 @@ function setMainMenu() {
 	];
 	Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
+ipcMain.on("menu-action", (_, action) => {
+	const menu = Menu.getApplicationMenu();
+	if (!menu) return;
+	switch (action) {
+		case "home":
+			const homeUrl = store.get("homeUrl");
+			openWorkspace(homeUrl);
+			break;
+		case "edit":
+			menu.getMenuItemById("editMenu").submenu?.popup();
+			break;
+		case "window":
+			menu.getMenuItemById("windowMenu").submenu?.popup();
+			break;
+		default:
+			break;
+	}
+});
 
 // ---------------------- Open file ---------------------
 

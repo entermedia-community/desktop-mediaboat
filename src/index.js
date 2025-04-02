@@ -1299,15 +1299,11 @@ async function scanFiles(categories) {
 	return result;
 }
 
-ipcMain.handle(
-	"scanChanges",
-	async (_, { toplevelcategorypath, lightbox = "" }) => {
-		const categoryPath = path.join(toplevelcategorypath, lightbox);
-		const categories = await fetchSubFolderContent(categoryPath);
-		const result = await scanFiles(categories);
-		return result;
-	}
-);
+ipcMain.handle("scanChanges", async (_, categoryPath) => {
+	const categories = await fetchSubFolderContent(categoryPath);
+	const result = await scanFiles(categories);
+	return result;
+});
 
 const downloadAbortControllers = {};
 const cancelledDownloads = {};
@@ -1565,26 +1561,20 @@ ipcMain.on(
 	}
 );
 
-ipcMain.on(
-	"openFolder",
-	(_, { customRoot, path: folderPath, lightbox = null }) => {
-		let rootDir = currentWorkDirectory;
-		if (customRoot && customRoot.length > 0) {
-			if (customRoot.startsWith("$HOME")) {
-				customRoot = customRoot.replace("$HOME", OS.homedir());
-			}
-			customRoot = path.normalize(customRoot);
-			rootDir = customRoot;
+ipcMain.on("openFolder", (_, { customRoot, folderPath }) => {
+	let rootDir = currentWorkDirectory;
+	if (customRoot && customRoot.length > 0) {
+		if (customRoot.startsWith("$HOME")) {
+			customRoot = customRoot.replace("$HOME", OS.homedir());
 		}
-		if (!folderPath.startsWith("/") && !folderPath.match(/^[a-zA-Z]:/)) {
-			folderPath = path.join(rootDir, path.normalize(folderPath));
-		}
-		if (lightbox && lightbox.length > 0) {
-			folderPath = path.join(folderPath, lightbox);
-		}
-		openFolder(folderPath);
+		customRoot = path.normalize(customRoot);
+		rootDir = customRoot;
 	}
-);
+	if (!folderPath.startsWith("/") && !folderPath.match(/^[a-zA-Z]:/)) {
+		folderPath = path.join(rootDir, path.normalize(folderPath));
+	}
+	openFolder(folderPath);
+});
 
 function openFolder(path) {
 	log("Opening folder: " + path);
@@ -1635,14 +1625,10 @@ function handleLightboxDownload(categoryPath, notifyDuplicate = true) {
 	return true;
 }
 
-ipcMain.handle(
-	"lightboxDownload",
-	async (_, { toplevelcategorypath, lightbox = "" }) => {
-		const categoryPath = path.join(toplevelcategorypath, lightbox);
-		openFolder(path.join(currentWorkDirectory, categoryPath));
-		return handleLightboxDownload(categoryPath);
-	}
-);
+ipcMain.handle("lightboxDownload", async (_, categoryPath) => {
+	openFolder(path.join(currentWorkDirectory, categoryPath));
+	return handleLightboxDownload(categoryPath);
+});
 
 function isValidUpload(identifier) {
 	if (uploadAbortControllers[identifier] !== undefined) return false;
@@ -1677,25 +1663,18 @@ function handleLightboxUpload(categoryPath, notifyDuplicate = true) {
 	return true;
 }
 
-ipcMain.handle(
-	"lightboxUpload",
-	async (_, { toplevelcategorypath, lightbox = "" }) => {
-		const categoryPath = path.join(toplevelcategorypath, lightbox);
-		return handleLightboxUpload(categoryPath);
-	}
-);
+ipcMain.handle("lightboxUpload", async (_, categoryPath) => {
+	return handleLightboxUpload(categoryPath);
+});
 
-ipcMain.handle(
-	"continueSync",
-	async (_, { toplevelcategorypath, isDownload }) => {
-		if (isDownload) {
-			openFolder(path.join(currentWorkDirectory, toplevelcategorypath));
-			return handleLightboxDownload(toplevelcategorypath, false);
-		} else {
-			return handleLightboxUpload(toplevelcategorypath, false);
-		}
+ipcMain.handle("continueSync", async (_, { categoryPath, isDownload }) => {
+	if (isDownload) {
+		openFolder(path.join(currentWorkDirectory, categoryPath));
+		return handleLightboxDownload(categoryPath, false);
+	} else {
+		return handleLightboxUpload(categoryPath, false);
 	}
-);
+});
 
 ipcMain.on("trashExtraFiles", async (_, { categorypath }) => {
 	fetchSubFolderContent(categorypath, trashFilesRecursive);

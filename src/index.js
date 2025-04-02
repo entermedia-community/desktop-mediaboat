@@ -952,7 +952,7 @@ function setMainMenu() {
 	const template = [
 		{
 			label: "eMedia Library",
-			id: "eMedia",
+			id: "eMediaMenu",
 			submenu: [
 				{
 					label: "About",

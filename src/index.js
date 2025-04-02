@@ -1078,21 +1078,13 @@ function setMainMenu() {
 	Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 ipcMain.on("menu-action", (_, action) => {
-	const menu = Menu.getApplicationMenu();
+	const menus = Menu.getApplicationMenu();
+	if (!menus) return;
+	const menu = menus.getMenuItemById(action);
 	if (!menu) return;
-	switch (action) {
-		case "emedia":
-			menu.getMenuItemById("eMedia").submenu?.popup();
-			break;
-		case "edit":
-			menu.getMenuItemById("editMenu").submenu?.popup();
-			break;
-		case "window":
-			menu.getMenuItemById("windowMenu").submenu?.popup();
-			break;
-		default:
-			break;
-	}
+	const submenu = menu.submenu;
+	if (!submenu) return;
+	submenu.popup();
 });
 
 // ---------------------- Open file ---------------------

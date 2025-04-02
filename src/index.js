@@ -952,6 +952,7 @@ function setMainMenu() {
 	const template = [
 		{
 			label: "eMedia Library",
+			id: "eMedia",
 			submenu: [
 				{
 					label: "About",
@@ -1080,9 +1081,8 @@ ipcMain.on("menu-action", (_, action) => {
 	const menu = Menu.getApplicationMenu();
 	if (!menu) return;
 	switch (action) {
-		case "home":
-			const homeUrl = store.get("homeUrl");
-			openWorkspace(homeUrl);
+		case "emedia":
+			menu.getMenuItemById("eMedia").submenu?.popup();
 			break;
 		case "edit":
 			menu.getMenuItemById("editMenu").submenu?.popup();

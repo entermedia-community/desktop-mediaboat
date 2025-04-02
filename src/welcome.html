@@ -15,9 +15,10 @@
 		<script src="assets/bootstrap/js/bootstrap.bundle.min.js"></script>
 	</head>
 	<body>
+		<div id="header" style="app-region: drag; user-select: none"></div>
 		<nav class="navbar">
-			<div class="d-flex w-100 container py-4">
-				<a class="navbar-brand me-0" href="#">
+			<div class="d-flex justify-content-center w-100 container">
+				<div class="navbar-brand me-0" href="#">
 					<img
 						src="assets/images/logo.png"
 						alt="Logo"
@@ -25,19 +26,20 @@
 						height="90"
 						class="d-inline-block align-text-top"
 					/>
-				</a>
-				<div class="text-white text-center ms-5 pad-left">
-					<div class="fs-2 fs-md-3 fs-lg-2">
+				</div>
+				<div class="text-white text-center ms-4">
+					<div style="font-size: 1.9rem">
 						Welcome to <b>eMedia Library Desktop</b>
 					</div>
 					<p class="m-0">Organized File Storage, Searching and Sharing</p>
 				</div>
-				<div class="pad-right" style="width: 150px"></div>
 			</div>
 		</nav>
-		<main class="container bg-white" id="main">
-			<span class="loader"></span>
-		</main>
+		<div id="scrollable">
+			<main class="container bg-white" id="main">
+				<span class="loader"></span>
+			</main>
+		</div>
 		<script
 			src="assets/js/jquery.min.js"
 			onload="if (!window.jQuery) window.$ = window.jQuery = module.exports;"

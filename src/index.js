@@ -106,6 +106,16 @@ const createWindow = () => {
 			enableRemoteModule: true,
 		},
 		show: false,
+		frame: false,
+		titleBarStyle: "hidden",
+		trafficLightPosition: { x: 12, y: 8 },
+		...(process.platform !== "darwin"
+			? {
+					titleBarOverlay: {
+						height: 32,
+					},
+			  }
+			: {}),
 	});
 
 	mainWindow.once("ready-to-show", () => {
@@ -140,7 +150,10 @@ const createWindow = () => {
 
 	mainWindow.webContents.on("did-finish-load", () => {
 		hideLoader();
-		mainWindow.webContents.send("set-local-root", currentWorkDirectory);
+		mainWindow.webContents.send("set-local-root", {
+			rootPath: currentWorkDirectory,
+			downloadPath: currentDownloadDirectory,
+		});
 	});
 	mainWindow.webContents.on("did-stop-loading", () => {
 		hideLoader();
@@ -173,6 +186,11 @@ const createWindow = () => {
 				});
 			}
 		});
+	});
+
+	mainWindow.on("page-title-updated", (event, title) => {
+		event.preventDefault();
+		mainWindow.webContents.send("page-title-updated", title);
 	});
 
 	setMainMenu();

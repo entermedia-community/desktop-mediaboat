@@ -106,6 +106,11 @@ $(document).ready(function () {
 		loadPrivateConfig();
 	});
 	ipcRenderer.on("config-init", (_, { workspaces, currentUrl = null }) => {
+		if (currentUrl !== null) {
+			$("#backButton").show();
+		} else {
+			$("#backButton").hide();
+		}
 		document.title = "Browse or Add eMedia Libraries";
 		workspaces = workspaces.filter((workspace) => workspace.url);
 		swapOrder(workspaces.length > 0);
@@ -120,6 +125,11 @@ $(document).ready(function () {
 			initialLoad = false;
 			loadCommunityLibraries();
 		}
+	});
+
+	$("#backButton").on("click", function (e) {
+		e.preventDefault();
+		ipcRenderer.send("goBack");
 	});
 
 	$("#main").on("click", "#privateLibraries", function (e) {

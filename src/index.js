@@ -10,6 +10,7 @@ const {
 	session,
 	nativeImage,
 	clipboard,
+	screen,
 } = require("electron");
 const Store = require("electron-store");
 const FormData = require("form-data");
@@ -96,7 +97,17 @@ function error(...args) {
 }
 
 const createWindow = () => {
+	const primaryDisplay = screen.getPrimaryDisplay();
+	const { width, height } = primaryDisplay.workAreaSize;
 	mainWindow = new BrowserWindow({
+		width,
+		height,
+		x: 0,
+		y: 0,
+		maxWidth: width,
+		maxHeight: height,
+		minWidth: 1000,
+		minHeight: 600,
 		icon: appIcon,
 		webPreferences: {
 			preload: path.join(__dirname, "preload.js"),
@@ -121,9 +132,9 @@ const createWindow = () => {
 	});
 
 	mainWindow.once("ready-to-show", () => {
-		hideLoader();
 		mainWindow.maximize();
 		mainWindow.setVisibleOnAllWorkspaces(true);
+		hideLoader();
 	});
 
 	mainWindow.on("close", (event) => {
@@ -152,7 +163,7 @@ const createWindow = () => {
 
 	mainWindow.webContents.on("did-finish-load", () => {
 		hideLoader();
-		mainWindow.webContents.send("set-local-root", {
+		mainWindow.webContents.send("siteLoaded", {
 			rootPath: currentWorkDirectory,
 			downloadPath: currentDownloadDirectory,
 		});
@@ -385,6 +396,7 @@ function createTray() {
 		click: () => {
 			showApp(true);
 		},
+		accelerator: "CmdOrCtrl+H",
 	});
 	trayMenu.push({
 		label: "Libraries Settings",
@@ -398,6 +410,7 @@ function createTray() {
 		click() {
 			showAbout();
 		},
+		accelerator: "CmdOrCtrl+I",
 	});
 	trayMenu.push({ type: "separator" });
 	trayMenu.push({
@@ -591,7 +604,7 @@ ipcMain.on("changeDesktopSettings", (_, { rootPath, downloadPath }) => {
 		store.set("localDownload", downloadPath);
 		currentDownloadDirectory = downloadPath;
 	}
-	mainWindow.webContents.send("set-local-root", {
+	mainWindow.webContents.send("siteLoaded", {
 		rootPath: currentWorkDirectory,
 		downloadPath: currentDownloadDirectory,
 	});
@@ -942,6 +955,19 @@ ipcMain.on("openWorkspace", (_, url) => {
 	openWorkspace(url);
 });
 
+ipcMain.on("goBack", () => {
+	if (mainWindow && mainWindow.webContents.navigationHistory.canGoBack()) {
+		mainWindow.webContents.navigationHistory.goBack();
+	} else {
+		const homeUrl = store.get("homeUrl");
+		if (homeUrl) {
+			ß;
+			openWorkspace(homeUrl);
+			ß;
+		}
+	}
+});
+
 ipcMain.on("openExternal", (_, url) => {
 	shell.openExternal(url);
 });
@@ -955,25 +981,19 @@ function setMainMenu() {
 			id: "eMedia",
 			submenu: [
 				{
+					label: "Home",
+					click: () => {
+						mainWindow.show();
+						openWorkspace(homeUrl);
+					},
+					accelerator: "CmdOrCtrl+H",
+				},
+				{
 					label: "About",
 					click() {
-						dialog
-							.showMessageBox(mainWindow, {
-								type: "info",
-								icon: appIcon,
-								buttons: ["Show Log", "Close"],
-								defaultId: 0,
-								cancelId: 1,
-								title: "Version",
-								message: "eMedia Library v" + currentVersion,
-							})
-							.then(({ response }) => {
-								if (response === 0) {
-									const logFile = electronLog.transports.file.getFile();
-									openFolder(path.dirname(logFile.path));
-								}
-							});
+						showAbout();
 					},
+					accelerator: "CmdOrCtrl+I",
 				},
 				{
 					label: "Settings",
@@ -1008,6 +1028,7 @@ function setMainMenu() {
 						mainWindow.show();
 						openWorkspace(homeUrl);
 					},
+					accelerator: "CmdOrCtrl+H",
 				},
 				{
 					label: "Back",
@@ -1016,6 +1037,14 @@ function setMainMenu() {
 						mainWindow.webContents.navigationHistory.goBack();
 					},
 					enabled: mainWindow.webContents.navigationHistory.canGoBack(),
+				},
+				{
+					label: "Forward",
+					accelerator: "CmdOrCtrl+Right",
+					click() {
+						mainWindow.webContents.navigationHistory.goForward();
+					},
+					enabled: mainWindow.webContents.navigationHistory.canGoForward(),
 				},
 				{
 					label: "Refresh",

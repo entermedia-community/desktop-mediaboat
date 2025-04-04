@@ -63,19 +63,50 @@ body::-webkit-scrollbar-thumb {
 	border-radius: 6px;
 }
 #header {
+	position: relative;
 	height: 32px;
 	width: 100vw;
 	text-align: center;
-	position: fixed;
-	z-index: 99999;
-	top: 0;
 	background: #151515;
+	display: flex;
+	user-select: none;
+	position: fixed;
+	z-index: 9998;
+	top: 0;
+	left: 0;
+	app-region: drag;
+}
+#backButton {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 90px;
+	height: 31px;
+	line-height: 1;
+	background-color: transparent;
+	border: none;
+	color: #fff;
+	font-size: 0.85rem;
+	font-weight: bold;
+	cursor: pointer;
+	text-align: center;
+	text-decoration: none;
+	position: fixed;
+	top: 32px;
+	left: 0;
+	z-index: 99999;
+}
+#backButton svg {
+	margin-bottom: 2px;
+}
+#backButton:hover {
+	background-color: rgba(255, 255, 255, 0.1);
 }
 .navbar {
 	padding: 0;
 	background: url("../images/body-bg.jpg") repeat;
 	position: fixed;
-	z-index: 9999;
+	z-index: 999;
 	width: 100%;
 	height: 168px;
 	top: 32px;

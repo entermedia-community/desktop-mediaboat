@@ -61,6 +61,8 @@ let loaderWindow = null;
 
 let tray = null;
 
+const DESKTOP_API_VERSION = 256;
+
 const store = new Store();
 const appIcon = nativeImage.createFromPath(
 	path.join(__dirname, "../images/icon.png")
@@ -487,6 +489,7 @@ ipcMain.handle("connection-established", async (_, options) => {
 		rootPath: currentWorkDirectory,
 		downloadPath: currentDownloadDirectory,
 		platform: process.platform,
+		currentDesktopVersion: DESKTOP_API_VERSION,
 	};
 });
 
@@ -574,7 +577,8 @@ function openWorkspace(homeUrl) {
 			userAgent +
 			" eMediaDesktop/" +
 			app.getVersion() +
-			" APIVersion/1" +
+			" APIVersion/" +
+			DESKTOP_API_VERSION +
 			" ComputerName/" +
 			computerName;
 	}

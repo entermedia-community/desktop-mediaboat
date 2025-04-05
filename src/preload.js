@@ -11,6 +11,8 @@ process.once("loaded", () => {
 				targetDiv: evt.data.targetDiv,
 				currentPath: evt.data.currentPath || undefined,
 			});
+		} else if (evt.data.type === "menu-clicked") {
+			ipcRenderer.send("menu-action", evt.data.action);
 		}
 	});
 });

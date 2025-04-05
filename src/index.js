@@ -169,6 +169,20 @@ const createWindow = () => {
 			rootPath: currentWorkDirectory,
 			downloadPath: currentDownloadDirectory,
 		});
+		let titleHtml = fs.readFileSync(__dirname + "/title", "utf8");
+		titleHtml = titleHtml.replace("$PLATFORM", process.platform);
+		mainWindow.webContents.executeJavaScript(
+			`
+			var titleHeader = document.querySelector("#desktopTitle");
+			if (!titleHeader) {
+				var div = document.createElement("div");
+				div.innerHTML = '${titleHtml}';
+				document.body.prepend(div);
+				document.body.style.marginTop = "32px";
+			}
+			`,
+			true
+		);
 	});
 	mainWindow.webContents.on("did-stop-loading", () => {
 		hideLoader();

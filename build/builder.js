@@ -19,9 +19,16 @@ const options = {
 	},
 };
 
+let platformTarget = Platform.MAC.createTarget();
+if (process.platform === "linux") {
+	platformTarget = Platform.LINUX.createTarget();
+} else if (process.platform === "win32") {
+	platformTarget = Platform.WINDOWS.createTarget();
+}
+
 builder
 	.build({
-		targets: Platform.MAC.createTarget(),
+		targets: platformTarget,
 		config: options,
 	})
 	.then((result) => {

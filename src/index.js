@@ -164,6 +164,7 @@ const createWindow = () => {
 	mainWindow.webContents.on("did-navigate-in-page", () => {
 		setMainMenu();
 	});
+
 	mainWindow.webContents.session.on("will-download", async (_, item) => {
 		// e.preventDefault();
 		const filename = item.getFilename();
@@ -180,7 +181,6 @@ const createWindow = () => {
 					filename,
 					message: "Successfully downloaded " + filename,
 				});
-				openFolder(currentDownloadDirectory);
 			} else if (state === "interrupted") {
 				mainWindow.webContents.send("download-update", {
 					filename,

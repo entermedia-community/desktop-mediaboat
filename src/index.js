@@ -1389,41 +1389,40 @@ async function downloadFilesRecursive(files, identifier) {
 
 		try {
 			// Download the file with progress tracking
-			downloadAbortControllers[identifier] = await eDownload(
-				mainWindow,
-				currentFile.url,
-				{
-					directory: currentFile.saveTo,
-					// onTotalProgress,
-					onProgress: (progress) => {
-						// Send individual file progress
-						if (Date.now() - lastProgressUpdate < 500) return;
-						lastProgressUpdate = Date.now();
-						mainWindow.webContents.send("file-progress-update", {
-							...fileStatusPayload,
-							loaded: progress.transferredBytes,
-							total: progress.totalBytes,
-							percent: progress.percent,
-							isDownload: true,
-						});
-					},
-					onCompleted: () => {
-						// Mark file as completed
-						completedFiles++;
-						mainWindow.webContents.send("file-status-update", {
-							...fileStatusPayload,
-							status: "completed",
-							progress: 100,
-							isDownload: true,
-						});
-					},
-					openFolderWhenDone: false,
-					overwrite: true,
-					saveAs: currentFile.saveTo === undefined,
-					showBadge: false,
-					showProgressBar: false,
-				}
-			);
+			await eDownload(mainWindow, currentFile.url, {
+				directory: currentFile.saveTo,
+				onStarted: (item) => {
+					downloadAbortControllers[identifier] = item;
+				},
+				// onTotalProgress,
+				onProgress: (progress) => {
+					// Send individual file progress
+					if (Date.now() - lastProgressUpdate < 500) return;
+					lastProgressUpdate = Date.now();
+					mainWindow.webContents.send("file-progress-update", {
+						...fileStatusPayload,
+						loaded: progress.transferredBytes,
+						total: progress.totalBytes,
+						percent: progress.percent,
+						isDownload: true,
+					});
+				},
+				onCompleted: () => {
+					// Mark file as completed
+					completedFiles++;
+					mainWindow.webContents.send("file-status-update", {
+						...fileStatusPayload,
+						status: "completed",
+						progress: 100,
+						isDownload: true,
+					});
+				},
+				openFolderWhenDone: false,
+				overwrite: true,
+				saveAs: currentFile.saveTo === undefined,
+				showBadge: false,
+				showProgressBar: false,
+			});
 		} catch (error) {
 			if (!error instanceof CancelError) {
 				// Mark file as failed
@@ -1503,7 +1502,7 @@ async function downloadLightbox(folders, identifier) {
 				}
 			}
 		} catch (err) {
-			error("Error on upload/Lightbox: " + folder.path);
+			error("Error on download/Lightbox: " + folder.path);
 			error(err);
 		}
 		await fetchFilesToDownload(folders, index + 1);
@@ -1617,25 +1616,17 @@ function isValidDownload(identifier) {
 	return true;
 }
 
-function handleLightboxDownload(categoryPath, notifyDuplicate = true) {
+function handleLightboxDownload(categoryPath) {
 	if (Object.keys(downloadAbortControllers).length > 3) {
-		mainWindow.webContents.send("too-many-downloads", {
-			categoryPath,
-		});
-		return false;
+		return "TOO_MANY_DOWNLOADS";
 	}
 	if (!isValidDownload(categoryPath)) {
-		if (notifyDuplicate) {
-			mainWindow.webContents.send("duplicate-download", {
-				categoryPath,
-			});
-		}
-		return false;
+		return "DUPLICATE_DOWNLOAD";
 	}
 	downloadAbortControllers[categoryPath] = true;
 	log("Syncing Down: " + categoryPath);
 	fetchSubFolderContent(categoryPath, downloadLightbox, categoryPath);
-	return true;
+	return "OK";
 }
 
 ipcMain.handle("lightboxDownload", async (_, categoryPath) => {
@@ -1654,26 +1645,18 @@ function isValidUpload(identifier) {
 	return true;
 }
 
-function handleLightboxUpload(categoryPath, notifyDuplicate = true) {
+function handleLightboxUpload(categoryPath) {
 	//Check if the same categoryPath is already being processed
 	if (Object.keys(uploadAbortControllers).length > 3) {
-		mainWindow.webContents.send("too-many-uploads", {
-			categoryPath,
-		});
-		return false;
+		return "TOO_MANY_UPLOADS";
 	}
 	if (!isValidUpload(categoryPath)) {
-		if (notifyDuplicate) {
-			mainWindow.webContents.send("duplicate-upload", {
-				categoryPath,
-			});
-		}
-		return false;
+		return "DUPLICATE_UPLOAD";
 	}
 	uploadAbortControllers[categoryPath] = true;
 	log("Syncing Up: " + categoryPath);
 	fetchSubFolderContent(categoryPath, uploadLightbox, categoryPath);
-	return true;
+	return "OK";
 }
 
 ipcMain.handle("lightboxUpload", async (_, categoryPath) => {
@@ -1683,9 +1666,9 @@ ipcMain.handle("lightboxUpload", async (_, categoryPath) => {
 ipcMain.handle("continueSync", async (_, { categoryPath, isDownload }) => {
 	if (isDownload) {
 		openFolder(path.join(currentWorkDirectory, categoryPath));
-		return handleLightboxDownload(categoryPath, false);
+		return handleLightboxDownload(categoryPath);
 	} else {
-		return handleLightboxUpload(categoryPath, false);
+		return handleLightboxUpload(categoryPath);
 	}
 });
 

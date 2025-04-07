@@ -61,7 +61,7 @@ let loaderWindow = null;
 
 let tray = null;
 
-const DESKTOP_API_VERSION = 256;
+const DESKTOP_API_VERSION = 1;
 
 const store = new Store();
 const appIcon = nativeImage.createFromPath(
@@ -119,18 +119,6 @@ const createWindow = () => {
 			enableRemoteModule: true,
 		},
 		show: false,
-		frame: false,
-		titleBarStyle: "hidden",
-		trafficLightPosition: { x: 12, y: 8 },
-		...(process.platform !== "darwin"
-			? {
-					titleBarOverlay: {
-						height: 32,
-						color: "#151515",
-						symbolColor: "#ffffff",
-					},
-			  }
-			: {}),
 	});
 
 	mainWindow.once("ready-to-show", () => {
@@ -169,20 +157,6 @@ const createWindow = () => {
 			rootPath: currentWorkDirectory,
 			downloadPath: currentDownloadDirectory,
 		});
-		let titleHtml = fs.readFileSync(__dirname + "/title", "utf8");
-		titleHtml = titleHtml.replace("$PLATFORM", process.platform);
-		mainWindow.webContents.executeJavaScript(
-			`
-			var titleHeader = document.querySelector("#desktopTitle");
-			if (!titleHeader) {
-				var div = document.createElement("div");
-				div.innerHTML = '${titleHtml}';
-				document.body.prepend(div);
-				document.body.style.marginTop = "32px";
-			}
-			`,
-			true
-		);
 	});
 	mainWindow.webContents.on("did-stop-loading", () => {
 		hideLoader();

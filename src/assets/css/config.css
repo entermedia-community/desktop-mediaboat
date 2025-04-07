@@ -62,20 +62,6 @@ body::-webkit-scrollbar-thumb {
 	background-color: #8a8a8a;
 	border-radius: 6px;
 }
-#header {
-	position: relative;
-	height: 32px;
-	width: 100vw;
-	text-align: center;
-	background: #151515;
-	display: flex;
-	user-select: none;
-	position: fixed;
-	z-index: 9998;
-	top: 0;
-	left: 0;
-	app-region: drag;
-}
 #backButton {
 	display: flex;
 	align-items: center;
@@ -92,7 +78,7 @@ body::-webkit-scrollbar-thumb {
 	text-align: center;
 	text-decoration: none;
 	position: fixed;
-	top: 32px;
+	top: 0;
 	left: 0;
 	z-index: 99999;
 }

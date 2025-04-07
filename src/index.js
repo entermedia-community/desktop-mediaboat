@@ -293,8 +293,8 @@ if (!gotTheLock) {
 	});
 
 	app.whenReady().then(() => {
-		createTray();
 		createWindow();
+		createTray();
 		app.on("activate", () => {
 			if (BrowserWindow.getAllWindows().length === 0) {
 				createWindow();
@@ -1421,7 +1421,7 @@ async function downloadFilesRecursive(files, identifier) {
 					overwrite: true,
 					saveAs: currentFile.saveTo === undefined,
 					showBadge: false,
-					showProgressBar: true,
+					showProgressBar: false,
 				}
 			);
 		} catch (error) {

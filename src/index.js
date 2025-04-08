@@ -761,17 +761,22 @@ async function uploadFilesRecursive(files, identifier) {
 	processNextFile();
 }
 
-ipcMain.on("cancelSync", (_, { identifier, isDownload }) => {
-	if (isDownload) {
+ipcMain.on("cancelSync", (_, { identifier, isDownload, both = false }) => {
+	if (isDownload || both) {
 		cancelledDownloads[identifier] = true;
 		downloadAbortControllers[identifier]?.cancel?.();
 		delete downloadAbortControllers[identifier];
-	} else {
+	}
+	if (!isDownload || both) {
 		cancelledUploads[identifier] = true;
 		uploadAbortControllers[identifier]?.abort?.();
 		delete uploadAbortControllers[identifier];
 	}
-	mainWindow.webContents.send("sync-cancelled", { identifier, isDownload });
+	mainWindow.webContents.send("sync-cancelled", {
+		identifier,
+		isDownload,
+		both,
+	});
 });
 
 ipcMain.on("check-sync", () => {
@@ -1573,20 +1578,33 @@ ipcMain.on(
 	}
 );
 
-ipcMain.on("openFolder", (_, { customRoot, folderPath }) => {
-	let rootDir = currentWorkDirectory;
-	if (customRoot && customRoot.length > 0) {
-		if (customRoot.startsWith("$HOME")) {
-			customRoot = customRoot.replace("$HOME", OS.homedir());
+ipcMain.on(
+	"openFolder",
+	(_, { customRoot, folderPath, dropFromFolderPath = null }) => {
+		let rootDir = currentWorkDirectory;
+		if (customRoot && customRoot.length > 0) {
+			if (customRoot.startsWith("$HOME")) {
+				customRoot = customRoot.replace("$HOME", OS.homedir());
+			}
+			customRoot = path.normalize(customRoot);
+			rootDir = customRoot;
 		}
-		customRoot = path.normalize(customRoot);
-		rootDir = customRoot;
+
+		folderPath = path.normalize(folderPath);
+
+		if (dropFromFolderPath) {
+			dropFromFolderPath = path.normalize(dropFromFolderPath);
+			if (folderPath.startsWith(dropFromFolderPath)) {
+				folderPath = path.relative(dropFromFolderPath, folderPath);
+			}
+		}
+
+		if (!folderPath.startsWith("/") && !folderPath.match(/^[a-zA-Z]:/)) {
+			folderPath = path.join(rootDir, folderPath);
+		}
+		openFolder(folderPath);
 	}
-	if (!folderPath.startsWith("/") && !folderPath.match(/^[a-zA-Z]:/)) {
-		folderPath = path.join(rootDir, path.normalize(folderPath));
-	}
-	openFolder(folderPath);
-});
+);
 
 function openFolder(path) {
 	log("Opening folder: " + path);

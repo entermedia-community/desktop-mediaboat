@@ -1,9 +1,11 @@
 "use strict";
-
+require("dotenv").config();
 const builder = require("electron-builder");
+const { build } = require("../package.json");
 const Platform = builder.Platform;
 
 const options = {
+	...build,
 	protocols: {
 		name: "eMedia Desktop",
 		schemes: ["emedia"],
@@ -19,8 +21,10 @@ const options = {
 	},
 };
 
-let platformTarget = Platform.MAC.createTarget();
-if (process.platform === "linux") {
+let platformTarget = null;
+if (process.platform === "darwin") {
+	platformTarget = Platform.MAC.createTarget();
+} else if (process.platform === "linux") {
 	platformTarget = Platform.LINUX.createTarget();
 } else if (process.platform === "win32") {
 	platformTarget = Platform.WINDOWS.createTarget();

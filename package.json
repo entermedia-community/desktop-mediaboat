@@ -45,6 +45,7 @@
 		"gulp": "^5.0.0"
 	},
 	"build": {
+		"productName": "eMedia Library",
 		"appId": "com.emedialibrary",
 		"win": {
 			"target": [
@@ -57,6 +58,7 @@
 			]
 		},
 		"mac": {
+			"category": "public.app-category.utilities",
 			"hardenedRuntime": true,
 			"entitlements": "build/mac.plist",
 			"entitlementsInherit": "build/mac.plist",
@@ -72,7 +74,7 @@
 			]
 		},
 		"dmg": {
-			"sign": false
+			"sign": true
 		},
 		"linux": {
 			"target": [

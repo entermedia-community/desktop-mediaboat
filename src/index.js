@@ -98,6 +98,19 @@ function error(...args) {
 	}
 }
 
+let downloadAbortControllers = {};
+let cancelledDownloads = {};
+
+let uploadAbortControllers = {};
+let cancelledUploads = {};
+
+function resetMemory() {
+	downloadAbortControllers = {};
+	cancelledDownloads = {};
+	uploadAbortControllers = {};
+	cancelledUploads = {};
+}
+
 const createWindow = () => {
 	const primaryDisplay = screen.getPrimaryDisplay();
 	const { width, height } = primaryDisplay.workAreaSize;
@@ -299,7 +312,7 @@ if (!gotTheLock) {
 			if (BrowserWindow.getAllWindows().length === 0) {
 				createWindow();
 			} else {
-				showApp();
+				showApp(false);
 			}
 		});
 	});
@@ -341,7 +354,7 @@ app.on("before-quit", () => {
 	mainWindow.destroy();
 });
 
-function showApp(reload = false) {
+function showApp(reload = true) {
 	if (mainWindow) {
 		if (mainWindow.isMinimized()) {
 			mainWindow.restore();
@@ -350,6 +363,7 @@ function showApp(reload = false) {
 		mainWindow.show();
 		if (reload) {
 			const homeUrl = store.get("homeUrl");
+			resetMemory();
 			openWorkspace(homeUrl);
 		}
 	}
@@ -377,14 +391,14 @@ function createTray() {
 	trayMenu.push({
 		label: "Show App",
 		click: () => {
-			showApp();
+			showApp(false);
 		},
 	});
 	trayMenu.push({ type: "separator" });
 	trayMenu.push({
 		label: "Home",
 		click: () => {
-			showApp(true);
+			showApp();
 		},
 		accelerator: "CmdOrCtrl+H",
 	});
@@ -611,9 +625,6 @@ function getMediaDbUrl(url) {
 	return mediaDbUrl + "/" + url;
 }
 
-const uploadAbortControllers = {};
-const cancelledUploads = {};
-
 function clipTextMiddle(text, maxLength = 100) {
 	if (text.length <= maxLength) {
 		return text;
@@ -632,16 +643,24 @@ async function uploadFilesRecursive(files, identifier) {
 	let completedFiles = 0;
 	let failedFiles = 0;
 
+	if (totalFiles === 0) {
+		mainWindow.webContents.send("sync-completed", {
+			success: true,
+			completed: 0,
+			failed: 0,
+			total: 0,
+			identifier,
+			remaining: Object.keys(uploadAbortControllers),
+		});
+		return;
+	}
+
 	// Function to update overall progress
 	const updateOverallProgress = () => {
 		mainWindow.webContents.send("sync-progress-update", {
 			completed: completedFiles,
 			failed: failedFiles,
 			total: totalFiles,
-			// remaining: totalFiles - completedFiles - failedFiles,
-			// percent: Math.round(
-			// 	(completedFiles / (totalFiles ? totalFiles : 1)) * 100
-			// ),
 			identifier,
 		});
 	};
@@ -1010,8 +1029,7 @@ function setMainMenu() {
 				{
 					label: "Home",
 					click: () => {
-						mainWindow.show();
-						openWorkspace(homeUrl);
+						showApp();
 					},
 					accelerator: "CmdOrCtrl+H",
 				},
@@ -1052,8 +1070,7 @@ function setMainMenu() {
 				{
 					label: "Home",
 					click: () => {
-						mainWindow.show();
-						openWorkspace(homeUrl);
+						showApp();
 					},
 					accelerator: "CmdOrCtrl+H",
 				},
@@ -1353,14 +1370,24 @@ ipcMain.handle("scanChanges", async (_, categoryPath) => {
 	return result;
 });
 
-const downloadAbortControllers = {};
-const cancelledDownloads = {};
-
 async function downloadFilesRecursive(files, identifier) {
 	let currentFileIndex = 0;
 	let totalFiles = files.length;
 	let completedFiles = 0;
 	let failedFiles = 0;
+
+	if (totalFiles === 0) {
+		mainWindow.webContents.send("sync-completed", {
+			success: true,
+			completed: 0,
+			failed: 0,
+			total: 0,
+			identifier,
+			remaining: Object.keys(downloadAbortControllers),
+			isDownload: true,
+		});
+		return;
+	}
 
 	// Function to update overall progress
 	const updateOverallProgress = () => {
@@ -1368,10 +1395,6 @@ async function downloadFilesRecursive(files, identifier) {
 			completed: completedFiles,
 			failed: failedFiles,
 			total: totalFiles,
-			// remaining: totalFiles - completedFiles - failedFiles,
-			// percent: Math.round(
-			// 	(completedFiles / (totalFiles ? totalFiles : 1)) * 100
-			// ),
 			identifier,
 			isDownload: true,
 		});

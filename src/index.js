@@ -761,7 +761,31 @@ async function uploadFilesRecursive(files, identifier) {
 	processNextFile();
 }
 
-ipcMain.on("cancelSync", (_, { identifier, isDownload, both = false }) => {
+ipcMain.on("deleteSync", (_, { identifier, isDownload, delId }) => {
+	cancelSync({ identifier, isDownload, both: true }, () => {
+		axios
+			.delete(
+				getMediaDbUrl("services/module/desktopsyncfolder/data/" + delId),
+				{
+					headers: connectionOptions.headers,
+				}
+			)
+			.then(() => {
+				mainWindow.webContents.send("sync-folder-deleted", {
+					delId,
+				});
+			})
+			.catch((err) => {
+				mainWindow.webContents.send("sync-folder-deleted", {
+					delId,
+					success: false,
+				});
+				error(err);
+			});
+	});
+});
+
+function cancelSync({ identifier, isDownload, both = false }, onCancelled) {
 	if (isDownload || both) {
 		cancelledDownloads[identifier] = true;
 		downloadAbortControllers[identifier]?.cancel?.();
@@ -772,10 +796,16 @@ ipcMain.on("cancelSync", (_, { identifier, isDownload, both = false }) => {
 		uploadAbortControllers[identifier]?.abort?.();
 		delete uploadAbortControllers[identifier];
 	}
-	mainWindow.webContents.send("sync-cancelled", {
-		identifier,
-		isDownload,
-		both,
+	onCancelled();
+}
+
+ipcMain.on("cancelSync", (_, { identifier, isDownload, both = false }) => {
+	cancelSync({ identifier, isDownload, both }, () => {
+		mainWindow.webContents.send("sync-cancelled", {
+			identifier,
+			isDownload,
+			both,
+		});
 	});
 });
 

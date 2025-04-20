@@ -644,6 +644,7 @@ async function uploadFilesRecursive(files, identifier) {
 	let failedFiles = 0;
 
 	if (totalFiles === 0) {
+		delete uploadAbortControllers[identifier];
 		mainWindow.webContents.send("sync-completed", {
 			success: true,
 			completed: 0,
@@ -792,6 +793,10 @@ ipcMain.on("deleteSync", (_, { identifier, isDownload, delId }) => {
 			.then(() => {
 				mainWindow.webContents.send("sync-folder-deleted", {
 					delId,
+					isDownload,
+					remaining: isDownload
+						? Object.keys(downloadAbortControllers)
+						: Object.keys(uploadAbortControllers),
 				});
 			})
 			.catch((err) => {
@@ -804,7 +809,10 @@ ipcMain.on("deleteSync", (_, { identifier, isDownload, delId }) => {
 	});
 });
 
-function cancelSync({ identifier, isDownload, both = false }, onCancelled) {
+function cancelSync(
+	{ identifier, isDownload = false, both = false },
+	onCancelled
+) {
 	if (isDownload || both) {
 		cancelledDownloads[identifier] = true;
 		downloadAbortControllers[identifier]?.cancel?.();
@@ -824,6 +832,9 @@ ipcMain.on("cancelSync", (_, { identifier, isDownload, both = false }) => {
 			identifier,
 			isDownload,
 			both,
+			remaining: isDownload
+				? Object.keys(downloadAbortControllers)
+				: Object.keys(uploadAbortControllers),
 		});
 	});
 });
@@ -1377,6 +1388,7 @@ async function downloadFilesRecursive(files, identifier) {
 	let failedFiles = 0;
 
 	if (totalFiles === 0) {
+		delete downloadAbortControllers[identifier];
 		mainWindow.webContents.send("sync-completed", {
 			success: true,
 			completed: 0,

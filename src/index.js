@@ -1751,61 +1751,6 @@ ipcMain.handle("continueSync", async (_, { categoryPath, isDownload }) => {
 	}
 });
 
-ipcMain.on("trashExtraFiles", async (_, { categorypath }) => {
-	fetchSubFolderContent(categorypath, trashFilesRecursive);
-});
-
-function trashFilesRecursive(categories, index = 0) {
-	if (index >= categories.length) {
-		mainWindow.webContents.send("trash-complete");
-		return;
-	}
-
-	let category = categories[index];
-	let fetchpath = path.join(currentWorkDirectory, category.path);
-	let data = {};
-
-	if (fs.existsSync(fetchpath)) {
-		data = getFilesByDirectory(fetchpath, true);
-	} else {
-		data = { files: [] };
-	}
-
-	data.categorypath = category.path;
-
-	axios
-		.post(
-			getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
-			data,
-			{
-				headers: connectionOptions.headers,
-			}
-		)
-		.then(function (res) {
-			if (res.data !== undefined) {
-				let filestodelete = res.data.filestoupload;
-				if (filestodelete) {
-					filestodelete.forEach((item) => {
-						const localPath = path.join(fetchpath, item.path);
-						if (fs.existsSync(localPath)) {
-							shell.trashItem(localPath);
-						}
-					});
-					trashFilesRecursive(categories, index + 1);
-				} else {
-					throw new Error("No files found");
-				}
-			} else {
-				throw new Error("No data found");
-			}
-		})
-		.catch(function (err) {
-			trashFilesRecursive(categories, index + 1);
-			error("Error on trashFilesRecursive: " + category.path);
-			error(err);
-		});
-}
-
 ipcMain.on("onOpenFile", (_, path) => {
 	let downloadpath = app.getPath("downloads");
 	openFile(path.join(downloadpath, path.itemexportname));

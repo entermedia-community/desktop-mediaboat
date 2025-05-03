@@ -93,3 +93,4 @@ dist
 **/*.DS_Store
 **/*.provisionprofile
 pid
+test

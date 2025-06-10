@@ -23,6 +23,7 @@ const path = require("node:path");
 const { parse: parseURL } = require("node:url");
 const qs = require("node:querystring");
 const { got } = require("got-cjs");
+const { randomUUID } = require("node:crypto");
 
 require("dotenv").config();
 
@@ -288,35 +289,29 @@ function createContextMenu() {
 	});
 }
 
-const gotTheLock = app.requestSingleInstanceLock();
+app.on("second-instance", (_, commandLine) => {
+	if (mainWindow) {
+		if (mainWindow.isMinimized()) mainWindow.restore();
+		mainWindow.focus();
+	}
+	const fromUrl = commandLine.pop();
 
-if (!gotTheLock) {
-	app.exit(0);
-} else {
-	app.on("second-instance", (event, commandLine, workingDirectory) => {
-		if (mainWindow) {
-			if (mainWindow.isMinimized()) mainWindow.restore();
-			mainWindow.focus();
-		}
-		const fromUrl = commandLine.pop();
+	if (fromUrl.startsWith("emedia://")) {
+		handleDeepLink(fromUrl);
+	}
+});
 
-		if (fromUrl.startsWith("emedia://")) {
-			handleDeepLink(fromUrl);
+app.whenReady().then(() => {
+	createWindow();
+	createTray();
+	app.on("activate", () => {
+		if (BrowserWindow.getAllWindows().length === 0) {
+			createWindow();
+		} else {
+			showApp(false);
 		}
 	});
-
-	app.whenReady().then(() => {
-		createWindow();
-		createTray();
-		app.on("activate", () => {
-			if (BrowserWindow.getAllWindows().length === 0) {
-				createWindow();
-			} else {
-				showApp(false);
-			}
-		});
-	});
-}
+});
 
 if (process.defaultApp) {
 	if (process.argv.length >= 2) {
@@ -1216,77 +1211,43 @@ function readDirectory(directory, append = false) {
 }
 
 function addExtraFoldersToList(categories, categoryPath) {
-	let rootPath;
-	let rootLevel;
-	let shouldUpdateTree = true;
-	let filter = null;
-	if (categories.length === 0) {
-		if (!categoryPath) return;
-		rootPath = path.dirname(path.join(currentWorkDirectory, categoryPath));
-		rootLevel = categoryPath.split("/").length;
-		shouldUpdateTree = false;
-		filter = path.basename(path.join(currentWorkDirectory, categoryPath));
-	} else {
-		rootPath = path.join(currentWorkDirectory, categories[0].path);
-		rootLevel = parseInt(categories[0].level);
+	const parent = path.join(currentWorkDirectory, categoryPath);
+	let idx = categories.length;
+	if (!fs.existsSync(parent)) {
+		return;
 	}
-	let localPaths = [];
-	function readDirs(root, index, level) {
-		let files = fs.readdirSync(root);
-		files.forEach((file) => {
-			const ext = path.extname(file).toLowerCase();
-			if (file.startsWith(".") || ext === ".ini" || ext === ".db") return;
-			let fullpath = path.join(root, file);
-			if (filter && fullpath.indexOf(filter) === -1) return;
-			let stats = fs.statSync(fullpath);
-			if (stats.isDirectory(fullpath)) {
-				let categoryPath = fullpath.substring(currentWorkDirectory.length);
-				let isExtra =
-					categories.find((c) => c.path === categoryPath) === undefined;
-				let _files = fs.readdirSync(fullpath);
-				let hasFiles = _files.some((f) => !f.startsWith("."));
-				if (isExtra && hasFiles) {
-					localPaths.push({
-						level: level + 1,
-						path: categoryPath,
-					});
-				}
-				readDirs(fullpath, index + 1, level + 1);
-			}
-		});
-	}
-	readDirs(rootPath, 0, rootLevel);
-	if (localPaths.length === 0) return categories;
-	localPaths.sort((a, b) => a.level - b.level);
-	localPaths.forEach((lp) => {
-		const level = lp.level;
-		const parent = lp.path.split("/").slice(0, -1).join("/");
-		const categoryIndex = categories.findIndex(
-			(c) => parseInt(c.level) === level - 1 && c.path === parent
-		);
-		categories.splice(categoryIndex + 1, 0, {
-			name: path.basename(lp.path),
-			level: level,
-			path: lp.path,
-			isExtra: true,
-		});
+	const files = fs.readdirSync(parent);
+	files.forEach((file) => {
+		const filePath = path.join(parent, file);
+		let stats = fs.statSync(filePath);
+		if (stats.isDirectory()) {
+			categories.push({
+				index: idx++,
+				id: randomUUID(),
+				name: file,
+				path: path.relative(currentWorkDirectory, filePath),
+			});
+		}
 	});
-	const newCategories = categories.map((c, i) => {
-		c.index = String(i);
-		c.id = c.id ? c.id : "fake-id-" + String(i) + "-" + Date.now();
-		c.level = String(c.level);
-		return c;
-	});
-	if (shouldUpdateTree) {
-		mainWindow.webContents.send("extra-folders-found", newCategories);
-	}
-	return newCategories;
 }
 
-async function fetchSubFolderContent(categorypath, callback, args = null) {
+async function fetchSubFolderContent(
+	categorypath,
+	callback,
+	args = null,
+	extras = false
+) {
 	let categories = [];
 	if (!categorypath) return categories;
-	log("Fetching from: " + categorypath);
+	categories = [
+		{
+			index: 0,
+			id: randomUUID(),
+			name: path.basename(categorypath),
+			path: categorypath,
+		},
+	];
+	log("Fetching subfolders from: " + categorypath);
 	const url = getMediaDbUrl("services/module/asset/entity/pullfolderlist.json");
 	try {
 		const res = await axios.post(
@@ -1296,17 +1257,18 @@ async function fetchSubFolderContent(categorypath, callback, args = null) {
 		);
 
 		if (res.data !== undefined) {
-			categories = res.data.categories;
-			if (categories && categories.length >= 0) {
-				if (categories.length > 0) {
-					const dir = path.join(currentWorkDirectory, categories[0].path);
+			const cats = res.data.categories;
+			if (cats && cats.length >= 0) {
+				cats.forEach((cat) => {
+					const dir = path.join(currentWorkDirectory, cat.path);
 					if (!fs.existsSync(dir)) {
 						fs.mkdirSync(dir, { recursive: true });
 					}
+					categories.push(cat);
+				});
+				if (extras) {
+					addExtraFoldersToList(categories, categorypath);
 				}
-
-				addExtraFoldersToList(categories, categorypath);
-
 				if (callback) {
 					if (args) {
 						callback(categories, args);
@@ -1320,76 +1282,16 @@ async function fetchSubFolderContent(categorypath, callback, args = null) {
 		error("Error loading: " + url);
 		error(err);
 	}
-	return categories;
 }
 
-async function scanFiles(categories) {
-	let result = {
-		hasUploads: false,
-		hasDownloads: false,
-	};
-
-	async function scanFilesRecursive(cats, index = 0) {
-		if (index >= cats.length || (result.hasDownloads && result.hasUploads))
-			return;
-		let category = cats[index];
-		let fetchPath = path.join(currentWorkDirectory, category.path);
-
-		let data = {};
-		if (fs.existsSync(fetchPath)) {
-			data = getFilesByDirectory(fetchPath, true);
-		} else {
-			data = { files: [] };
-		}
-		data.categorypath = category.path;
-
-		try {
-			const res = await axios.post(
-				getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
-				data,
-				{ headers: connectionOptions.headers }
-			);
-			if (res.data !== undefined) {
-				if (!result.hasUploads) {
-					const filesToUpload = res.data.filestoupload;
-					result.hasUploads = filesToUpload && filesToUpload.length > 0;
-				}
-				if (!result.hasDownloads) {
-					const filesToDownload = res.data.filestodownload;
-					result.hasDownloads = filesToDownload && filesToDownload.length > 0;
-				}
-				if (!result.hasDownloads || !result.hasUploads) {
-					await scanFilesRecursive(cats, index + 1);
-				}
-			} else {
-				throw new Error("No data found");
-			}
-		} catch (err) {
-			error("Error on scan Folder: " + category.path);
-			error(err);
-		}
-	}
-
-	await scanFilesRecursive(categories);
-
-	return result;
-}
-
-ipcMain.handle("scanChanges", async (_, categoryPath) => {
-	const categories = await fetchSubFolderContent(categoryPath);
-	const result = await scanFiles(categories);
-	return result;
-});
-
-async function downloadFilesRecursive(files, identifier) {
+async function downloadFilesRecursive(files, identifier, onFinished) {
 	let currentFileIndex = 0;
 	let totalFiles = files.length;
 	let completedFiles = 0;
 	let failedFiles = 0;
 
 	if (totalFiles === 0) {
-		delete downloadAbortControllers[identifier];
-		mainWindow.webContents.send("sync-completed", {
+		onFinished({
 			success: true,
 			completed: 0,
 			failed: 0,
@@ -1398,7 +1300,6 @@ async function downloadFilesRecursive(files, identifier) {
 			remaining: Object.keys(downloadAbortControllers),
 			isDownload: true,
 		});
-		return;
 	}
 
 	// Function to update overall progress
@@ -1416,14 +1317,17 @@ async function downloadFilesRecursive(files, identifier) {
 
 	const processNextFile = async () => {
 		if (cancelledDownloads[identifier]) {
-			delete downloadAbortControllers[identifier];
-			delete cancelledDownloads[identifier];
+			onFinished({
+				success: true,
+				cancelled: true,
+				completed: completedFiles,
+				isDownload: true,
+			});
 			return;
 		}
 		// Check if we've processed all files
 		if (currentFileIndex >= totalFiles) {
-			delete downloadAbortControllers[identifier];
-			mainWindow.webContents.send("sync-completed", {
+			onFinished({
 				success: true,
 				completed: completedFiles,
 				failed: failedFiles,
@@ -1533,12 +1437,19 @@ async function downloadLightbox(folders, identifier) {
 	}
 
 	const downloadURLRoot = parseURL(store.get("homeUrl"), true);
-	const filesToDownload = [];
+
 	const fetchFilesToDownload = async (folders, index) => {
-		if (index >= folders.length) return;
+		if (index >= folders.length) {
+			delete downloadAbortControllers[identifier];
+			delete cancelledDownloads[identifier];
+			return;
+		}
+		const filesToDownload = [];
+
 		const folder = folders[index];
 		try {
 			const fetchPath = path.join(currentWorkDirectory, folder.path);
+			console.log("Fetching files to be downloaded into: " + fetchPath);
 			let data = {};
 			if (fs.existsSync(fetchPath)) {
 				data = getFilesByDirectory(fetchPath, true);
@@ -1575,17 +1486,30 @@ async function downloadLightbox(folders, identifier) {
 			error("Error on download/Lightbox: " + folder.path);
 			error(err);
 		}
-		await fetchFilesToDownload(folders, index + 1);
+
+		mainWindow.webContents.send("sync-started", {
+			total: filesToDownload.length,
+			identifier,
+			isDownload: true,
+		});
+
+		console.log("Files to download: ", filesToDownload);
+		await downloadFilesRecursive(
+			filesToDownload,
+			identifier,
+			async (downloadSummary) => {
+				console.log("Download summary: ", downloadSummary);
+
+				if (downloadSummary.success) {
+					mainWindow.webContents.send("sync-completed", downloadSummary);
+				}
+
+				fetchFilesToDownload(folders, index + 1);
+			}
+		);
 	};
+
 	await fetchFilesToDownload(folders, 0);
-
-	mainWindow.webContents.send("sync-started", {
-		total: filesToDownload.length,
-		identifier,
-		isDownload: true,
-	});
-
-	downloadFilesRecursive(filesToDownload, identifier);
 }
 
 ipcMain.on("fetchFiles", (_, options) => {
@@ -1734,7 +1658,7 @@ function handleLightboxUpload(categoryPath) {
 	}
 	uploadAbortControllers[categoryPath] = true;
 	log("Syncing Up: " + categoryPath);
-	fetchSubFolderContent(categoryPath, uploadLightbox, categoryPath);
+	fetchSubFolderContent(categoryPath, uploadLightbox, categoryPath, true);
 	return "OK";
 }
 

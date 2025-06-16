@@ -1,4 +1,4 @@
-const constants = {
+module.exports = {
 	SYNC_PROGRESS_UPDATE: "sync-progress-update",
 	SYNC_FOLDER_DELETED: "sync-folder-deleted",
 	SYNC_CANCELLED: "sync-cancelled",
@@ -8,5 +8,3 @@ const constants = {
 	FILE_STATUS_UPDATE: "file-status-update",
 	CHECK_SYNC: "check-sync",
 };
-
-export default constants;

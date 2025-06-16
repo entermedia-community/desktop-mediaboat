@@ -658,6 +658,7 @@ async function uploadFilesRecursive(files, identifier, onFinished) {
 			identifier,
 			remaining: Object.keys(uploadAbortControllers),
 		});
+		return;
 	}
 
 	// Function to update overall progress
@@ -769,7 +770,7 @@ async function uploadFilesRecursive(files, identifier, onFinished) {
 				status: "failed",
 				error: err.message,
 			});
-
+			console.log(err);
 			error(`Error uploading file ${currentFile.name}:`);
 		}
 
@@ -904,9 +905,7 @@ function getFilesByDirectory(directory) {
 		}
 	});
 
-	return {
-		files: filePaths,
-	};
+	return filePaths;
 }
 
 async function uploadLightbox(folders, identifier) {
@@ -928,12 +927,13 @@ async function uploadLightbox(folders, identifier) {
 		const filesToUpload = [];
 
 		const folder = folders[index];
+		const fetchPath = path.join(currentWorkDirectory, folder.path);
+		console.log("Fetching files to be uploaded into: " + fetchPath);
+
 		try {
-			const fetchPath = path.join(currentWorkDirectory, folder.path);
-			console.log("Fetching files to be uploaded into: " + fetchPath);
 			let data = {};
 			if (fs.existsSync(fetchPath)) {
-				data = getFilesByDirectory(fetchPath, true);
+				data = { files: getFilesByDirectory(fetchPath) };
 			} else {
 				data = { files: [] };
 			}
@@ -1341,6 +1341,7 @@ async function downloadFilesRecursive(files, identifier, onFinished) {
 			remaining: Object.keys(downloadAbortControllers),
 			isDownload: true,
 		});
+		return;
 	}
 
 	// Function to update overall progress
@@ -1493,7 +1494,7 @@ async function downloadLightbox(folders, identifier) {
 			console.log("Fetching files to be downloaded into: " + fetchPath);
 			let data = {};
 			if (fs.existsSync(fetchPath)) {
-				data = getFilesByDirectory(fetchPath, true);
+				data = { files: getFilesByDirectory(fetchPath) };
 			} else {
 				data = { files: [] };
 			}

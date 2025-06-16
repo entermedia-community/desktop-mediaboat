@@ -27,6 +27,17 @@ const { randomUUID } = require("node:crypto");
 
 require("dotenv").config();
 
+const {
+	SYNC_PROGRESS_UPDATE,
+	SYNC_FOLDER_DELETED,
+	SYNC_CANCELLED,
+	SYNC_STARTED,
+	SYNC_COMPLETED,
+	FILE_PROGRESS_UPDATE,
+	FILE_STATUS_UPDATE,
+	CHECK_SYNC,
+} = require("./const");
+
 electronLog.initialize();
 electronLog.transports.console.level = "debug";
 electronLog.transports.console.format = "[ {h}:{i}:{s}.{ms} ] {text}";
@@ -468,8 +479,8 @@ ipcMain.handle("connection-established", async (_, options) => {
 				}
 			);
 		}
-	} catch (error) {
-		log(error);
+	} catch (err) {
+		log(err);
 	} finally {
 		connectionOptions = {
 			...options,
@@ -632,15 +643,14 @@ function clipTextMiddle(text, maxLength = 100) {
 	return leftSide + "..." + rightSide;
 }
 
-async function uploadFilesRecursive(files, identifier) {
+async function uploadFilesRecursive(files, identifier, onFinished) {
 	let currentFileIndex = 0;
 	let totalFiles = files.length;
 	let completedFiles = 0;
 	let failedFiles = 0;
 
 	if (totalFiles === 0) {
-		delete uploadAbortControllers[identifier];
-		mainWindow.webContents.send("sync-completed", {
+		onFinished({
 			success: true,
 			completed: 0,
 			failed: 0,
@@ -648,12 +658,11 @@ async function uploadFilesRecursive(files, identifier) {
 			identifier,
 			remaining: Object.keys(uploadAbortControllers),
 		});
-		return;
 	}
 
 	// Function to update overall progress
 	const updateOverallProgress = () => {
-		mainWindow.webContents.send("sync-progress-update", {
+		mainWindow.webContents.send(SYNC_PROGRESS_UPDATE, {
 			completed: completedFiles,
 			failed: failedFiles,
 			total: totalFiles,
@@ -666,14 +675,16 @@ async function uploadFilesRecursive(files, identifier) {
 	// Process files one by one
 	const processNextFile = async () => {
 		if (cancelledUploads[identifier]) {
-			delete uploadAbortControllers[identifier];
-			delete cancelledUploads[identifier];
+			onFinished({
+				success: true,
+				cancelled: true,
+				completed: completedFiles,
+			});
 			return;
 		}
 		// Check if we've processed all files
 		if (currentFileIndex >= totalFiles) {
-			delete uploadAbortControllers[identifier];
-			mainWindow.webContents.send("sync-completed", {
+			onFinished({
 				success: true,
 				completed: completedFiles,
 				failed: failedFiles,
@@ -699,7 +710,7 @@ async function uploadFilesRecursive(files, identifier) {
 		};
 
 		// Update current file status to "uploading"
-		mainWindow.webContents.send("file-status-update", {
+		mainWindow.webContents.send(FILE_STATUS_UPDATE, {
 			...fileStatusPayload,
 			status: "uploading",
 			progress: 0,
@@ -735,7 +746,7 @@ async function uploadFilesRecursive(files, identifier) {
 					// Send individual file progress
 					if (Date.now() - lastProgressUpdate < 500) return;
 					lastProgressUpdate = Date.now();
-					mainWindow.webContents.send("file-progress-update", {
+					mainWindow.webContents.send(FILE_PROGRESS_UPDATE, {
 						...fileStatusPayload,
 						loaded: progress.transferred,
 						total: progress.total,
@@ -745,18 +756,18 @@ async function uploadFilesRecursive(files, identifier) {
 
 			// Mark file as completed
 			completedFiles++;
-			mainWindow.webContents.send("file-status-update", {
+			mainWindow.webContents.send(FILE_STATUS_UPDATE, {
 				...fileStatusPayload,
 				status: "completed",
 				progress: 100,
 			});
-		} catch (error) {
+		} catch (err) {
 			// Mark file as failed
 			failedFiles++;
-			mainWindow.webContents.send("file-status-update", {
+			mainWindow.webContents.send(FILE_STATUS_UPDATE, {
 				...fileStatusPayload,
 				status: "failed",
-				error: error.message,
+				error: err.message,
 			});
 
 			error(`Error uploading file ${currentFile.name}:`);
@@ -786,7 +797,7 @@ ipcMain.on("deleteSync", (_, { identifier, isDownload, delId }) => {
 				}
 			)
 			.then(() => {
-				mainWindow.webContents.send("sync-folder-deleted", {
+				mainWindow.webContents.send(SYNC_FOLDER_DELETED, {
 					delId,
 					isDownload,
 					remaining: isDownload
@@ -795,7 +806,7 @@ ipcMain.on("deleteSync", (_, { identifier, isDownload, delId }) => {
 				});
 			})
 			.catch((err) => {
-				mainWindow.webContents.send("sync-folder-deleted", {
+				mainWindow.webContents.send(SYNC_FOLDER_DELETED, {
 					delId,
 					success: false,
 				});
@@ -823,7 +834,7 @@ function cancelSync(
 
 ipcMain.on("cancelSync", (_, { identifier, isDownload, both = false }) => {
 	cancelSync({ identifier, isDownload, both }, () => {
-		mainWindow.webContents.send("sync-cancelled", {
+		mainWindow.webContents.send(SYNC_CANCELLED, {
 			identifier,
 			isDownload,
 			both,
@@ -834,8 +845,8 @@ ipcMain.on("cancelSync", (_, { identifier, isDownload, both = false }) => {
 	});
 });
 
-ipcMain.on("check-sync", () => {
-	mainWindow.webContents.send("check-sync", {
+ipcMain.on(CHECK_SYNC, () => {
+	mainWindow.webContents.send(CHECK_SYNC, {
 		up_identifiers: Object.keys(uploadAbortControllers),
 		dn_identifiers: Object.keys(downloadAbortControllers),
 	});
@@ -907,12 +918,19 @@ async function uploadLightbox(folders, identifier) {
 		log("folders not found for upload/Lightbox");
 		return;
 	}
-	const filesToUpload = [];
 	const fetchFilesToUpload = async (folders, index = 0) => {
-		if (index >= folders.length) return;
+		if (index >= folders.length) {
+			delete uploadAbortControllers[identifier];
+			delete cancelledUploads[identifier];
+			return;
+		}
+
+		const filesToUpload = [];
+
 		const folder = folders[index];
 		try {
 			const fetchPath = path.join(currentWorkDirectory, folder.path);
+			console.log("Fetching files to be uploaded into: " + fetchPath);
 			let data = {};
 			if (fs.existsSync(fetchPath)) {
 				data = getFilesByDirectory(fetchPath, true);
@@ -927,9 +945,6 @@ async function uploadLightbox(folders, identifier) {
 			);
 
 			if (res.data !== undefined) {
-				if (typeof res.data === "string") {
-					res.data = JSON.parse(res.data);
-				}
 				const ftu = res.data.filestoupload;
 				if (ftu !== undefined) {
 					ftu.forEach((file) => {
@@ -947,10 +962,30 @@ async function uploadLightbox(folders, identifier) {
 			error("Error on upload/Lightbox: " + folder.path);
 			error(err);
 		}
-		await fetchFilesToUpload(folders, index + 1);
+
+		mainWindow.webContents.send(SYNC_STARTED, {
+			total: filesToUpload.length,
+			identifier,
+		});
+
+		console.log("Files to upload: ", filesToUpload);
+
+		await uploadFilesRecursive(
+			filesToUpload,
+			identifier,
+			async (uploadSummary) => {
+				console.log("Upload summary: ", uploadSummary);
+
+				if (uploadSummary.success) {
+					mainWindow.webContents.send(SYNC_COMPLETED, uploadSummary);
+				}
+
+				await fetchFilesToUpload(folders, index + 1);
+			}
+		);
 	};
+
 	await fetchFilesToUpload(folders);
-	uploadFilesRecursive(filesToUpload, identifier);
 }
 
 ipcMain.on("abortUpload", () => {
@@ -1221,11 +1256,14 @@ function addExtraFoldersToList(categories, categoryPath) {
 		const filePath = path.join(parent, file);
 		let stats = fs.statSync(filePath);
 		if (stats.isDirectory()) {
+			const catPath = path.relative(currentWorkDirectory, filePath);
+			const exists = categories.some((cat) => cat.path === catPath);
+			if (exists) return;
 			categories.push({
 				index: idx++,
 				id: randomUUID(),
 				name: file,
-				path: path.relative(currentWorkDirectory, filePath),
+				path: catPath,
 			});
 		}
 	});
@@ -1266,10 +1304,13 @@ async function fetchSubFolderContent(
 					}
 					categories.push(cat);
 				});
+				console.log({ categories });
+
 				if (extras) {
 					addExtraFoldersToList(categories, categorypath);
 				}
 				if (callback) {
+					console.log({ categories });
 					if (args) {
 						callback(categories, args);
 					} else {
@@ -1304,7 +1345,7 @@ async function downloadFilesRecursive(files, identifier, onFinished) {
 
 	// Function to update overall progress
 	const updateOverallProgress = () => {
-		mainWindow.webContents.send("sync-progress-update", {
+		mainWindow.webContents.send(SYNC_PROGRESS_UPDATE, {
 			completed: completedFiles,
 			failed: failedFiles,
 			total: totalFiles,
@@ -1351,7 +1392,7 @@ async function downloadFilesRecursive(files, identifier, onFinished) {
 		};
 
 		// Update current file status to "downloading"
-		mainWindow.webContents.send("file-status-update", {
+		mainWindow.webContents.send(FILE_STATUS_UPDATE, {
 			...fileStatusPayload,
 			status: "downloading",
 			progress: 0,
@@ -1373,7 +1414,7 @@ async function downloadFilesRecursive(files, identifier, onFinished) {
 					// Send individual file progress
 					if (Date.now() - lastProgressUpdate < 500) return;
 					lastProgressUpdate = Date.now();
-					mainWindow.webContents.send("file-progress-update", {
+					mainWindow.webContents.send(FILE_PROGRESS_UPDATE, {
 						...fileStatusPayload,
 						loaded: progress.transferredBytes,
 						total: progress.totalBytes,
@@ -1384,7 +1425,7 @@ async function downloadFilesRecursive(files, identifier, onFinished) {
 				onCompleted: () => {
 					// Mark file as completed
 					completedFiles++;
-					mainWindow.webContents.send("file-status-update", {
+					mainWindow.webContents.send(FILE_STATUS_UPDATE, {
 						...fileStatusPayload,
 						status: "completed",
 						progress: 100,
@@ -1397,14 +1438,14 @@ async function downloadFilesRecursive(files, identifier, onFinished) {
 				showBadge: false,
 				showProgressBar: false,
 			});
-		} catch (error) {
-			if (!error instanceof CancelError) {
+		} catch (err) {
+			if (!err instanceof CancelError) {
 				// Mark file as failed
 				failedFiles++;
-				mainWindow.webContents.send("file-status-update", {
+				mainWindow.webContents.send(FILE_STATUS_UPDATE, {
 					...fileStatusPayload,
 					status: "failed",
-					error: error.message,
+					error: err.message,
 					isDownload: true,
 				});
 
@@ -1487,7 +1528,7 @@ async function downloadLightbox(folders, identifier) {
 			error(err);
 		}
 
-		mainWindow.webContents.send("sync-started", {
+		mainWindow.webContents.send(SYNC_STARTED, {
 			total: filesToDownload.length,
 			identifier,
 			isDownload: true,
@@ -1501,7 +1542,7 @@ async function downloadLightbox(folders, identifier) {
 				console.log("Download summary: ", downloadSummary);
 
 				if (downloadSummary.success) {
-					mainWindow.webContents.send("sync-completed", downloadSummary);
+					mainWindow.webContents.send(SYNC_COMPLETED, downloadSummary);
 				}
 
 				fetchFilesToDownload(folders, index + 1);

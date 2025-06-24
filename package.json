@@ -29,7 +29,6 @@
 		"electron-store": "^8.1.0",
 		"form-data": "^4.0.3",
 		"got-cjs": "^12.5.4",
-		"gulp": "^5.0.1",
 		"mime-types": "^3.0.1"
 	},
 	"devDependencies": {
@@ -39,7 +38,8 @@
 		"@electron/universal": "^2.0.3",
 		"electron": "^36.5.0",
 		"electron-builder": "^26.0.12",
-		"electron-builder-squirrel-windows": "^26.0.12"
+		"electron-builder-squirrel-windows": "^26.0.12",
+		"gulp": "^5.0.1"
 	},
 	"build": {
 		"productName": "eMedia Library",

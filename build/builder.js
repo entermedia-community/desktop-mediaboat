@@ -5,18 +5,29 @@ const { build } = require("../package.json");
 const Platform = builder.Platform;
 
 const options = {
-	...build,
+	productName: "eMedia Library",
+	appId: "com.emedialibrary",
+	mac: {
+		category: "public.app-category.utilities",
+		hardenedRuntime: true,
+		entitlements: "./mac.plist",
+		entitlementsInherit: "./mac.plist",
+		gatekeeperAssess: false,
+		target: [
+			{
+				target: "dmg",
+				arch: ["x64", "arm64"],
+			},
+		],
+	},
+	dmg: {
+		sign: true,
+	},
 	protocols: {
 		name: "eMedia Desktop",
 		schemes: ["emedia"],
 	},
-
 	linux: {
-		desktop: {
-			StartupNotify: "false",
-			Encoding: "UTF-8",
-			MimeType: "x-scheme-handler/emedia",
-		},
 		target: ["deb", "rpm"],
 	},
 };

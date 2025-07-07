@@ -816,7 +816,7 @@ ipcMain.on("deleteSync", (_, { identifier, isDownload, delId }) => {
 	});
 });
 
-function cancelSync(
+async function cancelSync(
 	{ identifier, isDownload = false, both = false },
 	onCancelled
 ) {
@@ -830,6 +830,11 @@ function cancelSync(
 		uploadAbortControllers[identifier]?.abort?.();
 		delete uploadAbortControllers[identifier];
 	}
+	await axios.post(
+		getMediaDbUrl("services/module/asset/entity/desktopsynccancel.json"),
+		{ syncfolderid: identifier },
+		{ headers: connectionOptions.headers }
+	);
 	onCancelled();
 }
 
@@ -933,6 +938,7 @@ async function uploadLightbox(folders, identifier) {
 		}
 
 		const filesToUpload = [];
+		let totalSize = 0;
 
 		const folder = folders[index];
 		const fetchPath = path.join(currentWorkDirectory, folder.path);
@@ -954,6 +960,7 @@ async function uploadLightbox(folders, identifier) {
 
 			if (res.data !== undefined) {
 				const ftu = res.data.filestoupload;
+				totalSize = res.data.totalsize || 0;
 				if (ftu !== undefined) {
 					ftu.forEach((file) => {
 						const filePath = path.join(fetchPath, file.path);
@@ -974,6 +981,8 @@ async function uploadLightbox(folders, identifier) {
 		mainWindow.webContents.send(SYNC_STARTED, {
 			total: filesToUpload.length,
 			identifier,
+			currentFolder: folder.name,
+			currentFolderSize: totalSize,
 		});
 
 		console.log("Files to upload: ", filesToUpload);
@@ -1280,7 +1289,7 @@ function addExtraFoldersToList(categories, categoryPath) {
 async function fetchSubFolderContent(
 	categorypath,
 	callback,
-	args = null,
+	syncfolderid,
 	extras = false
 ) {
 	let categories = [];
@@ -1317,14 +1326,8 @@ async function fetchSubFolderContent(
 				if (extras) {
 					addExtraFoldersToList(categories, categorypath);
 				}
-				if (callback) {
-					console.log({ categories });
-					if (args) {
-						callback(categories, args);
-					} else {
-						callback(categories);
-					}
-				}
+
+				callback(categories, syncfolderid);
 			}
 		}
 	} catch (err) {
@@ -1492,6 +1495,18 @@ async function downloadLightbox(folders, identifier) {
 		if (index >= folders.length) {
 			delete downloadAbortControllers[identifier];
 			delete cancelledDownloads[identifier];
+			try {
+				await axios.post(
+					getMediaDbUrl(
+						"services/module/asset/entity/desktopsynccomplete.json"
+					),
+					{ syncfolderid: identifier },
+					{ headers: connectionOptions.headers }
+				);
+			} catch (err) {
+				error("Error on download/Lightbox: " + folders[index].path);
+				error(err);
+			}
 			return;
 		}
 		const filesToDownload = [];
@@ -1507,6 +1522,7 @@ async function downloadLightbox(folders, identifier) {
 				data = { files: [] };
 			}
 			data.categorypath = folder.path;
+			data.syncfolderid = identifier;
 			const res = await axios.post(
 				getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
 				data,
@@ -1671,7 +1687,7 @@ function isValidDownload(identifier) {
 	return true;
 }
 
-function handleLightboxDownload(categoryPath) {
+function handleLightboxDownload(categoryPath, syncFolderId) {
 	if (Object.keys(downloadAbortControllers).length > 3) {
 		return "TOO_MANY_DOWNLOADS";
 	}
@@ -1680,14 +1696,17 @@ function handleLightboxDownload(categoryPath) {
 	}
 	downloadAbortControllers[categoryPath] = true;
 	log("Syncing Down: " + categoryPath);
-	fetchSubFolderContent(categoryPath, downloadLightbox, categoryPath);
+	fetchSubFolderContent(categoryPath, downloadLightbox, syncFolderId);
 	return "OK";
 }
 
-ipcMain.handle("lightboxDownload", async (_, categoryPath) => {
-	openFolder(path.join(currentWorkDirectory, categoryPath));
-	return handleLightboxDownload(categoryPath);
-});
+ipcMain.handle(
+	"lightboxDownload",
+	async (_, { categoryPath, syncFolderId }) => {
+		openFolder(path.join(currentWorkDirectory, categoryPath));
+		return handleLightboxDownload(categoryPath, syncFolderId);
+	}
+);
 
 function isValidUpload(identifier) {
 	if (uploadAbortControllers[identifier] !== undefined) return false;
@@ -1700,7 +1719,7 @@ function isValidUpload(identifier) {
 	return true;
 }
 
-function handleLightboxUpload(categoryPath) {
+function handleLightboxUpload(categoryPath, syncFolderId) {
 	//Check if the same categoryPath is already being processed
 	if (Object.keys(uploadAbortControllers).length > 3) {
 		return "TOO_MANY_UPLOADS";
@@ -1710,12 +1729,12 @@ function handleLightboxUpload(categoryPath) {
 	}
 	uploadAbortControllers[categoryPath] = true;
 	log("Syncing Up: " + categoryPath);
-	fetchSubFolderContent(categoryPath, uploadLightbox, categoryPath, true);
+	fetchSubFolderContent(categoryPath, uploadLightbox, syncFolderId, true);
 	return "OK";
 }
 
-ipcMain.handle("lightboxUpload", async (_, categoryPath) => {
-	return handleLightboxUpload(categoryPath);
+ipcMain.handle("lightboxUpload", async (_, { categoryPath, syncFolderId }) => {
+	return handleLightboxUpload(categoryPath, syncFolderId);
 });
 
 // ipcMain.handle("continueSync", async (_, { categoryPath, isDownload }) => {

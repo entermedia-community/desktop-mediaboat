@@ -1,0 +1,12 @@
+{
+  "eslint.validate": ["javascript"],
+  "eslint.workingDirectories": ["./eMediaDesktop"],
+  "cSpell.words": [
+    "computername",
+    "emedia",
+    "emedialibrary",
+    "entermedia",
+    "nsis"
+  ],
+  "prettier.useTabs": true
+}

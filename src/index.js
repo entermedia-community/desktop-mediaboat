@@ -834,6 +834,14 @@ function cancelSync(
 }
 
 ipcMain.on("cancelSync", (_, { identifier, isDownload, both = false }) => {
+	console.log(
+		"Cancelling sync for identifier: ",
+		identifier,
+		", isDownload:",
+		isDownload,
+		", both:",
+		both
+	);
 	cancelSync({ identifier, isDownload, both }, () => {
 		mainWindow.webContents.send(SYNC_CANCELLED, {
 			identifier,
@@ -1650,7 +1658,9 @@ function openFolder(path) {
 }
 
 function isValidDownload(identifier) {
-	if (downloadAbortControllers[identifier] !== undefined) return false;
+	if (downloadAbortControllers[identifier] !== undefined) {
+		return false;
+	}
 	const identifiers = Object.keys(downloadAbortControllers);
 	for (let i = 0; i < identifiers.length; i++) {
 		const identifier2 = identifiers[i];
@@ -1708,14 +1718,14 @@ ipcMain.handle("lightboxUpload", async (_, categoryPath) => {
 	return handleLightboxUpload(categoryPath);
 });
 
-ipcMain.handle("continueSync", async (_, { categoryPath, isDownload }) => {
-	if (isDownload) {
-		openFolder(path.join(currentWorkDirectory, categoryPath));
-		return handleLightboxDownload(categoryPath);
-	} else {
-		return handleLightboxUpload(categoryPath);
-	}
-});
+// ipcMain.handle("continueSync", async (_, { categoryPath, isDownload }) => {
+// 	if (isDownload) {
+// 		openFolder(path.join(currentWorkDirectory, categoryPath));
+// 		return handleLightboxDownload(categoryPath);
+// 	} else {
+// 		return handleLightboxUpload(categoryPath);
+// 	}
+// });
 
 ipcMain.on("onOpenFile", (_, path) => {
 	let downloadpath = app.getPath("downloads");

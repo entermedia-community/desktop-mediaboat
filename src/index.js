@@ -1691,10 +1691,10 @@ function handleLightboxDownload(categoryPath, syncFolderId) {
 	if (Object.keys(downloadAbortControllers).length > 3) {
 		return "TOO_MANY_DOWNLOADS";
 	}
-	if (!isValidDownload(categoryPath)) {
+	if (!isValidDownload(syncFolderId)) {
 		return "DUPLICATE_DOWNLOAD";
 	}
-	downloadAbortControllers[categoryPath] = true;
+	downloadAbortControllers[syncFolderId] = true;
 	log("Syncing Down: " + categoryPath);
 	fetchSubFolderContent(categoryPath, downloadLightbox, syncFolderId);
 	return "OK";
@@ -1724,10 +1724,10 @@ function handleLightboxUpload(categoryPath, syncFolderId) {
 	if (Object.keys(uploadAbortControllers).length > 3) {
 		return "TOO_MANY_UPLOADS";
 	}
-	if (!isValidUpload(categoryPath)) {
+	if (!isValidUpload(syncFolderId)) {
 		return "DUPLICATE_UPLOAD";
 	}
-	uploadAbortControllers[categoryPath] = true;
+	uploadAbortControllers[syncFolderId] = true;
 	log("Syncing Up: " + categoryPath);
 	fetchSubFolderContent(categoryPath, uploadLightbox, syncFolderId, true);
 	return "OK";

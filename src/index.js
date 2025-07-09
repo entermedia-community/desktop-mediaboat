@@ -74,7 +74,7 @@ let loaderWindow = null;
 
 let tray = null;
 
-const DESKTOP_API_VERSION = 1;
+const DESKTOP_API_VERSION = 2;
 
 const store = new Store();
 const appIcon = nativeImage.createFromPath(
@@ -663,7 +663,6 @@ async function uploadFilesRecursive(
 			failed: 0,
 			total: 0,
 			identifier,
-			remaining: [],
 		});
 		return;
 	}
@@ -689,7 +688,6 @@ async function uploadFilesRecursive(
 				cancelled: true,
 				completed: completedFiles,
 				completedSize,
-				remaining: Object.keys(uploadAbortControllers),
 			});
 			return;
 		}
@@ -702,7 +700,6 @@ async function uploadFilesRecursive(
 				failed: failedFiles,
 				total: totalFiles,
 				identifier,
-				remaining: [],
 			});
 			return;
 		}
@@ -933,20 +930,26 @@ async function uploadLightbox(folders, identifier) {
 		if (index >= folders.length) {
 			delete uploadAbortControllers[identifier];
 			delete cancelledUploads[identifier];
+			let categoryPath = null;
 			try {
-				await axios.post(
+				const res = await axios.post(
 					getMediaDbUrl(
 						"services/module/asset/entity/desktopsynccomplete.json"
 					),
 					{ syncfolderid: identifier },
 					{ headers: connectionOptions.headers }
 				);
+				if (res.data !== undefined) {
+					const syncfolder = res.data.data;
+					categoryPath = syncfolder.categorypath;
+				}
 			} catch (err) {
 				error("Error on download/Lightbox: " + folders[index].path);
 				error(err);
 			}
 			mainWindow.webContents.send(SYNC_FULLY_COMPLETED, {
 				identifier,
+				categoryPath,
 				success: true,
 				isDownload: false,
 			});
@@ -1379,7 +1382,6 @@ async function downloadFilesRecursive(
 			failed: 0,
 			total: 0,
 			identifier,
-			remaining: [],
 			isDownload: true,
 		});
 		return;
@@ -1406,7 +1408,6 @@ async function downloadFilesRecursive(
 				cancelled: true,
 				completed: completedFiles,
 				completedSize,
-				remaining: Object.keys(downloadAbortControllers),
 				isDownload: true,
 			});
 			return;
@@ -1420,7 +1421,6 @@ async function downloadFilesRecursive(
 				failed: failedFiles,
 				total: totalFiles,
 				identifier,
-				remaining: [],
 				isDownload: true,
 			});
 			return;
@@ -1530,23 +1530,32 @@ async function downloadLightbox(folders, identifier) {
 		if (index >= folders.length) {
 			delete downloadAbortControllers[identifier];
 			delete cancelledDownloads[identifier];
+			let categoryPath = null;
 			try {
-				await axios.post(
+				const res = await axios.post(
 					getMediaDbUrl(
 						"services/module/asset/entity/desktopsynccomplete.json"
 					),
 					{ syncfolderid: identifier },
 					{ headers: connectionOptions.headers }
 				);
+				if (res.data !== undefined) {
+					const syncfolder = res.data.data;
+					categoryPath = syncfolder.categorypath;
+				}
 			} catch (err) {
 				error("Error on download/Lightbox: " + folders[index].path);
 				error(err);
 			}
 			mainWindow.webContents.send(SYNC_FULLY_COMPLETED, {
 				identifier,
+				categoryPath,
 				success: true,
 				isDownload: true,
 			});
+			if (categoryPath) {
+				openFolder(path.join(currentWorkDirectory, categoryPath));
+			}
 			return;
 		}
 		const filesToDownload = [];
@@ -1754,7 +1763,6 @@ function handleLightboxDownload(categoryPath, syncFolderId) {
 ipcMain.handle(
 	"lightboxDownload",
 	async (_, { categoryPath, syncFolderId }) => {
-		openFolder(path.join(currentWorkDirectory, categoryPath));
 		return handleLightboxDownload(categoryPath, syncFolderId);
 	}
 );
@@ -1787,15 +1795,6 @@ function handleLightboxUpload(categoryPath, syncFolderId) {
 ipcMain.handle("lightboxUpload", async (_, { categoryPath, syncFolderId }) => {
 	return handleLightboxUpload(categoryPath, syncFolderId);
 });
-
-// ipcMain.handle("continueSync", async (_, { categoryPath, isDownload }) => {
-// 	if (isDownload) {
-// 		openFolder(path.join(currentWorkDirectory, categoryPath));
-// 		return handleLightboxDownload(categoryPath);
-// 	} else {
-// 		return handleLightboxUpload(categoryPath);
-// 	}
-// });
 
 ipcMain.on("onOpenFile", (_, path) => {
 	let downloadpath = app.getPath("downloads");

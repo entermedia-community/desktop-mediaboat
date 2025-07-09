@@ -32,7 +32,8 @@ const {
 	SYNC_FOLDER_DELETED,
 	SYNC_CANCELLED,
 	SYNC_STARTED,
-	SYNC_COMPLETED,
+	SYNC_FOLDER_COMPLETED,
+	SYNC_FULLY_COMPLETED,
 	FILE_PROGRESS_UPDATE,
 	FILE_STATUS_UPDATE,
 	CHECK_SYNC,
@@ -799,31 +800,6 @@ async function uploadFilesRecursive(
 	processNextFile();
 }
 
-ipcMain.on("deleteSync", (_, { identifier, isDownload, delId }) => {
-	cancelSync({ identifier, isDownload }, () => {
-		axios
-			.delete(
-				getMediaDbUrl("services/module/desktopsyncfolder/data/" + delId),
-				{
-					headers: connectionOptions.headers,
-				}
-			)
-			.then(() => {
-				mainWindow.webContents.send(SYNC_FOLDER_DELETED, {
-					delId,
-					isDownload,
-				});
-			})
-			.catch((err) => {
-				mainWindow.webContents.send(SYNC_FOLDER_DELETED, {
-					delId,
-					success: false,
-				});
-				error(err);
-			});
-	});
-});
-
 async function cancelSync({ identifier, isDownload = false }, onCancelled) {
 	if (isDownload) {
 		cancelledDownloads[identifier] = true;
@@ -849,6 +825,31 @@ ipcMain.on("cancelSync", (_, { identifier, isDownload }) => {
 			identifier,
 			isDownload,
 		});
+	});
+});
+
+ipcMain.on("deleteSync", (_, { identifier, isDownload, delId }) => {
+	cancelSync({ identifier, isDownload }, () => {
+		axios
+			.delete(
+				getMediaDbUrl("services/module/desktopsyncfolder/data/" + delId),
+				{
+					headers: connectionOptions.headers,
+				}
+			)
+			.then(() => {
+				mainWindow.webContents.send(SYNC_FOLDER_DELETED, {
+					delId,
+					isDownload,
+				});
+			})
+			.catch((err) => {
+				mainWindow.webContents.send(SYNC_FOLDER_DELETED, {
+					delId,
+					success: false,
+				});
+				error(err);
+			});
 	});
 });
 
@@ -944,6 +945,11 @@ async function uploadLightbox(folders, identifier) {
 				error("Error on download/Lightbox: " + folders[index].path);
 				error(err);
 			}
+			mainWindow.webContents.send(SYNC_FULLY_COMPLETED, {
+				identifier,
+				success: true,
+				isDownload: false,
+			});
 			return;
 		}
 
@@ -1012,7 +1018,7 @@ async function uploadLightbox(folders, identifier) {
 				console.log("Upload summary: ", uploadSummary);
 
 				if (uploadSummary.success) {
-					mainWindow.webContents.send(SYNC_COMPLETED, {
+					mainWindow.webContents.send(SYNC_FOLDER_COMPLETED, {
 						...uploadSummary,
 						currentFolder: folder.name,
 						currentFolderSize: totalSize,
@@ -1536,6 +1542,11 @@ async function downloadLightbox(folders, identifier) {
 				error("Error on download/Lightbox: " + folders[index].path);
 				error(err);
 			}
+			mainWindow.webContents.send(SYNC_FULLY_COMPLETED, {
+				identifier,
+				success: true,
+				isDownload: true,
+			});
 			return;
 		}
 		const filesToDownload = [];
@@ -1603,7 +1614,7 @@ async function downloadLightbox(folders, identifier) {
 				console.log("Download summary: ", downloadSummary);
 
 				if (downloadSummary.success) {
-					mainWindow.webContents.send(SYNC_COMPLETED, {
+					mainWindow.webContents.send(SYNC_FOLDER_COMPLETED, {
 						...downloadSummary,
 						currentFolder: folder.name,
 						currentFolderSize: totalSize,

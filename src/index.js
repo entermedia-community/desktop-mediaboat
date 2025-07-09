@@ -643,20 +643,26 @@ function clipTextMiddle(text, maxLength = 100) {
 	return leftSide + "..." + rightSide;
 }
 
-async function uploadFilesRecursive(files, identifier, onFinished) {
+async function uploadFilesRecursive(
+	files,
+	{ identifier, oldCount, oldSize },
+	onFinished
+) {
 	let currentFileIndex = 0;
 	let totalFiles = files.length;
-	let completedFiles = 0;
+	let completedFiles = oldCount;
+	let completedSize = oldSize;
 	let failedFiles = 0;
 
 	if (totalFiles === 0) {
 		onFinished({
 			success: true,
-			completed: 0,
+			completed: completedFiles,
+			completedSize,
 			failed: 0,
 			total: 0,
 			identifier,
-			remaining: Object.keys(uploadAbortControllers),
+			remaining: [],
 		});
 		return;
 	}
@@ -665,6 +671,7 @@ async function uploadFilesRecursive(files, identifier, onFinished) {
 	const updateOverallProgress = () => {
 		mainWindow.webContents.send(SYNC_PROGRESS_UPDATE, {
 			completed: completedFiles,
+			completedSize,
 			failed: failedFiles,
 			total: totalFiles,
 			identifier,
@@ -680,6 +687,8 @@ async function uploadFilesRecursive(files, identifier, onFinished) {
 				success: true,
 				cancelled: true,
 				completed: completedFiles,
+				completedSize,
+				remaining: Object.keys(uploadAbortControllers),
 			});
 			return;
 		}
@@ -688,10 +697,11 @@ async function uploadFilesRecursive(files, identifier, onFinished) {
 			onFinished({
 				success: true,
 				completed: completedFiles,
+				completedSize,
 				failed: failedFiles,
 				total: totalFiles,
 				identifier,
-				remaining: Object.keys(uploadAbortControllers),
+				remaining: [],
 			});
 			return;
 		}
@@ -757,6 +767,7 @@ async function uploadFilesRecursive(files, identifier, onFinished) {
 
 			// Mark file as completed
 			completedFiles++;
+			completedSize += currentFile.size;
 			mainWindow.webContents.send(FILE_STATUS_UPDATE, {
 				...fileStatusPayload,
 				status: "completed",
@@ -789,7 +800,7 @@ async function uploadFilesRecursive(files, identifier, onFinished) {
 }
 
 ipcMain.on("deleteSync", (_, { identifier, isDownload, delId }) => {
-	cancelSync({ identifier, isDownload, both: true }, () => {
+	cancelSync({ identifier, isDownload }, () => {
 		axios
 			.delete(
 				getMediaDbUrl("services/module/desktopsyncfolder/data/" + delId),
@@ -801,9 +812,6 @@ ipcMain.on("deleteSync", (_, { identifier, isDownload, delId }) => {
 				mainWindow.webContents.send(SYNC_FOLDER_DELETED, {
 					delId,
 					isDownload,
-					remaining: isDownload
-						? Object.keys(downloadAbortControllers)
-						: Object.keys(uploadAbortControllers),
 				});
 			})
 			.catch((err) => {
@@ -816,16 +824,12 @@ ipcMain.on("deleteSync", (_, { identifier, isDownload, delId }) => {
 	});
 });
 
-async function cancelSync(
-	{ identifier, isDownload = false, both = false },
-	onCancelled
-) {
-	if (isDownload || both) {
+async function cancelSync({ identifier, isDownload = false }, onCancelled) {
+	if (isDownload) {
 		cancelledDownloads[identifier] = true;
 		downloadAbortControllers[identifier]?.cancel?.();
 		delete downloadAbortControllers[identifier];
-	}
-	if (!isDownload || both) {
+	} else {
 		cancelledUploads[identifier] = true;
 		uploadAbortControllers[identifier]?.abort?.();
 		delete uploadAbortControllers[identifier];
@@ -835,35 +839,29 @@ async function cancelSync(
 		{ syncfolderid: identifier },
 		{ headers: connectionOptions.headers }
 	);
-	onCancelled();
+	if (onCancelled) onCancelled();
 }
 
-ipcMain.on("cancelSync", (_, { identifier, isDownload, both = false }) => {
-	console.log(
-		"Cancelling sync for identifier: ",
-		identifier,
-		", isDownload:",
-		isDownload,
-		", both:",
-		both
-	);
-	cancelSync({ identifier, isDownload, both }, () => {
+ipcMain.on("cancelSync", (_, { identifier, isDownload }) => {
+	console.log("Cancelling sync: ", identifier, ", isDownload:", isDownload);
+	cancelSync({ identifier, isDownload }, () => {
 		mainWindow.webContents.send(SYNC_CANCELLED, {
 			identifier,
 			isDownload,
-			both,
-			remaining: isDownload
-				? Object.keys(downloadAbortControllers)
-				: Object.keys(uploadAbortControllers),
 		});
 	});
 });
 
-ipcMain.on(CHECK_SYNC, () => {
-	mainWindow.webContents.send(CHECK_SYNC, {
-		up_identifiers: Object.keys(uploadAbortControllers),
-		dn_identifiers: Object.keys(downloadAbortControllers),
-	});
+ipcMain.on(CHECK_SYNC, (_, { syncFolderId, isDownload }) => {
+	if (isDownload) {
+		if (!downloadAbortControllers[syncFolderId]) {
+			cancelSync({ identifier: syncFolderId, isDownload: true });
+		}
+	} else {
+		if (!uploadAbortControllers[syncFolderId]) {
+			cancelSync({ identifier: syncFolderId, isDownload: false });
+		}
+	}
 });
 
 function getDirectoryStats(dirPath) {
@@ -934,32 +932,48 @@ async function uploadLightbox(folders, identifier) {
 		if (index >= folders.length) {
 			delete uploadAbortControllers[identifier];
 			delete cancelledUploads[identifier];
+			try {
+				await axios.post(
+					getMediaDbUrl(
+						"services/module/asset/entity/desktopsynccomplete.json"
+					),
+					{ syncfolderid: identifier },
+					{ headers: connectionOptions.headers }
+				);
+			} catch (err) {
+				error("Error on download/Lightbox: " + folders[index].path);
+				error(err);
+			}
 			return;
 		}
 
 		const filesToUpload = [];
+		let totalCount = 0;
 		let totalSize = 0;
+		let addedCount = 0;
+		let addedSize = 0;
 
 		const folder = folders[index];
 		const fetchPath = path.join(currentWorkDirectory, folder.path);
 		console.log("Fetching files to be uploaded into: " + fetchPath);
 
 		try {
-			let data = {};
-			if (fs.existsSync(fetchPath)) {
-				data = { files: getFilesByDirectory(fetchPath) };
-			} else {
-				data = { files: [] };
-			}
-			data.categorypath = folder.path;
 			const res = await axios.post(
 				getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
-				data,
+				{
+					files: getFilesByDirectory(fetchPath),
+					categorypath: folder.path,
+					syncfolderid: identifier,
+					isdownload: false,
+				},
 				{ headers: connectionOptions.headers }
 			);
 
 			if (res.data !== undefined) {
 				const ftu = res.data.filestoupload;
+				addedCount = res.data.addedcount || 0;
+				addedSize = res.data.addedsize || 0;
+				totalCount = res.data.totalcount || 0;
 				totalSize = res.data.totalsize || 0;
 				if (ftu !== undefined) {
 					ftu.forEach((file) => {
@@ -989,12 +1003,20 @@ async function uploadLightbox(folders, identifier) {
 
 		await uploadFilesRecursive(
 			filesToUpload,
-			identifier,
+			{
+				identifier,
+				oldCount: totalCount - addedCount,
+				oldSize: totalSize - addedSize,
+			},
 			async (uploadSummary) => {
 				console.log("Upload summary: ", uploadSummary);
 
 				if (uploadSummary.success) {
-					mainWindow.webContents.send(SYNC_COMPLETED, uploadSummary);
+					mainWindow.webContents.send(SYNC_COMPLETED, {
+						...uploadSummary,
+						currentFolder: folder.name,
+						currentFolderSize: totalSize,
+					});
 				}
 
 				await fetchFilesToUpload(folders, index + 1);
@@ -1004,10 +1026,6 @@ async function uploadLightbox(folders, identifier) {
 
 	await fetchFilesToUpload(folders);
 }
-
-ipcMain.on("abortUpload", () => {
-	uploadManager.cancelAllUpload();
-});
 
 ipcMain.on("select-dirs", async (_, arg) => {
 	const result = await dialog.showOpenDialog(mainWindow, {
@@ -1336,20 +1354,26 @@ async function fetchSubFolderContent(
 	}
 }
 
-async function downloadFilesRecursive(files, identifier, onFinished) {
+async function downloadFilesRecursive(
+	files,
+	{ identifier, skippedCount, skippedSize },
+	onFinished
+) {
 	let currentFileIndex = 0;
 	let totalFiles = files.length;
-	let completedFiles = 0;
+	let completedFiles = skippedCount;
+	let completedSize = skippedSize;
 	let failedFiles = 0;
 
 	if (totalFiles === 0) {
 		onFinished({
 			success: true,
-			completed: 0,
+			completed: completedFiles,
+			completedSize,
 			failed: 0,
 			total: 0,
 			identifier,
-			remaining: Object.keys(downloadAbortControllers),
+			remaining: [],
 			isDownload: true,
 		});
 		return;
@@ -1359,6 +1383,7 @@ async function downloadFilesRecursive(files, identifier, onFinished) {
 	const updateOverallProgress = () => {
 		mainWindow.webContents.send(SYNC_PROGRESS_UPDATE, {
 			completed: completedFiles,
+			completedSize,
 			failed: failedFiles,
 			total: totalFiles,
 			identifier,
@@ -1374,6 +1399,8 @@ async function downloadFilesRecursive(files, identifier, onFinished) {
 				success: true,
 				cancelled: true,
 				completed: completedFiles,
+				completedSize,
+				remaining: Object.keys(downloadAbortControllers),
 				isDownload: true,
 			});
 			return;
@@ -1383,10 +1410,11 @@ async function downloadFilesRecursive(files, identifier, onFinished) {
 			onFinished({
 				success: true,
 				completed: completedFiles,
+				completedSize,
 				failed: failedFiles,
 				total: totalFiles,
 				identifier,
-				remaining: Object.keys(downloadAbortControllers),
+				remaining: [],
 				isDownload: true,
 			});
 			return;
@@ -1437,6 +1465,7 @@ async function downloadFilesRecursive(files, identifier, onFinished) {
 				onCompleted: () => {
 					// Mark file as completed
 					completedFiles++;
+					completedSize += currentFile.size;
 					mainWindow.webContents.send(FILE_STATUS_UPDATE, {
 						...fileStatusPayload,
 						status: "completed",
@@ -1510,27 +1539,31 @@ async function downloadLightbox(folders, identifier) {
 			return;
 		}
 		const filesToDownload = [];
+		let totalSize = 0;
+		let skippedCount = 0;
+		let skippedSize = 0;
 
 		const folder = folders[index];
+		const fetchPath = path.join(currentWorkDirectory, folder.path);
+		console.log("Fetching files to be downloaded into: " + fetchPath);
+
 		try {
-			const fetchPath = path.join(currentWorkDirectory, folder.path);
-			console.log("Fetching files to be downloaded into: " + fetchPath);
-			let data = {};
-			if (fs.existsSync(fetchPath)) {
-				data = { files: getFilesByDirectory(fetchPath) };
-			} else {
-				data = { files: [] };
-			}
-			data.categorypath = folder.path;
-			data.syncfolderid = identifier;
 			const res = await axios.post(
 				getMediaDbUrl("services/module/asset/entity/pullpendingfiles.json"),
-				data,
+				{
+					files: getFilesByDirectory(fetchPath),
+					categorypath: folder.path,
+					syncfolderid: identifier,
+					isdownload: true,
+				},
 				{ headers: connectionOptions.headers }
 			);
 
 			if (res.data !== undefined) {
 				const ftd = res.data.filestodownload;
+				skippedCount = res.data.skippedcount || 0;
+				skippedSize = res.data.skippedsize || 0;
+				totalSize = res.data.totalsize || 0;
 				if (ftd !== undefined) {
 					ftd.forEach((file) => {
 						const filePath = path.join(fetchPath, file.path);
@@ -1557,17 +1590,24 @@ async function downloadLightbox(folders, identifier) {
 			total: filesToDownload.length,
 			identifier,
 			isDownload: true,
+			currentFolder: folder.name,
+			currentFolderSize: totalSize,
 		});
 
 		console.log("Files to download: ", filesToDownload);
+
 		await downloadFilesRecursive(
 			filesToDownload,
-			identifier,
+			{ identifier, skippedCount, skippedSize },
 			async (downloadSummary) => {
 				console.log("Download summary: ", downloadSummary);
 
 				if (downloadSummary.success) {
-					mainWindow.webContents.send(SYNC_COMPLETED, downloadSummary);
+					mainWindow.webContents.send(SYNC_COMPLETED, {
+						...downloadSummary,
+						currentFolder: folder.name,
+						currentFolderSize: totalSize,
+					});
 				}
 
 				fetchFilesToDownload(folders, index + 1);

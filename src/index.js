@@ -1510,7 +1510,7 @@ async function downloadFilesRecursive(
 		currentFileIndex++;
 
 		// Process the next file
-		setTimeout(processNextFile, 1000);
+		setTimeout(processNextFile);
 	};
 
 	// Start processing files

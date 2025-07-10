@@ -651,8 +651,8 @@ async function uploadFilesRecursive(
 ) {
 	let currentFileIndex = 0;
 	let totalFiles = files.length;
-	let completedFiles = oldCount;
-	let completedSize = oldSize;
+	let completedFiles = parseInt(oldCount);
+	let completedSize = parseInt(oldSize);
 	let failedFiles = 0;
 
 	if (totalFiles === 0) {
@@ -790,7 +790,7 @@ async function uploadFilesRecursive(
 		currentFileIndex++;
 
 		// Process the next file
-		setTimeout(processNextFile, 100);
+		setTimeout(processNextFile);
 	};
 
 	// Start processing files
@@ -978,7 +978,7 @@ async function uploadLightbox(folders, identifier) {
 				{ headers: connectionOptions.headers }
 			);
 
-			if (res.data !== undefined) {
+			if (res.data !== undefined && res.data.response.status === "ok") {
 				const ftu = res.data.filestoupload;
 				addedCount = res.data.addedcount || 0;
 				addedSize = res.data.addedsize || 0;
@@ -995,6 +995,8 @@ async function uploadLightbox(folders, identifier) {
 						});
 					});
 				}
+			} else {
+				log(res.data);
 			}
 		} catch (err) {
 			error("Error on upload/Lightbox: " + folder.path);
@@ -1004,6 +1006,7 @@ async function uploadLightbox(folders, identifier) {
 		mainWindow.webContents.send(SYNC_STARTED, {
 			total: filesToUpload.length,
 			identifier,
+			isDownload: false,
 			currentFolder: folder.name,
 			currentFolderSize: totalSize,
 		});
@@ -1370,7 +1373,7 @@ async function downloadFilesRecursive(
 ) {
 	let currentFileIndex = 0;
 	let totalFiles = files.length;
-	let completedFiles = skippedCount;
+	let completedFiles = parseInt(skippedCount);
 	let completedSize = skippedSize;
 	let failedFiles = 0;
 
@@ -1507,7 +1510,7 @@ async function downloadFilesRecursive(
 		currentFileIndex++;
 
 		// Process the next file
-		setTimeout(processNextFile, 100);
+		setTimeout(processNextFile, 1000);
 	};
 
 	// Start processing files
@@ -1579,7 +1582,7 @@ async function downloadLightbox(folders, identifier) {
 				{ headers: connectionOptions.headers }
 			);
 
-			if (res.data !== undefined) {
+			if (res.data !== undefined && res.data.response.status === "ok") {
 				const ftd = res.data.filestodownload;
 				skippedCount = res.data.skippedcount || 0;
 				skippedSize = res.data.skippedsize || 0;
@@ -1600,6 +1603,8 @@ async function downloadLightbox(folders, identifier) {
 						});
 					});
 				}
+			} else {
+				log(res.data);
 			}
 		} catch (err) {
 			error("Error on download/Lightbox: " + folder.path);

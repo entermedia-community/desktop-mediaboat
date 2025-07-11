@@ -1,24 +1,25 @@
 "use strict";
 require("dotenv").config();
 const builder = require("electron-builder");
-const { build } = require("../package.json");
+const notarizeMacOS = "./notarize";
 const Platform = builder.Platform;
 
 const options = {
+	compression: "store",
 	productName: "eMedia Library",
 	appId: "com.emedialibrary",
+	afterSign: async (context) => {
+		if (context.electronPlatformName === "darwin") {
+			await notarizeMacOS(context);
+		}
+	},
 	mac: {
-		category: "public.app-category.utilities",
+		target: "dmg",
 		hardenedRuntime: true,
+		gatekeeperAssess: true,
+		category: "public.app-category.utilities",
 		entitlements: "./mac.plist",
 		entitlementsInherit: "./mac.plist",
-		gatekeeperAssess: false,
-		target: [
-			{
-				target: "dmg",
-				arch: ["x64", "arm64"],
-			},
-		],
 	},
 	dmg: {
 		sign: true,
@@ -29,6 +30,11 @@ const options = {
 	},
 	linux: {
 		target: ["deb", "rpm"],
+		desktop: {
+			StartupNotify: "false",
+			Encoding: "UTF-8",
+			MimeType: "x-scheme-handler/emedia",
+		},
 	},
 };
 

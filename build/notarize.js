@@ -2,7 +2,7 @@ require("dotenv").config();
 const { notarize } = require("@electron/notarize");
 const { build } = require("../package.json");
 
-exports.default = async function notarizeMacos(context) {
+exports.default = async function notarizeMacOS(context) {
 	const { electronPlatformName, appOutDir } = context;
 	if (electronPlatformName !== "darwin") {
 		return;

@@ -1,12 +1,15 @@
+const appleCredentials =
+	process.platform === "darwin" ? require("./apple-credentials.json") : {};
+
 module.exports = {
 	packagerConfig: {
 		name: "eMedia Library",
 		asar: true,
 		osxSign: {},
 		osxNotarize: {
-			appleId: "tech@entermediadb.org",
-			appleIdPassword: "xyte-xtdc-wnzw-tbkb",
-			teamId: "VJ8RCF92K4",
+			appleId: appleCredentials.APPLE_ID,
+			appleIdPassword: appleCredentials.APPLE_APP_SPECIFIC_PASSWORD,
+			teamId: appleCredentials.APPLE_TEAM_ID,
 		},
 		appCategoryType: "public.app-category.utilities",
 		appBundleId: "com.emedialibrary",
@@ -34,4 +37,7 @@ module.exports = {
 			},
 		},
 	],
+	rebuildConfig: {
+		force: true,
+	},
 };

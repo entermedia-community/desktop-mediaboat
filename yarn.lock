@@ -454,6 +454,30 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@electron/rebuild@npm:^4.0.1":
+  version: 4.0.1
+  resolution: "@electron/rebuild@npm:4.0.1"
+  dependencies:
+    "@malept/cross-spawn-promise": "npm:^2.0.0"
+    chalk: "npm:^4.0.0"
+    debug: "npm:^4.1.1"
+    detect-libc: "npm:^2.0.1"
+    got: "npm:^11.7.0"
+    graceful-fs: "npm:^4.2.11"
+    node-abi: "npm:^4.2.0"
+    node-api-version: "npm:^0.2.1"
+    node-gyp: "npm:^11.2.0"
+    ora: "npm:^5.1.0"
+    read-binary-file-arch: "npm:^1.0.6"
+    semver: "npm:^7.3.5"
+    tar: "npm:^6.0.5"
+    yargs: "npm:^17.0.1"
+  bin:
+    electron-rebuild: lib/cli.js
+  checksum: 10c0/4863d39c34515f3fb521ce5e976e25db20e89920574ca353efd0c3272d5f4d14546ba15ce28cee4299187160b2af02e3e130100ba8dc53f313b6eb685dc54928
+  languageName: node
+  linkType: hard
+
 "@electron/universal@npm:^2.0.1":
   version: 2.0.3
   resolution: "@electron/universal@npm:2.0.3"
@@ -1839,6 +1863,7 @@ __metadata:
     "@electron-forge/plugin-auto-unpack-natives": "npm:^7.8.1"
     "@electron-forge/plugin-fuses": "npm:^7.8.1"
     "@electron/fuses": "npm:^1.8.0"
+    "@electron/rebuild": "npm:^4.0.1"
     axios: "npm:^1.10.0"
     dotenv: "npm:^16.5.0"
     electron: "npm:37.2.1"
@@ -3942,7 +3967,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"node-api-version@npm:^0.2.0":
+"node-abi@npm:^4.2.0":
+  version: 4.12.0
+  resolution: "node-abi@npm:4.12.0"
+  dependencies:
+    semver: "npm:^7.6.3"
+  checksum: 10c0/78a0697b1ea7da95bee5465d92772a883fb829ae01e89cf2b60c2af79bf784e422cdde9cc2f15684d5bafb9a0ac3d8e16292520107dc36eff30c541e23ac9fb7
+  languageName: node
+  linkType: hard
+
+"node-api-version@npm:^0.2.0, node-api-version@npm:^0.2.1":
   version: 0.2.1
   resolution: "node-api-version@npm:0.2.1"
   dependencies:
@@ -3965,7 +3999,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"node-gyp@npm:latest":
+"node-gyp@npm:^11.2.0, node-gyp@npm:latest":
   version: 11.2.0
   resolution: "node-gyp@npm:11.2.0"
   dependencies:
@@ -4823,7 +4857,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"semver@npm:^7.1.1, semver@npm:^7.1.3, semver@npm:^7.2.1, semver@npm:^7.3.2, semver@npm:^7.3.5":
+"semver@npm:^7.1.1, semver@npm:^7.1.3, semver@npm:^7.2.1, semver@npm:^7.3.2, semver@npm:^7.3.5, semver@npm:^7.6.3":
   version: 7.7.2
   resolution: "semver@npm:7.7.2"
   bin:

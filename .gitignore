@@ -93,3 +93,4 @@ dist
 **/*.provisionprofile
 pid
 test
+apple-credentials.json

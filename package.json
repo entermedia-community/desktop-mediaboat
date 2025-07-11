@@ -1,15 +1,15 @@
 {
 	"name": "emedia-library",
 	"productName": "eMedia Library",
-	"version": "2.6.4",
+	"version": "2.7.0",
 	"description": "Digital Asset Management Solution",
 	"main": "src/index.js",
 	"homepage": "https://github.com/entermedia-community/desktop-mediaboat",
 	"scripts": {
-		"start": "electron .",
-		"build": "node cleanup && set NODE_ENV=production && node ./build/builder.js",
-		"postinstall": "electron-builder install-app-deps",
-		"afterSign": "build/notarize.js"
+		"start": "electron-forge start",
+		"package": "electron-forge package",
+		"make": "electron-forge make",
+		"publish": "electron-forge publish"
 	},
 	"keywords": [
 		"eMedia Library",
@@ -29,60 +29,27 @@
 		"electron-store": "^8.1.0",
 		"form-data": "^4.0.3",
 		"got-cjs": "^12.5.4",
-		"mime-types": "^3.0.1"
+		"mime-types": "^3.0.1",
+		"electron-squirrel-startup": "^1.0.1"
 	},
 	"devDependencies": {
+		"@electron-forge/cli": "^7.8.1",
+		"@electron-forge/maker-deb": "^7.8.1",
+		"@electron-forge/maker-rpm": "^7.8.1",
+		"@electron-forge/maker-squirrel": "^7.8.1",
+		"@electron-forge/maker-zip": "^7.8.1",
+		"@electron-forge/plugin-auto-unpack-natives": "^7.8.1",
+		"@electron-forge/plugin-fuses": "^7.8.1",
 		"@electron/fuses": "^1.8.0",
-		"@electron/notarize": "^3.0.1",
-		"@electron/osx-sign": "^2.0.0",
-		"@electron/universal": "^2.0.3",
-		"electron": "^36.5.0",
-		"electron-builder": "^26.0.12",
-		"electron-builder-squirrel-windows": "^26.0.12",
+		"electron": "37.2.1",
 		"gulp": "^5.0.1"
 	},
 	"build": {
 		"productName": "eMedia Library",
 		"appId": "com.emedialibrary",
-		"win": {
-			"target": [
-				{
-					"target": "nsis",
-					"arch": [
-						"ia32"
-					]
-				}
-			]
-		},
 		"mac": {
-			"category": "public.app-category.utilities",
-			"hardenedRuntime": true,
-			"entitlements": "build/mac.plist",
-			"entitlementsInherit": "build/mac.plist",
-			"gatekeeperAssess": false,
-			"target": [
-				{
-					"target": "dmg",
-					"arch": [
-						"x64",
-						"arm64"
-					]
-				}
-			]
-		},
-		"dmg": {
-			"sign": true
-		},
-		"linux": {
-			"target": [
-				{
-					"target": "deb",
-					"arch": [
-						"x64",
-						"arm64"
-					]
-				}
-			]
+			"category": "public.app-category.utilities"
 		}
-	}
+	},
+	"packageManager": "yarn@4.9.2"
 }

@@ -1,4 +1,8 @@
-const axios = require("axios");
+const fs = require("node:fs");
+const OS = require("node:os");
+const path = require("node:path");
+const { parse: parseURL } = require("node:url");
+const qs = require("node:querystring");
 const {
 	app,
 	BrowserWindow,
@@ -11,17 +15,13 @@ const {
 	nativeImage,
 	clipboard,
 	screen,
-} = require("electron");
+} = require("electron/main");
+const axios = require("axios");
 const Store = require("electron-store");
 const FormData = require("form-data");
 const electronLog = require("electron-log");
 const { download: eDownload, CancelError } = require("electron-dl");
-const fs = require("fs");
 const mime = require("mime-types");
-const OS = require("os");
-const path = require("node:path");
-const { parse: parseURL } = require("node:url");
-const qs = require("node:querystring");
 const { got } = require("got-cjs");
 const { randomUUID } = require("node:crypto");
 

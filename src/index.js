@@ -553,6 +553,7 @@ function showLoader() {
 			movable: false,
 			show: false,
 			hasShadow: false,
+			icon: appIcon,
 		});
 
 		loaderWindow.loadFile(path.join(__dirname, "loader.html"));

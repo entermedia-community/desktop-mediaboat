@@ -14,6 +14,7 @@ module.exports = {
 		appCategoryType: "public.app-category.utilities",
 		appBundleId: "com.emedialibrary",
 		icon: "./build/icon",
+		executableName: "emedia-library",
 	},
 	makers: [
 		{
@@ -24,9 +25,11 @@ module.exports = {
 		},
 		{
 			name: "@electron-forge/maker-deb",
+			executableName: "emedia-library",
 			config: {
 				options: {
 					icon: "./build/icon.png",
+					categories: ["Development", "Utility"],
 				},
 			},
 		},

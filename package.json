@@ -9,6 +9,10 @@
 		"start": "electron-forge start",
 		"package": "electron-forge package",
 		"make": "electron-forge make",
+		"make-x64": "electron-forge make --arch=x64",
+		"make-linux": "electron-forge make --platform=linux",
+		"make-linux-x64": "electron-forge make --platform=linux --arch=x64",
+		"make-win": "electron-forge make --platform=win32",
 		"publish": "electron-forge publish"
 	},
 	"keywords": [

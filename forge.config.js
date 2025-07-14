@@ -30,6 +30,8 @@ module.exports = {
 				options: {
 					icon: "./build/icon.png",
 					categories: ["Development", "Utility"],
+					name: "emedia-library",
+					productName: "emedia-library",
 				},
 			},
 		},

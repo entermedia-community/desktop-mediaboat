@@ -8,4 +8,5 @@ module.exports = {
 	FILE_PROGRESS_UPDATE: "file-progress-update",
 	FILE_STATUS_UPDATE: "file-status-update",
 	CHECK_SYNC: "check-sync",
+	SYNC_NOT_FOUND: "sync-not-found",
 };

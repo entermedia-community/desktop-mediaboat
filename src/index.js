@@ -37,6 +37,7 @@ const {
 	FILE_PROGRESS_UPDATE,
 	FILE_STATUS_UPDATE,
 	CHECK_SYNC,
+	SYNC_NOT_FOUND,
 } = require("./const");
 
 electronLog.initialize();
@@ -854,11 +855,17 @@ ipcMain.on("deleteSync", (_, { identifier, isDownload, delId }) => {
 ipcMain.on(CHECK_SYNC, (_, { syncFolderId, isDownload }) => {
 	if (isDownload) {
 		if (!downloadAbortControllers[syncFolderId]) {
-			cancelSync({ identifier: syncFolderId, isDownload: true });
+			window.webContents.send(SYNC_NOT_FOUND, {
+				identifier: syncFolderId,
+				isDownload,
+			});
 		}
 	} else {
 		if (!uploadAbortControllers[syncFolderId]) {
-			cancelSync({ identifier: syncFolderId, isDownload: false });
+			window.webContents.send(SYNC_NOT_FOUND, {
+				identifier: syncFolderId,
+				isDownload,
+			});
 		}
 	}
 });

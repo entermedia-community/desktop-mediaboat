@@ -27,6 +27,8 @@ const { randomUUID } = require("node:crypto");
 
 require("dotenv").config();
 
+if (require("electron-squirrel-startup")) return;
+
 const {
 	SYNC_PROGRESS_UPDATE,
 	SYNC_FOLDER_DELETED,

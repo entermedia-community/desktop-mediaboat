@@ -904,7 +904,7 @@ function getDirectoryStats(dirPath) {
 function getFilesByDirectory(directory) {
 	if (!fs.existsSync(directory)) {
 		log("Directory not found: " + directory);
-		return { files: [] };
+		return [];
 	}
 
 	let filePaths = [];
@@ -1048,6 +1048,111 @@ async function uploadLightbox(folders, identifier) {
 
 	await fetchFilesToUpload(folders);
 }
+
+ipcMain.handle(
+	"dropUpload",
+	async (_, { folderPath, categoryPath, syncFolderId: identifier }) => {
+		if (!identifier) {
+			log("identifier not found for upload/Lightbox");
+			return;
+		}
+		const cats = getFoldersFromPath(folderPath, categoryPath);
+		const categories = [
+			{
+				index: 0,
+				id: randomUUID(),
+				name: path.basename(categoryPath),
+				path: categoryPath,
+			},
+			...cats,
+		];
+		const fetchFilesToUpload = async (folders, index = 0) => {
+			if (index >= folders.length) {
+				delete uploadAbortControllers[identifier];
+				delete cancelledUploads[identifier];
+				let catPath = null;
+				try {
+					const res = await axios.post(
+						getMediaDbUrl(
+							"services/module/asset/entity/desktopsynccomplete.json"
+						),
+						{ syncfolderid: identifier },
+						{ headers: connectionOptions.headers }
+					);
+					if (res.data !== undefined) {
+						const syncfolder = res.data.data;
+						catPath = syncfolder.categorypath;
+					}
+				} catch (err) {
+					error("Error on download/Lightbox: " + folders[index].path);
+					error(err);
+				}
+				mainWindow.webContents.send(SYNC_FULLY_COMPLETED, {
+					identifier,
+					categoryPath: catPath,
+					success: true,
+					isDownload: false,
+				});
+				return;
+			}
+			const folder = folders[index];
+
+			const fetchPath = path.join(
+				folderPath,
+				path.relative(categoryPath, folder.path)
+			);
+			console.log("Fetching files to be uploaded into: " + fetchPath);
+
+			const filesToUpload = [];
+			const ftu = getFilesByDirectory(fetchPath);
+			ftu.forEach((file) => {
+				const filePath = path.join(fetchPath, file.path);
+				filesToUpload.push({
+					path: filePath,
+					name: path.basename(filePath),
+					size: file.size,
+					sourcePath: path.join(folder.path, file.path),
+				});
+			});
+
+			let totalSize = filesToUpload.reduce((a, b) => a + b.size, 0);
+
+			mainWindow.webContents.send(SYNC_STARTED, {
+				total: filesToUpload.length,
+				identifier,
+				isDownload: false,
+				currentFolder: folder.name,
+				currentFolderSize: totalSize,
+			});
+
+			console.log("Files to upload: ", filesToUpload);
+
+			await uploadFilesRecursive(
+				filesToUpload,
+				{
+					identifier,
+					oldCount: 0,
+					oldSize: 0,
+				},
+				async (uploadSummary) => {
+					console.log("Upload summary: ", uploadSummary);
+
+					if (uploadSummary.success) {
+						mainWindow.webContents.send(SYNC_FOLDER_COMPLETED, {
+							...uploadSummary,
+							currentFolder: folder.name,
+							currentFolderSize: totalSize,
+						});
+					}
+
+					await fetchFilesToUpload(folders, index + 1);
+				}
+			);
+		};
+
+		await fetchFilesToUpload(categories);
+	}
+);
 
 ipcMain.on("select-dirs", async (_, arg) => {
 	const result = await dialog.showOpenDialog(mainWindow, {
@@ -1324,6 +1429,32 @@ function addExtraFoldersToList(categories, categoryPath) {
 			});
 		}
 	});
+}
+function getFoldersFromPath(rootPath, categoryPath) {
+	if (!fs.existsSync(rootPath)) {
+		return [];
+	}
+	const categories = [];
+	let idx = 1;
+	function rec(parentPath) {
+		const files = fs.readdirSync(parentPath);
+		files.forEach((file) => {
+			const filePath = path.join(parentPath, file);
+			let stats = fs.statSync(filePath);
+			if (stats.isDirectory()) {
+				const catPath = path.relative(rootPath, filePath);
+				categories.push({
+					index: idx++,
+					id: randomUUID(),
+					name: file,
+					path: path.join(categoryPath, catPath),
+				});
+				rec(filePath);
+			}
+		});
+	}
+	rec(rootPath);
+	return categories;
 }
 
 async function fetchSubFolderContent(

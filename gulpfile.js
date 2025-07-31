@@ -28,7 +28,7 @@ const start = () => {
 		}
 	}
 
-	child = spawn("yarn", ["start"], {
+	child = spawn("npm", ["start"], {
 		env: { ...process.env, NODE_ENV: "development" },
 		detached: true,
 	});

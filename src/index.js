@@ -22,7 +22,7 @@ const FormData = require("form-data");
 const electronLog = require("electron-log");
 const { download: eDownload, CancelError } = require("electron-dl");
 const mime = require("mime-types");
-const { got } = require("got-cjs");
+const { got, AbortError } = require("got-cjs");
 const { randomUUID } = require("node:crypto");
 
 require("dotenv").config();
@@ -783,6 +783,9 @@ async function uploadFilesRecursive(
 				status: "failed",
 				error: err.message,
 			});
+			if (err instanceof AbortError) {
+				return;
+			}
 			console.log(err);
 			error(`Error uploading file ${currentFile.name}:`);
 		}
@@ -937,6 +940,14 @@ async function uploadLightbox(folders, identifier) {
 		return;
 	}
 	const fetchFilesToUpload = async (folders, index = 0) => {
+		if (cancelledUploads[identifier]) {
+			mainWindow.webContents.send(SYNC_FOLDER_COMPLETED, {
+				identifier,
+				success: true,
+				cancelled: true,
+			});
+			return;
+		}
 		if (index >= folders.length) {
 			delete uploadAbortControllers[identifier];
 			delete cancelledUploads[identifier];
@@ -1049,7 +1060,7 @@ async function uploadLightbox(folders, identifier) {
 	await fetchFilesToUpload(folders);
 }
 
-ipcMain.handle(
+ipcMain.on(
 	"dropUpload",
 	async (_, { folderPath, categoryPath, syncFolderId: identifier }) => {
 		if (!identifier) {
@@ -1067,6 +1078,15 @@ ipcMain.handle(
 			...cats,
 		];
 		const fetchFilesToUpload = async (folders, index = 0) => {
+			if (cancelledUploads[identifier]) {
+				mainWindow.webContents.send(SYNC_FOLDER_COMPLETED, {
+					identifier,
+					success: true,
+					cancelled: true,
+					isDownload: true,
+				});
+				return;
+			}
 			if (index >= folders.length) {
 				delete uploadAbortControllers[identifier];
 				delete cancelledUploads[identifier];
@@ -1671,6 +1691,15 @@ async function downloadLightbox(folders, identifier) {
 	const downloadURLRoot = parseURL(store.get("homeUrl"), true);
 
 	const fetchFilesToDownload = async (folders, index) => {
+		if (cancelledDownloads[identifier]) {
+			mainWindow.webContents.send(SYNC_FOLDER_COMPLETED, {
+				identifier,
+				success: true,
+				cancelled: true,
+				isDownload: true,
+			});
+			return;
+		}
 		if (index >= folders.length) {
 			delete downloadAbortControllers[identifier];
 			delete cancelledDownloads[identifier];

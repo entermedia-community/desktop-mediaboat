@@ -650,7 +650,7 @@ function clipTextMiddle(text, maxLength = 100) {
 
 async function uploadFilesRecursive(
 	files,
-	{ identifier, oldCount, oldSize },
+	{ identifier, oldCount, oldSize, currentFolderSize },
 	onFinished
 ) {
 	let currentFileIndex = 0;
@@ -679,6 +679,7 @@ async function uploadFilesRecursive(
 			failed: failedFiles,
 			total: totalFiles,
 			identifier,
+			currentFolderSize,
 		});
 	};
 
@@ -1125,6 +1126,7 @@ ipcMain.on(
 
 			const filesToUpload = [];
 			const ftu = getFilesByDirectory(fetchPath);
+			let currentFolderSize = 0;
 			ftu.forEach((file) => {
 				const filePath = path.join(fetchPath, file.path);
 				filesToUpload.push({
@@ -1133,16 +1135,15 @@ ipcMain.on(
 					size: file.size,
 					sourcePath: path.join(folder.path, file.path),
 				});
+				currentFolderSize += file.size;
 			});
-
-			let totalSize = filesToUpload.reduce((a, b) => a + b.size, 0);
 
 			mainWindow.webContents.send(SYNC_STARTED, {
 				total: filesToUpload.length,
 				identifier,
 				isDownload: false,
 				currentFolder: folder.name,
-				currentFolderSize: totalSize,
+				currentFolderSize,
 			});
 
 			console.log("Files to upload: ", filesToUpload);
@@ -1153,6 +1154,7 @@ ipcMain.on(
 					identifier,
 					oldCount: 0,
 					oldSize: 0,
+					currentFolderSize,
 				},
 				async (uploadSummary) => {
 					console.log("Upload summary: ", uploadSummary);
@@ -1161,7 +1163,7 @@ ipcMain.on(
 						mainWindow.webContents.send(SYNC_FOLDER_COMPLETED, {
 							...uploadSummary,
 							currentFolder: folder.name,
-							currentFolderSize: totalSize,
+							currentFolderSize,
 						});
 					}
 
@@ -1529,7 +1531,7 @@ async function fetchSubFolderContent(
 
 async function downloadFilesRecursive(
 	files,
-	{ identifier, skippedCount, skippedSize },
+	{ identifier, skippedCount, skippedSize, currentFolderSize },
 	onFinished
 ) {
 	let currentFileIndex = 0;
@@ -1560,6 +1562,7 @@ async function downloadFilesRecursive(
 			total: totalFiles,
 			identifier,
 			isDownload: true,
+			currentFolderSize,
 		});
 	};
 
@@ -1732,7 +1735,7 @@ async function downloadLightbox(folders, identifier) {
 			return;
 		}
 		const filesToDownload = [];
-		let totalSize = 0;
+		let currentFolderSize = 0;
 		let skippedCount = 0;
 		let skippedSize = 0;
 
@@ -1756,7 +1759,7 @@ async function downloadLightbox(folders, identifier) {
 				const ftd = res.data.filestodownload;
 				skippedCount = res.data.skippedcount || 0;
 				skippedSize = res.data.skippedsize || 0;
-				totalSize = res.data.totalsize || 0;
+				currentFolderSize = res.data.totalsize || 0;
 				if (ftd !== undefined) {
 					ftd.forEach((file) => {
 						const filePath = path.join(fetchPath, file.path);
@@ -1786,7 +1789,7 @@ async function downloadLightbox(folders, identifier) {
 			identifier,
 			isDownload: true,
 			currentFolder: folder.name,
-			currentFolderSize: totalSize,
+			currentFolderSize,
 		});
 
 		console.log("Files to download: ", filesToDownload);
@@ -1801,7 +1804,7 @@ async function downloadLightbox(folders, identifier) {
 					mainWindow.webContents.send(SYNC_FOLDER_COMPLETED, {
 						...downloadSummary,
 						currentFolder: folder.name,
-						currentFolderSize: totalSize,
+						currentFolderSize,
 					});
 				}
 

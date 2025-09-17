@@ -48,6 +48,5 @@
 		"@electron/fuses": "^1.8.0",
 		"electron": "37.2.1",
 		"gulp": "^5.0.1"
-	},
-	"packageManager": "yarn@4.9.2"
+	}
 }

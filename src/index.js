@@ -86,6 +86,9 @@ const appIcon = nativeImage.createFromPath(
 
 const currentVersion = app.getVersion();
 
+let updateDownloader = null;
+let firstBoot = true;
+
 function log(...args) {
 	try {
 		console.log("\n");
@@ -154,6 +157,10 @@ const createWindow = () => {
 		mainWindow.maximize();
 		mainWindow.setVisibleOnAllWorkspaces(true);
 		hideLoader();
+		if (firstBoot) {
+			checkForUpdates(true);
+		}
+		firstBoot = false;
 	});
 
 	mainWindow.on("close", (event) => {
@@ -355,6 +362,9 @@ function handleDeepLink(url) {
 
 app.on("window-all-closed", () => {
 	if (process.platform !== "darwin") {
+		if (updateDownloader) {
+			updateDownloader.cancel();
+		}
 		app.exit(0);
 	}
 });
@@ -430,6 +440,9 @@ function createTray() {
 	trayMenu.push({
 		label: "Exit",
 		click: () => {
+			if (updateDownloader) {
+				updateDownloader.cancel();
+			}
 			app.isQuitting = true;
 			app.quit();
 		},
@@ -1245,7 +1258,7 @@ ipcMain.on("openExternal", (_, url) => {
 
 function setMainMenu() {
 	if (!mainWindow) return;
-	const homeUrl = store.get("homeUrl");
+	// const homeUrl = store.get("homeUrl");
 	const template = [
 		{
 			label: "eMedia Library",
@@ -1259,13 +1272,6 @@ function setMainMenu() {
 					accelerator: "CmdOrCtrl+H",
 				},
 				{
-					label: "About",
-					click() {
-						showAbout();
-					},
-					accelerator: "CmdOrCtrl+I",
-				},
-				{
 					label: "Settings",
 					accelerator: "CmdOrCtrl+,",
 					click: () => {
@@ -1274,9 +1280,29 @@ function setMainMenu() {
 				},
 				{ type: "separator" },
 				{
+					label: "About",
+					click() {
+						showAbout();
+					},
+					accelerator: "CmdOrCtrl+I",
+				},
+				{
+					label: updateDownloader
+						? "Downloading Update..."
+						: "Check for Updates...",
+					enabled: !updateDownloader,
+					click: () => {
+						checkForUpdates();
+					},
+				},
+				{ type: "separator" },
+				{
 					label: "Exit",
 					accelerator: "CmdOrCtrl+Q",
 					click() {
+						if (updateDownloader) {
+							updateDownloader.cancel();
+						}
 						app.isQuitting = true;
 						app.quit();
 					},
@@ -1653,7 +1679,7 @@ async function downloadFilesRecursive(
 				showProgressBar: false,
 			});
 		} catch (err) {
-			if (!err instanceof CancelError) {
+			if (!(err instanceof CancelError)) {
 				// Mark file as failed
 				failedFiles++;
 				mainWindow.webContents.send(FILE_STATUS_UPDATE, {
@@ -1989,3 +2015,135 @@ ipcMain.on("readDir", (_, { path }) => {
 ipcMain.on("directDownload", (_, url) => {
 	mainWindow.webContents.downloadURL(url);
 });
+
+async function checkForUpdates(silentCheck = false) {
+	let url = "https://emedialibrary.com/releases.json";
+	if (isDev) {
+		url = "http://web.localhost.com:8080/releases.json";
+	}
+	axios
+		.get(url)
+		.then((res) => {
+			if (!res.data || !res.data.version) {
+				if (silentCheck) return;
+				dialog.showMessageBox(mainWindow, {
+					type: "info",
+					title: "Check for Updates",
+					message: "You are using the latest version.",
+				});
+				return;
+			}
+			const latestVersion = res.data.version;
+			if (compareVersions(latestVersion, currentVersion) > 0) {
+				const downloads = res.data.downloads || {};
+				let downloadUrl = null;
+				if (OS.platform() === "win32" && downloads.windows) {
+					downloadUrl = downloads.windows.amd || null;
+				} else if (OS.platform() === "darwin" && downloads.apple) {
+					if (OS.arch() === "arm64") {
+						downloadUrl = downloads.apple.arm || null;
+					} else {
+						downloadUrl = downloads.apple.amd || null;
+					}
+				} else if (OS.platform() === "linux" && downloads.linux) {
+					downloadUrl = downloads.linux.amd || null;
+				}
+
+				dialog
+					.showMessageBox(mainWindow, {
+						type: "info",
+						title: "Update Available",
+						message: `A new version (${latestVersion}) is available.`,
+						detail: `You are using ${currentVersion}.`,
+						buttons: ["Download", "Later"],
+						defaultId: 0,
+					})
+					.then((result) => {
+						if (result.response === 0 && downloadUrl) {
+							eDownload(mainWindow, downloadUrl, {
+								directory: app.getPath("downloads"),
+								onStarted: (item) => {
+									updateDownloader = item;
+									setMainMenu();
+								},
+								onCompleted: (file) => {
+									dialog
+										.showMessageBox(mainWindow, {
+											type: "info",
+											title: "Update Downloaded",
+											message: "Update downloaded to Downloads folder.",
+											detail:
+												"Exiting will cancel any download or update in progress.",
+											buttons: ["Exit & Install", "Later"],
+											defaultId: 0,
+										})
+										.then((res) => {
+											if (res.response === 0) {
+												console.log(file.path);
+												shell
+													.openPath(file.path)
+													.then((err) => {
+														if (err) {
+															error(err);
+														} else {
+															setTimeout(() => {
+																app.isQuitting = true;
+																app.quit();
+															}, 1000);
+														}
+													})
+													.catch((err) => {
+														error(err);
+													});
+											}
+										});
+									updateDownloader = null;
+								},
+								onCancel: () => {
+									log("Download cancelled");
+								},
+							}).catch((err) => {
+								error("Error downloading update: ");
+								error(err);
+								dialog
+									.showMessageBox(mainWindow, {
+										type: "error",
+										title: "Update Download",
+										message:
+											"Error downloading the update. Please try again later.",
+										buttons: ["Download Manually", "Close"],
+										defaultId: 0,
+									})
+									.then((res) => {
+										if (res.response === 0 && downloadUrl) {
+											shell.openExternal(downloadUrl);
+										}
+									});
+							});
+						}
+					});
+			} else {
+				if (silentCheck) return;
+				dialog.showMessageBox(mainWindow, {
+					type: "info",
+					title: "Check for Updates",
+					message: "You are using the latest version.",
+				});
+			}
+		})
+		.catch((err) => {
+			if (silentCheck) return;
+			error("Error checking for updates: ");
+			error(err);
+			dialog.showMessageBox(mainWindow, {
+				type: "error",
+				title: "Check for Updates",
+				message: "Error checking for updates. Please try again later.",
+			});
+		});
+}
+function compareVersions(v1, v2) {
+	v1 = parseInt(v1.replace(/[^0-9]/g, ""), 10);
+	v2 = parseInt(v2.replace(/[^0-9]/g, ""), 10);
+	return v1 - v2;
+}

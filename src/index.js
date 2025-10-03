@@ -2017,12 +2017,12 @@ ipcMain.on("directDownload", (_, url) => {
 });
 
 async function checkForUpdates(silentCheck = false) {
-	let url = "https://emedialibrary.com/releases.json";
-	if (isDev) {
-		url = "http://web.localhost.com:8080/releases.json";
-	}
+	let updateUrl = "https://emedialibrary.com/releases.json";
+	// if (isDev) {
+	// 	updateUrl = "http://web.localhost.com:8080/releases.json";
+	// }
 	axios
-		.get(url)
+		.get(updateUrl)
 		.then((res) => {
 			if (!res.data || !res.data.version) {
 				if (silentCheck) return;

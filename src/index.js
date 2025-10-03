@@ -299,7 +299,6 @@ function createContextMenu() {
 			{
 				id: "inspect",
 				label: "Inspect Element",
-				// visible: isDev,
 				click() {
 					mainWindow.webContents.inspectElement(props.x, props.y);
 				},
@@ -2018,9 +2017,6 @@ ipcMain.on("directDownload", (_, url) => {
 
 async function checkForUpdates(silentCheck = false) {
 	let updateUrl = "https://emedialibrary.com/releases.json";
-	// if (isDev) {
-	// 	updateUrl = "http://web.localhost.com:8080/releases.json";
-	// }
 	axios
 		.get(updateUrl)
 		.then((res) => {
@@ -2098,11 +2094,15 @@ async function checkForUpdates(silentCheck = false) {
 											}
 										});
 									updateDownloader = null;
+									setMainMenu();
 								},
 								onCancel: () => {
-									log("Download cancelled");
+									updateDownloader = null;
+									setMainMenu();
 								},
 							}).catch((err) => {
+								updateDownloader = null;
+								setMainMenu();
 								error("Error downloading update: ");
 								error(err);
 								dialog
